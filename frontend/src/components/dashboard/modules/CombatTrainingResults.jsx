@@ -1,0 +1,2538 @@
+import React, { useState, useEffect, useRef } from "react";
+
+const EMPTY_ARRAY = [];
+const STORAGE_KEY = "combat-training-results-custom-periods";
+const HIDDEN_DEFAULT_PERIOD_TITLES = new Set(["1-ай", "1 ай"]);
+const SIGNATURE_SLOTS = [
+  { id: "captain", top: 318, buttonTop: 330 },
+  { id: "lieutenant", top: 405, buttonTop: 417 },
+];
+const DEFAULT_DOCUMENT_TITLE =
+  "20___ аскер бөлүгүнүн ______ чек ара заставасынын (топ, бөлүкчө, взвод, рота)\nЧек ара тактикасы боюнча көзөмөл сабагынын\nВЕДОМОСТУ";
+const PHYSICAL_TRAINING_DOCUMENT_TITLE =
+  "20___ аскер бөлүгүнүн ______  чек ара заставасынын\nДене тарбия даярдыгы боюнча көзөмөл сабагынын\nВЕДОМОСТУ";
+const SHOOTING_TRAINING_DOCUMENT_TITLE =
+  "20___ аскер бөлүгүнүн ______  чек ара заставасынын (топ, бөлүкчө, взвод, рота)\nОк атуу даярдыгы боюнча көзөмөл сабагынын\nВЕДОМОСТУ";
+const LINE_TRAINING_DOCUMENT_TITLE =
+  "20___ аскер бөлүгүнүн ______  чек ара заставасынын (топ, бөлүкчө, взвод, рота)\nСаптык даярдоо боюнча көзөмөл сабагынын\nВЕДОМОСТУ";
+const DEFAULT_TABLE_FOOTER = `Жалпы тапшыргандар: __ адам __ %
+Анын ичинен:
+      -   "эң жакшы"                  __ адам __ %;
+      -   "жакшы"                     __ адам __ %;
+      -   "канааттандырарлык"         __ адам __ %;
+      -   "канааттандыр-к эмес"       __ адам __ %.
+Аткарды __ адам __ %
+Жалпы баа __ (________________________)
+
+Текшерүүчүлөр:
+
+20___ аскер бөлүгүнүн ________ Чаз башчысы (топ, бөлүкчө, взвод, рота)
+
+капитан                         А.А. Асанов
+
+"Кулунду" Чаз башчысынын орун басары (топ, бөлүкчө, взвод, рота)
+
+лейтенант                       Д.А. Сайфудинов`;
+
+const INSPECTION_SECOND_SUMMARY_FOOTER = `-
+
+- күжүрмөн даярдоо боюнча «эң жакшы» баа аттан бөлүкчө жана бөлүмчө - жок
+
+- күжүрмөн даярдоо боюнча «канааттандырарлык эмес» баа алган бөлүмчө – 1 бөлүмчө, бөлүмчө командири
+сержант Асанов А.А.`;
+
+const INSPECTION_BP_FIRST_FOOTER = `20___ аскер бөлүгүнүн ______ чаз башчысы
+
+
+капитан                         Асанов А.А.`;
+
+const customDocumentColumns = [
+  { key: "number", label: "№", width: 50 },
+  { key: "personalNumber", label: "Өздүк номуру", width: 100 },
+  { key: "ticketNumber", label: "Билет №", width: 80 },
+  { key: "question1", label: "1-суроо", width: 120 },
+  { key: "answer1", label: "Жообу", width: 120 },
+  { key: "question2", label: "2-суроо", width: 120 },
+  { key: "answer2", label: "Жообу", width: 120 },
+  { key: "question3", label: "3-суроо", width: 120 },
+  { key: "answer3", label: "Жообу", width: 120 },
+  { key: "totalGrade", label: "Жалпы баа", width: 80 },
+  { key: "note", label: "Эскертме", width: 120 },
+];
+
+const createEmptyCustomRows = () =>
+  Array.from({ length: 10 }, (_, i) => ({
+    number: i + 1,
+    personalNumber: "",
+    ticketNumber: "",
+    question1: "",
+    answer1: "",
+    question2: "",
+    answer2: "",
+    question3: "",
+    answer3: "",
+    totalGrade: "",
+    note: "",
+  }));
+
+const createCustomTable = (title, rows = createEmptyCustomRows()) => ({
+  title,
+  columns: customDocumentColumns,
+  rows,
+});
+
+const inspectionSummaryColumns = [
+  { key: "number", label: "к №", width: 50, readOnly: true },
+  { key: "personalNumber", label: "Өздүк номери", width: 150 },
+  { key: "physicalTraining", label: "ДТД", width: 105 },
+  { key: "shootingTraining", label: "ОД", width: 105 },
+  { key: "borderTactics", label: "ЧТ", width: 105 },
+  { key: "combatTraining", label: "КМД", width: 105 },
+  { key: "totalGrade", label: "Жалпы\nбаа", width: 90 },
+  { key: "note", label: "Эскертме", width: 115 },
+];
+
+const createEmptyInspectionSummaryRow = (number) => ({
+  number,
+  personalNumber: "",
+  physicalTraining: "",
+  shootingTraining: "",
+  borderTactics: "",
+  combatTraining: "",
+  totalGrade: "",
+  note: "",
+});
+
+const createInspectionSummarySectionRow = (sectionTitle) => ({
+  __isSection: true,
+  sectionTitle,
+});
+
+const createInspectionSummaryRows = () => [
+  ...Array.from({ length: 5 }, (_, index) => createEmptyInspectionSummaryRow(index + 1)),
+  createInspectionSummarySectionRow("Чаз башкармалыгыүчүн:"),
+  ...Array.from({ length: 8 }, (_, index) => createEmptyInspectionSummaryRow(index + 6)),
+  createInspectionSummarySectionRow("1-бөлүмчө үчүн:"),
+  ...Array.from({ length: 8 }, (_, index) => createEmptyInspectionSummaryRow(index + 14)),
+  createInspectionSummarySectionRow("2-бөлүмчө үчүн:"),
+  createEmptyInspectionSummaryRow(22),
+];
+
+const createInspectionSummaryTable = (title, rows = createInspectionSummaryRows()) => ({
+  type: "inspectionSummary",
+  title,
+  columns: inspectionSummaryColumns,
+  headerRows: [
+    [
+      { key: "number", label: "к №" },
+      { key: "personalNumber", label: "Өздүк номери" },
+      { key: "physicalTraining", label: "ДТД" },
+      { key: "shootingTraining", label: "ОД" },
+      { key: "borderTactics", label: "ЧТ" },
+      { key: "combatTraining", label: "КМД" },
+      { key: "totalGrade", label: "Жалпы\nбаа" },
+      { key: "note", label: "Эскертме" },
+    ],
+  ],
+  sectionColSpan: 2,
+  rows,
+});
+
+const inspectionSecondSummaryColumns = [
+  { key: "number", label: "к/\n№", width: 48, readOnly: true },
+  { key: "subdivision", label: "Бөлүкчөлөр", width: 115 },
+  { key: "allAssessed", label: "Бардыгы\nбааланды", width: 82 },
+  { key: "excellent", label: "эн\nжак.", width: 55 },
+  { key: "good", label: "жак.", width: 55 },
+  { key: "satisfactory", label: "канат", width: 55 },
+  { key: "unsatisfactory", label: "канат\nэмес", width: 60 },
+  { key: "bestDetachment", label: "Эң жакшы\nбөлүк-\nчө", width: 70 },
+  { key: "bestDepartment", label: "Эң жакшы\nбөлүм-\nчө", width: 70 },
+  { key: "badDetachment", label: "Канат эмес\nбөлүк-\nчө", width: 70 },
+  { key: "badDepartment", label: "Канат эмес\nбөлүм-\nчө", width: 70 },
+  { key: "officer", label: "оф.", width: 50 },
+  { key: "ensign", label: "пр-к", width: 55 },
+  { key: "sergeant", label: "серж-\nнт", width: 58 },
+  { key: "soldier", label: "жоо-\nкер", width: 58 },
+  { key: "preparedTotal", label: "Баары", width: 65 },
+  { key: "classSpecialist", label: "Кл.\nадис", width: 65 },
+  { key: "bestSportsman", label: "Мыкты\nспортчу", width: 75 },
+  { key: "totalGrade", label: "Жалпы\nбаа", width: 75 },
+];
+
+const createEmptyInspectionSecondSummaryRow = (number, subdivision = "") => ({
+  number,
+  subdivision,
+  allAssessed: "",
+  excellent: "",
+  good: "",
+  satisfactory: "",
+  unsatisfactory: "",
+  bestDetachment: "",
+  bestDepartment: "",
+  badDetachment: "",
+  badDepartment: "",
+  officer: "",
+  ensign: "",
+  sergeant: "",
+  soldier: "",
+  preparedTotal: "",
+  classSpecialist: "",
+  bestSportsman: "",
+  totalGrade: "",
+});
+
+const createCenteredSectionRow = (sectionTitle = "Негизги бөлүкчөлөр") => ({
+  __isCenteredSection: true,
+  sectionTitle,
+});
+
+const createInspectionSecondSummaryRows = () => [
+  createEmptyInspectionSecondSummaryRow("1.", "Башкар-к"),
+  createEmptyInspectionSecondSummaryRow("", "Баары:"),
+  createCenteredSectionRow("Негизги бөлүкчөлөр"),
+  createEmptyInspectionSecondSummaryRow("1.", "1-бөлүмчө"),
+  createEmptyInspectionSecondSummaryRow("2.", "2-бөлүмчө"),
+  createEmptyInspectionSecondSummaryRow("3.", "3-бөлүмчө"),
+  createEmptyInspectionSecondSummaryRow("", "Баары:"),
+  { ...createEmptyInspectionSecondSummaryRow("", "Жыйынтыгы:"), __isSummary: true },
+];
+
+const createInspectionSecondSummaryTable = (title, rows = createInspectionSecondSummaryRows()) => ({
+  type: "inspectionSecondSummary",
+  title,
+  columns: inspectionSecondSummaryColumns,
+  footer: INSPECTION_SECOND_SUMMARY_FOOTER,
+  headerRows: [
+    [
+      { key: "number", label: "к/\n№", rowSpan: 4 },
+      { key: "subdivision", label: "Бөлүкчөлөр", rowSpan: 4 },
+      { key: "trainingState", label: "Күжүрмөн даярдоонун абалы", colSpan: 5 },
+      { key: "assessed", label: "Бааланды", colSpan: 4 },
+      { key: "prepared", label: "Даярдалды", colSpan: 7 },
+      { key: "totalGrade", label: "Жалпы\nбаа", rowSpan: 3 },
+    ],
+    [
+      { key: "allAssessed", label: "Бардыгы\nбааланды", rowSpan: 2 },
+      { key: "excellent", label: "эн\nжак.", rowSpan: 2 },
+      { key: "good", label: "жак.", rowSpan: 2 },
+      { key: "satisfactory", label: "канат", rowSpan: 2 },
+      { key: "unsatisfactory", label: "канат\nэмес", rowSpan: 2 },
+      { key: "bestAssessed", label: "Эң жакшы", colSpan: 2 },
+      { key: "badAssessed", label: "Канат эмес", colSpan: 2 },
+      { key: "bestPrepared", label: "Мыктылар", colSpan: 5 },
+      { key: "classSpecialist", label: "Кл.\nадис", rowSpan: 2 },
+      { key: "bestSportsman", label: "Мыкты\nспортчу", rowSpan: 2 },
+    ],
+    [
+      { key: "bestDetachment", label: "бөлүк-\nчө" },
+      { key: "bestDepartment", label: "бөлүм-\nчө" },
+      { key: "badDetachment", label: "бөлүк-\nчө" },
+      { key: "badDepartment", label: "бөлүм-\nчө" },
+      { key: "officer", label: "оф." },
+      { key: "ensign", label: "пр-к" },
+      { key: "sergeant", label: "серж-\nнт" },
+      { key: "soldier", label: "жоо-\nкер" },
+      { key: "preparedTotal", label: "Баары" },
+    ],
+  ],
+  rows,
+});
+
+const INSPECTION_BP_SECOND_FOOTER = `- күжүрмөн даярдоо боюнча «эң жакшы» баа алган бөлүкчө жана бөлүмчө __________________________;
+
+- күжүрмөн даярдоо боюнча «канааттандырарлык эмес» баа алган бөлүмчө;
+- 1 ЧАЗдын 1 бөлүмчөсү, бөлүмчөнүн командири сержант Асанов А.А.`;
+
+const createBpSecondSummaryRows = () => [
+  createEmptyInspectionSecondSummaryRow("1.", "Башкар."),
+  createEmptyInspectionSecondSummaryRow("", "Баары:"),
+  createCenteredSectionRow("Негизги бөлүкчөлөр"),
+  createEmptyInspectionSecondSummaryRow("1.", "1-застава"),
+  createEmptyInspectionSecondSummaryRow("2.", "2-застава"),
+  createEmptyInspectionSecondSummaryRow("3.", "жана баш."),
+  createEmptyInspectionSecondSummaryRow("", "Баары:"),
+  createCenteredSectionRow("Кайтаруу жана камсыздоо бөлүкчөлөрү"),
+  createEmptyInspectionSecondSummaryRow("1.", "Коменд-к\nрота"),
+  createEmptyInspectionSecondSummaryRow("2.", "Камсыз\nвзв"),
+  createEmptyInspectionSecondSummaryRow("3.", "Оңдоо. взв."),
+  createEmptyInspectionSecondSummaryRow("4.", "жана баш."),
+  createEmptyInspectionSecondSummaryRow("", "Баары:"),
+  { ...createEmptyInspectionSecondSummaryRow("", "Жыйынтыгы:"), __isSummary: true },
+];
+
+const createBpSecondSummaryTable = (title, rows = createBpSecondSummaryRows()) => ({
+  ...createInspectionSecondSummaryTable(title, rows),
+  type: "inspectionBpSecondSummary",
+  templateVersion: 1,
+  footer: INSPECTION_BP_SECOND_FOOTER,
+});
+
+const bpMetricKeys = [
+  "bestUnit",
+  "bestCalculation",
+  "officers",
+  "warrantOfficers",
+  "sergeants",
+  "soldiers",
+  "allBest",
+  "classSpecialists",
+  "bestSportsmen",
+];
+
+const bpFirstSummaryColumns = [
+  { key: "number", label: "к/\n№", width: 40 },
+  { key: "subdivision", label: "Бөлүкчөлөр", width: 110 },
+  ...bpMetricKeys.flatMap((key) => [
+    { key: `${key}Count`, label: "алынып", width: 30 },
+    { key: `${key}Done`, label: "аткар", width: 30 },
+    { key: `${key}Percent`, label: "%", width: 30 },
+  ]),
+];
+
+const createEmptyBpFirstSummaryRow = (number, subdivision = "") => ({
+  number,
+  subdivision,
+  ...bpMetricKeys.reduce((result, key) => ({
+    ...result,
+    [`${key}Count`]: "",
+    [`${key}Done`]: "",
+    [`${key}Percent`]: "",
+  }), {}),
+});
+
+const createBpFirstSummaryRows = () => [
+  createEmptyBpFirstSummaryRow("1.", "Башкар-дык"),
+  createEmptyBpFirstSummaryRow("", "Баары:"),
+  createCenteredSectionRow("Негизги бөлүкчөлөр"),
+  createEmptyBpFirstSummaryRow("1.", "1-бөлүмчө"),
+  createEmptyBpFirstSummaryRow("2.", "2-бөлүмчө"),
+  createEmptyBpFirstSummaryRow("3.", "3-бөлүмчө"),
+  createEmptyBpFirstSummaryRow("", "Баары:"),
+  { ...createEmptyBpFirstSummaryRow("", "Жыйынтыгы:"), __isSummary: true },
+];
+
+const createBpFirstSummaryTable = (title, rows = createBpFirstSummaryRows()) => ({
+  type: "inspectionBpFirstSummary",
+  templateVersion: 3,
+  title,
+  columns: bpFirstSummaryColumns,
+  footer: INSPECTION_BP_FIRST_FOOTER,
+  signatureMode: "singleInline",
+  headerRows: [
+    [
+      { key: "number", label: "к/\n№", rowSpan: 4 },
+      { key: "subdivision", label: "Бөлүкчөлөр", rowSpan: 4 },
+      { key: "prepared", label: "Даярдалды", colSpan: 27 },
+    ],
+    [
+      { key: "bestUnit", label: "Мыкты\nбөлүкчө", colSpan: 3 },
+      { key: "bestCalculation", label: "Мыкты\nэсеп,\nбөлүмчө", colSpan: 3 },
+      { key: "bestPrepared", label: "Мыктылар", colSpan: 15 },
+      { key: "classSpecialists", label: "Класстык\nадистер", colSpan: 3 },
+      { key: "bestSportsmen", label: "Мыкты\nспортчу", colSpan: 3 },
+    ],
+    [
+      { key: "bestUnitCount", label: "алын", rowSpan: 2, vertical: true },
+      { key: "bestUnitDone", label: "атк", rowSpan: 2, vertical: true },
+      { key: "bestUnitPercent", label: "%", rowSpan: 2, vertical: true },
+      { key: "bestCalculationCount", label: "алын", rowSpan: 2, vertical: true },
+      { key: "bestCalculationDone", label: "атк", rowSpan: 2, vertical: true },
+      { key: "bestCalculationPercent", label: "%", rowSpan: 2, vertical: true },
+      { key: "officers", label: "Офицерлер", colSpan: 3 },
+      { key: "warrantOfficers", label: "Прапорщ-р", colSpan: 3 },
+      { key: "sergeants", label: "Сержанттар", colSpan: 3 },
+      { key: "soldiers", label: "Жоокерлер", colSpan: 3 },
+      { key: "allBest", label: "Баары", colSpan: 3 },
+      { key: "classSpecialistsCount", label: "алын", rowSpan: 2, vertical: true },
+      { key: "classSpecialistsDone", label: "атк", rowSpan: 2, vertical: true },
+      { key: "classSpecialistsPercent", label: "%", rowSpan: 2, vertical: true },
+      { key: "bestSportsmenCount", label: "алын", rowSpan: 2, vertical: true },
+      { key: "bestSportsmenDone", label: "атк", rowSpan: 2, vertical: true },
+      { key: "bestSportsmenPercent", label: "%", rowSpan: 2, vertical: true },
+    ],
+    [
+      { key: "officersCount", label: "алын", vertical: true },
+      { key: "officersDone", label: "атк", vertical: true },
+      { key: "officersPercent", label: "%", vertical: true },
+      { key: "warrantOfficersCount", label: "алын", vertical: true },
+      { key: "warrantOfficersDone", label: "атк", vertical: true },
+      { key: "warrantOfficersPercent", label: "%", vertical: true },
+      { key: "sergeantsCount", label: "алын", vertical: true },
+      { key: "sergeantsDone", label: "атк", vertical: true },
+      { key: "sergeantsPercent", label: "%", vertical: true },
+      { key: "soldiersCount", label: "алын", vertical: true },
+      { key: "soldiersDone", label: "атк", vertical: true },
+      { key: "soldiersPercent", label: "%", vertical: true },
+      { key: "allBestCount", label: "алын", vertical: true },
+      { key: "allBestDone", label: "атк", vertical: true },
+      { key: "allBestPercent", label: "%", vertical: true },
+    ],
+  ],
+  rows,
+});
+
+const INSPECTION_BP_FIFTH_FOOTER = `(Кызмат орду, аты, жөнү, аскердик наам, кол тамга жана датасы)`;
+
+const createBpFifthSummaryRows = () => [
+  createEmptyBpFirstSummaryRow("1.", "Башкар-лык"),
+  createEmptyBpFirstSummaryRow("", "Баары:"),
+  createCenteredSectionRow("Негизги бөлүкчөлөр"),
+  createEmptyBpFirstSummaryRow("1.", "1-застава"),
+  createEmptyBpFirstSummaryRow("2.", "2-застава"),
+  createEmptyBpFirstSummaryRow("3.", "ж.б."),
+  createEmptyBpFirstSummaryRow("", "Баары:"),
+  createCenteredSectionRow("Негизги эмес бөлүкчөлөр"),
+  createEmptyBpFirstSummaryRow("1.", "Комен. рота"),
+  createEmptyBpFirstSummaryRow("2.", "Камсыз взв."),
+  createEmptyBpFirstSummaryRow("3.", "Оңдоо взв."),
+  createEmptyBpFirstSummaryRow("4.", "ж.б."),
+  createEmptyBpFirstSummaryRow("", "Баары:"),
+  { ...createEmptyBpFirstSummaryRow("", "Жыйынтыгы:"), __isSummary: true },
+];
+
+const createBpFifthSummaryTable = (title, rows = createBpFifthSummaryRows()) => ({
+  ...createBpFirstSummaryTable(title, rows),
+  type: "inspectionBpFifthSummary",
+  templateVersion: 1,
+  footer: INSPECTION_BP_FIFTH_FOOTER,
+  signatureMode: undefined,
+});
+
+const physicalTrainingColumns = [
+  { key: "number", label: "к №", width: 50, readOnly: true },
+  { key: "personalNumber", label: "Өздүк номуру", width: 220 },
+  { key: "unit", label: "ж/тобу", width: 90 },
+  { key: "exercise56Result", label: "жыйын.", width: 90 },
+  { key: "exercise56Grade", label: "баасы", width: 95 },
+  { key: "exercise9Result", label: "жыйын.", width: 90 },
+  { key: "exercise9Grade", label: "баасы", width: 90 },
+  { key: "exercise12Result", label: "жыйын.", width: 90 },
+  { key: "exercise12Grade", label: "баасы", width: 90 },
+  { key: "totalGrade", label: "Жалпы\nбаа", width: 90 },
+  { key: "note", label: "Эскертме", width: 90 },
+];
+
+const createEmptyPhysicalRow = (number) => ({
+  number,
+  personalNumber: "",
+  unit: "",
+  exercise56Result: "",
+  exercise56Grade: "",
+  exercise9Result: "",
+  exercise9Grade: "",
+  exercise12Result: "",
+  exercise12Grade: "",
+  totalGrade: "",
+  note: "",
+});
+
+const createPhysicalSectionRow = (sectionTitle) => ({
+  __isSection: true,
+  sectionTitle,
+});
+
+const createPhysicalTrainingRows = () => [
+  ...Array.from({ length: 5 }, (_, index) => createEmptyPhysicalRow(index + 1)),
+  createPhysicalSectionRow("Чаз башкармалыгыүчүн:"),
+  ...Array.from({ length: 8 }, (_, index) => createEmptyPhysicalRow(index + 6)),
+  createPhysicalSectionRow("1-бөлүмчө үчүн:"),
+  ...Array.from({ length: 8 }, (_, index) => createEmptyPhysicalRow(index + 14)),
+  createPhysicalSectionRow("2-бөлүмчө үчүн:"),
+  createEmptyPhysicalRow(22),
+];
+
+const createPhysicalTrainingTable = (title, rows = createPhysicalTrainingRows()) => ({
+  type: "physicalTraining",
+  title,
+  columns: physicalTrainingColumns,
+  sectionColSpan: 3,
+  headerRows: [
+    [
+      { key: "number", label: "к №", rowSpan: 3 },
+      { key: "personalNumber", label: "Өздүк номуру", rowSpan: 3 },
+      { key: "unit", label: "ж/тобу", rowSpan: 3 },
+      { key: "exercises", label: "Көнүгүүлөрдүн номуру жана аталышы", colSpan: 6 },
+      { key: "totalGrade", label: "Жалпы\nбаа", rowSpan: 3 },
+      { key: "note", label: "Эскертме", rowSpan: 3 },
+    ],
+    [
+      { key: "exercise56", label: "Көнүгүү № 5,6\n(чабакча тартылуу,\nККК)", colSpan: 2 },
+      { key: "exercise9", label: "Көнүгүү № 9\n(100 м чуркоо)", colSpan: 2 },
+      { key: "exercise12", label: "Көнүгүү № 1,2\n(1,3 км чуркоо)", colSpan: 2 },
+    ],
+    [
+      { key: "exercise56Result", label: "жыйын." },
+      { key: "exercise56Grade", label: "баасы" },
+      { key: "exercise9Result", label: "жыйын." },
+      { key: "exercise9Grade", label: "баасы" },
+      { key: "exercise12Result", label: "жыйын." },
+      { key: "exercise12Grade", label: "баасы" },
+    ],
+  ],
+  rows,
+});
+
+const shootingTrainingColumns = [
+  { key: "number", label: "к №", width: 50, readOnly: true },
+  { key: "personalNumber", label: "Өздүк номуру", width: 230 },
+  { key: "exercisePmResult", label: "жыйын.", width: 90 },
+  { key: "exercisePmGrade", label: "баасы", width: 90 },
+  { key: "exerciseAkResult", label: "жыйын.", width: 90 },
+  { key: "exerciseAkGrade", label: "баасы", width: 90 },
+  { key: "exerciseCkkResult", label: "жыйын.", width: 90 },
+  { key: "exerciseCkkGrade", label: "баасы", width: 90 },
+  { key: "totalGrade", label: "Жалпы\nбаа", width: 90 },
+  { key: "note", label: "Эскертме", width: 100 },
+];
+
+const createEmptyShootingRow = (number) => ({
+  number,
+  personalNumber: "",
+  exercisePmResult: "",
+  exercisePmGrade: "",
+  exerciseAkResult: "",
+  exerciseAkGrade: "",
+  exerciseCkkResult: "",
+  exerciseCkkGrade: "",
+  totalGrade: "",
+  note: "",
+});
+
+const createShootingSectionRow = (sectionTitle) => ({
+  __isSection: true,
+  sectionTitle,
+});
+
+const createShootingTrainingRows = () => [
+  ...Array.from({ length: 5 }, (_, index) => createEmptyShootingRow(index + 1)),
+  createShootingSectionRow("Чаз башкармалыгыүчүн:"),
+  ...Array.from({ length: 8 }, (_, index) => createEmptyShootingRow(index + 6)),
+  createShootingSectionRow("1-бөлүмчө үчүн:"),
+  ...Array.from({ length: 8 }, (_, index) => createEmptyShootingRow(index + 14)),
+  createShootingSectionRow("2-бөлүмчө үчүн:"),
+];
+
+const createShootingTrainingTable = (title, rows = createShootingTrainingRows()) => ({
+  type: "shootingTraining",
+  title,
+  columns: shootingTrainingColumns,
+  sectionColSpan: 2,
+  headerRows: [
+    [
+      { key: "number", label: "к №", rowSpan: 3 },
+      { key: "personalNumber", label: "Өздүк номуру", rowSpan: 3 },
+      { key: "exercises", label: "Көнүгүүлөрдүн номуру", colSpan: 6 },
+      { key: "totalGrade", label: "Жалпы\nбаа", rowSpan: 3 },
+      { key: "note", label: "Эскертме", rowSpan: 3 },
+    ],
+    [
+      { key: "exercisePm", label: "1-ЧОАК\nПМ", colSpan: 2 },
+      { key: "exerciseAk", label: "1-ЧОАК\nАК", colSpan: 2 },
+      { key: "exerciseCkk", label: "1-ЧКК\nАК", colSpan: 2 },
+    ],
+    [
+      { key: "exercisePmResult", label: "жыйын." },
+      { key: "exercisePmGrade", label: "баасы" },
+      { key: "exerciseAkResult", label: "жыйын." },
+      { key: "exerciseAkGrade", label: "баасы" },
+      { key: "exerciseCkkResult", label: "жыйын." },
+      { key: "exerciseCkkGrade", label: "баасы" },
+    ],
+  ],
+  rows,
+});
+
+const normalizeStoredPeriod = (period) => {
+  if (period.subsectionId === "observation-stp" && period.table?.type === "lineTraining" && period.table.templateVersion !== 2) {
+    return {
+      ...period,
+      table: createLineTrainingTable(period.table.title || period.title, period.table.rows || createLineTrainingRows()),
+    };
+  }
+
+  if (period.subsectionId !== "observation-op" || period.table?.type !== "shootingTraining") {
+    return period;
+  }
+
+  const hasOldColumns = period.table.columns?.some((column) =>
+    column.key === "militaryName" || column.key === "fullName"
+  );
+
+  if (!hasOldColumns) {
+    return period;
+  }
+
+  return {
+    ...period,
+    table: createShootingTrainingTable(
+      period.table.title || period.title,
+      (period.table.rows || []).map((row) =>
+        row.__isSection
+          ? row
+          : {
+              ...createEmptyShootingRow(row.number),
+              personalNumber: row.personalNumber || "",
+              exercisePmResult: row.exercisePmResult || "",
+              exercisePmGrade: row.exercisePmGrade || "",
+              exerciseAkResult: row.exerciseAkResult || "",
+              exerciseAkGrade: row.exerciseAkGrade || "",
+              exerciseCkkResult: row.exerciseCkkResult || "",
+              exerciseCkkGrade: row.exerciseCkkGrade || "",
+              totalGrade: row.totalGrade || "",
+              note: row.note || "",
+            }
+      )
+    ),
+  };
+};
+
+const lineTrainingColumns = [
+  { key: "number", label: "к/н\n№", width: 58, readOnly: true },
+  { key: "personalNumber", label: "Өздүк номуру", width: 260 },
+  { key: "positionGrade", label: "Сырткы көрүнүшүнө баа", width: 44 },
+  { key: "weaponHandlingGrade", label: "Саптык уставды билүү деңгээлине баа", width: 44 },
+  { key: "lineStep", label: "Саптык туруш", width: 44 },
+  { key: "salute", label: "Саптан чыгуу", width: 44 },
+  { key: "turns", label: "Ордунда бурулуу", width: 44 },
+  { key: "movementTurns", label: "Кыймылда бурулуу", width: 44 },
+  { key: "commanderApproach", label: "Аскердик саламдашуунун аткарылышы", width: 44 },
+  { key: "withoutWeaponTotal", label: "Саптык басуу ылдамдыгы", width: 44 },
+  { key: "rifleSling", label: "Башчыга келүү\nжана сапка кайтып туруу", width: 44 },
+  { key: "weaponCommands", label: "Куралды курга  АЛ", width: 44 },
+  { key: "weaponMoves", label: "Автоматты көкүрөккө - АЛ", width: 44 },
+  { key: "weaponTurns", label: "Куралды аркага  АЛ", width: 44 },
+  { key: "methodicGrade", label: "Методикалык\nдаярдыгына баа", width: 58 },
+  { key: "overallGrade", label: "Саптык даярдыгы үчүн\nжалпы баасы", width: 58 },
+  { key: "note", label: "Эскертме", width: 68 },
+];
+
+const createEmptyLineRow = (number) => ({
+  number: `${number}.`,
+  personalNumber: "",
+  positionGrade: "",
+  weaponHandlingGrade: "",
+  lineStep: "",
+  salute: "",
+  turns: "",
+  movementTurns: "",
+  commanderApproach: "",
+  withoutWeaponTotal: "",
+  rifleSling: "",
+  weaponCommands: "",
+  weaponMoves: "",
+  weaponTurns: "",
+  methodicGrade: "",
+  overallGrade: "",
+  note: "",
+});
+
+const createLineTrainingRows = () =>
+  Array.from({ length: 9 }, (_, index) => createEmptyLineRow(index + 1));
+
+const createLineTrainingTable = (title, rows = createLineTrainingRows()) => ({
+  type: "lineTraining",
+  templateVersion: 2,
+  title,
+  columns: lineTrainingColumns,
+  headerRows: [
+    [
+      { key: "number", label: "к/н\n№", rowSpan: 3 },
+      { key: "personalNumber", label: "Өздүк номуру", rowSpan: 3 },
+      { key: "positionGrade", label: "Сырткы көрүнүшүнө баа", rowSpan: 3, vertical: true },
+      { key: "weaponHandlingGrade", label: "Саптык уставды билүү деңгээлине баа", rowSpan: 3, vertical: true },
+      { key: "actionGrade", label: "Саптык ыкмаларды аткаруу баасы", colSpan: 10 },
+      { key: "methodicGrade", label: "Методикалык\nдаярдыгына баа", rowSpan: 3, vertical: true },
+      { key: "overallGrade", label: "Саптык даярдыгы үчүн\nжалпы баасы", rowSpan: 3, vertical: true },
+      { key: "note", label: "Эскертме", rowSpan: 3, vertical: true },
+    ],
+    [
+      { key: "lineStep", label: "Саптык туруш", vertical: true },
+      { key: "salute", label: "Саптан чыгуу", vertical: true },
+      { key: "turns", label: "Ордунда бурулуу", vertical: true },
+      { key: "movementTurns", label: "Кыймылда бурулуу", vertical: true },
+      { key: "commanderApproach", label: "Аскердик саламдашуунун аткарылышы", vertical: true },
+      { key: "withoutWeaponTotal", label: "Саптык басуу ылдамдыгы", vertical: true },
+      { key: "rifleSling", label: "Башчыга келүү\nжана сапка кайтып туруу", vertical: true },
+      { key: "weaponCommands", label: "Куралды курга  АЛ", vertical: true },
+      { key: "weaponMoves", label: "Автоматты көкүрөккө - АЛ", vertical: true },
+      { key: "weaponTurns", label: "Куралды аркага  АЛ", vertical: true },
+    ],
+    [
+      { key: "withoutWeapon", label: "Куралсыз", colSpan: 6 },
+      { key: "withWeapon", label: "Курал менен", colSpan: 4 },
+    ],
+  ],
+  rows,
+});
+
+const getNestedSections = (section) => section?.sections || section?.subsections || EMPTY_ARRAY;
+
+const hasSectionContent = (section) =>
+  Boolean(section?.table || section?.periods?.length > 0 || getNestedSections(section).length > 0);
+
+export default function CombatTrainingResults({ data, user }) {
+  const signatureCanvasRef = useRef(null);
+  const isDrawingSignatureRef = useRef(false);
+  const [selectedSectionId, setSelectedSectionId] = useState(null);
+  const [selectedSubsectionId, setSelectedSubsectionId] = useState(null);
+  const [selectedPeriodId, setSelectedPeriodId] = useState(null);
+  const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
+  const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
+  const [editingPeriodId, setEditingPeriodId] = useState(null);
+  const [monthInput, setMonthInput] = useState("");
+  const [documentTitle, setDocumentTitle] = useState(DEFAULT_DOCUMENT_TITLE);
+  const [customPeriods, setCustomPeriods] = useState(() => {
+    if (typeof window !== "undefined") {
+      try {
+        const saved = window.localStorage.getItem(STORAGE_KEY);
+        return saved ? JSON.parse(saved).map(normalizeStoredPeriod) : [];
+      } catch {
+        return [];
+      }
+    }
+    return [];
+  });
+  const [editableRows, setEditableRows] = useState([]);
+  const [editableColumns, setEditableColumns] = useState([]);
+  const [editableHeaderRows, setEditableHeaderRows] = useState([]);
+  const [isInsertSectionDialogOpen, setIsInsertSectionDialogOpen] = useState(false);
+  const [sectionTitle, setSectionTitle] = useState("");
+  const [sectionInsertType, setSectionInsertType] = useState("section");
+  const [insertPosition, setInsertPosition] = useState(0);
+  const [editableTitle, setEditableTitle] = useState("");
+  const [editableFooter, setEditableFooter] = useState(DEFAULT_TABLE_FOOTER);
+  const [signatureImages, setSignatureImages] = useState({});
+  const [isSignatureDialogOpen, setIsSignatureDialogOpen] = useState(false);
+  const [activeSignatureSlot, setActiveSignatureSlot] = useState(SIGNATURE_SLOTS[0].id);
+
+  // Массив разделов, где можно создавать документы
+  const sectionsWithCreate = [
+    "observation-tpv",
+    "observation-ogp",
+    "observation-fp",
+    "observation-spec",
+    "observation-tp",
+    "observation-op",
+    "observation-stp",
+    "observation-ovu"
+  ];
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      try {
+        window.localStorage.setItem(STORAGE_KEY, JSON.stringify(customPeriods));
+      } catch {
+        // Silent fail if localStorage is unavailable
+      }
+    }
+  }, [customPeriods]);
+
+  useEffect(() => {
+    if (selectedPeriodId && typeof window !== "undefined") {
+      try {
+        const tableStorageKey = `${STORAGE_KEY}-${selectedPeriodId}`;
+        const saved = window.localStorage.getItem(tableStorageKey);
+        if (saved) {
+          setEditableRows(JSON.parse(saved));
+        } else if (selectedPeriod && selectedPeriod.table) {
+          setEditableRows(selectedPeriod.table.rows);
+        } else {
+          setEditableRows([]);
+        }
+      } catch (error) {
+        console.error("Error loading table data:", error);
+        if (selectedPeriod && selectedPeriod.table) {
+          setEditableRows(selectedPeriod.table.rows);
+        } else {
+          setEditableRows([]);
+        }
+      }
+    } else {
+      setEditableRows([]);
+    }
+  }, [selectedPeriodId]);
+
+  useEffect(() => {
+    if (selectedPeriodId && typeof window !== "undefined") {
+      try {
+        const tableVersionKey = selectedPeriod?.table?.templateVersion ? `-v${selectedPeriod.table.templateVersion}` : "";
+        const columnsStorageKey = `${STORAGE_KEY}-${selectedPeriodId}-columns${tableVersionKey}`;
+        const headerRowsStorageKey = `${STORAGE_KEY}-${selectedPeriodId}-header-rows${tableVersionKey}`;
+        const savedColumns = window.localStorage.getItem(columnsStorageKey);
+        const savedHeaderRows = window.localStorage.getItem(headerRowsStorageKey);
+        setEditableColumns(savedColumns ? JSON.parse(savedColumns) : selectedTable?.columns || []);
+        setEditableHeaderRows(savedHeaderRows ? JSON.parse(savedHeaderRows) : selectedTable?.headerRows || []);
+      } catch (error) {
+        console.error("Error loading table header data:", error);
+        setEditableColumns(selectedTable?.columns || []);
+        setEditableHeaderRows(selectedTable?.headerRows || []);
+      }
+    } else {
+      setEditableColumns([]);
+      setEditableHeaderRows([]);
+    }
+  }, [selectedPeriodId]);
+
+  useEffect(() => {
+    if (selectedPeriodId && typeof window !== "undefined") {
+      try {
+        const footerStorageKey = `${STORAGE_KEY}-${selectedPeriodId}-footer`;
+        const savedFooter = window.localStorage.getItem(footerStorageKey);
+        setEditableFooter(savedFooter || selectedPeriod?.table?.footer || DEFAULT_TABLE_FOOTER);
+      } catch {
+        setEditableFooter(selectedPeriod?.table?.footer || DEFAULT_TABLE_FOOTER);
+      }
+    } else {
+      setEditableFooter(DEFAULT_TABLE_FOOTER);
+    }
+  }, [selectedPeriodId]);
+
+  useEffect(() => {
+    if (selectedPeriodId && typeof window !== "undefined") {
+      try {
+        const nextSignatures = SIGNATURE_SLOTS.reduce((result, slot) => {
+          const signatureStorageKey = `${STORAGE_KEY}-${selectedPeriodId}-signature-${slot.id}`;
+          result[slot.id] = window.localStorage.getItem(signatureStorageKey) || "";
+          return result;
+        }, {});
+        nextSignatures.captain = nextSignatures.captain || window.localStorage.getItem(`${STORAGE_KEY}-${selectedPeriodId}-signature`) || "";
+        setSignatureImages(nextSignatures);
+      } catch {
+        setSignatureImages({});
+      }
+    } else {
+      setSignatureImages({});
+    }
+  }, [selectedPeriodId]);
+
+  useEffect(() => {
+    if (selectedPeriodId && typeof window !== "undefined") {
+      try {
+        const titleStorageKey = `${STORAGE_KEY}-${selectedPeriodId}-title`;
+        const savedTitle = window.localStorage.getItem(titleStorageKey);
+        if (savedTitle) {
+          setEditableTitle(savedTitle);
+        } else if (selectedPeriod && selectedPeriod.table) {
+          setEditableTitle(selectedPeriod.table.title || selectedPeriod.title || "");
+        } else {
+          setEditableTitle("");
+        }
+      } catch {
+        if (selectedPeriod && selectedPeriod.table) {
+          setEditableTitle(selectedPeriod.table.title || selectedPeriod.title || "");
+        } else {
+          setEditableTitle("");
+        }
+      }
+    } else {
+      setEditableTitle("");
+    }
+  }, [selectedPeriodId]);
+
+  const handleTitleChange = (event) => {
+    const newTitle = event.target.value;
+    setEditableTitle(newTitle);
+    if (selectedPeriodId && typeof window !== "undefined") {
+      try {
+        const titleStorageKey = `${STORAGE_KEY}-${selectedPeriodId}-title`;
+        window.localStorage.setItem(titleStorageKey, newTitle);
+      } catch {
+        // Silent fail
+      }
+    }
+  };
+
+  const handleFooterChange = (event) => {
+    setEditableFooter(event.target.value);
+  };
+
+  const handleCellChange = (rowIndex, columnKey, value) => {
+    setEditableRows((currentRows) => {
+      const newRows = [...currentRows];
+      newRows[rowIndex][columnKey] = value;
+      return newRows;
+    });
+  };
+
+  const handleSectionTitleChange = (rowIndex, value) => {
+    setEditableRows((currentRows) => {
+      const newRows = [...currentRows];
+      newRows[rowIndex] = {
+        ...newRows[rowIndex],
+        sectionTitle: value,
+      };
+      return newRows;
+    });
+  };
+
+  const handleHeaderCellChange = (rowIndex, cellIndex, value) => {
+    setEditableHeaderRows((currentHeaderRows) =>
+      currentHeaderRows.map((headerRow, currentRowIndex) =>
+        currentRowIndex === rowIndex
+          ? headerRow.map((cell, currentCellIndex) =>
+              currentCellIndex === cellIndex ? { ...cell, label: value } : cell
+            )
+          : headerRow
+      )
+    );
+  };
+
+  const handleColumnLabelChange = (columnIndex, value) => {
+    setEditableColumns((currentColumns) =>
+      currentColumns.map((column, currentColumnIndex) =>
+        currentColumnIndex === columnIndex ? { ...column, label: value } : column
+      )
+    );
+  };
+
+  const handleSaveTable = () => {
+    if (selectedPeriod && typeof window !== "undefined") {
+      const tableStorageKey = `${STORAGE_KEY}-${selectedPeriod.id}`;
+      const titleStorageKey = `${STORAGE_KEY}-${selectedPeriod.id}-title`;
+      const footerStorageKey = `${STORAGE_KEY}-${selectedPeriod.id}-footer`;
+      const tableVersionKey = selectedPeriod.table?.templateVersion ? `-v${selectedPeriod.table.templateVersion}` : "";
+      const columnsStorageKey = `${STORAGE_KEY}-${selectedPeriod.id}-columns${tableVersionKey}`;
+      const headerRowsStorageKey = `${STORAGE_KEY}-${selectedPeriod.id}-header-rows${tableVersionKey}`;
+      try {
+        window.localStorage.setItem(tableStorageKey, JSON.stringify(editableRows));
+        window.localStorage.setItem(titleStorageKey, editableTitle);
+        window.localStorage.setItem(footerStorageKey, editableFooter);
+        window.localStorage.setItem(columnsStorageKey, JSON.stringify(editableColumns));
+        window.localStorage.setItem(headerRowsStorageKey, JSON.stringify(editableHeaderRows));
+        SIGNATURE_SLOTS.forEach((slot) => {
+          const signatureStorageKey = `${STORAGE_KEY}-${selectedPeriod.id}-signature-${slot.id}`;
+          if (signatureImages[slot.id]) {
+            window.localStorage.setItem(signatureStorageKey, signatureImages[slot.id]);
+          } else {
+            window.localStorage.removeItem(signatureStorageKey);
+          }
+        });
+      } catch {
+        // Silent fail if localStorage is unavailable
+      }
+    }
+  };
+
+  const getSignaturePoint = (event) => {
+    const canvas = signatureCanvasRef.current;
+    if (!canvas) return null;
+
+    const rect = canvas.getBoundingClientRect();
+    return {
+      x: ((event.clientX - rect.left) / rect.width) * canvas.width,
+      y: ((event.clientY - rect.top) / rect.height) * canvas.height,
+    };
+  };
+
+  const drawSignaturePoint = (event) => {
+    const point = getSignaturePoint(event);
+    const canvas = signatureCanvasRef.current;
+    if (!point || !canvas) return;
+
+    const context = canvas.getContext("2d");
+    context.lineTo(point.x, point.y);
+    context.stroke();
+  };
+
+  const handleSignatureStart = (event) => {
+    const point = getSignaturePoint(event);
+    const canvas = signatureCanvasRef.current;
+    if (!point || !canvas) return;
+
+    event.preventDefault();
+    const context = canvas.getContext("2d");
+    context.lineWidth = 2;
+    context.lineCap = "round";
+    context.lineJoin = "round";
+    context.strokeStyle = "#111";
+    context.beginPath();
+    context.moveTo(point.x, point.y);
+    isDrawingSignatureRef.current = true;
+  };
+
+  const handleSignatureMove = (event) => {
+    if (!isDrawingSignatureRef.current) return;
+    event.preventDefault();
+    drawSignaturePoint(event);
+  };
+
+  const handleSignatureEnd = () => {
+    isDrawingSignatureRef.current = false;
+  };
+
+  const handleClearSignatureCanvas = () => {
+    const canvas = signatureCanvasRef.current;
+    if (!canvas) return;
+    canvas.getContext("2d").clearRect(0, 0, canvas.width, canvas.height);
+  };
+
+  const handleSaveSignature = () => {
+    const canvas = signatureCanvasRef.current;
+    if (!canvas || !selectedPeriodId || typeof window === "undefined") return;
+
+    const dataUrl = canvas.toDataURL("image/png");
+    setSignatureImages((currentImages) => ({
+      ...currentImages,
+      [activeSignatureSlot]: dataUrl,
+    }));
+    try {
+      window.localStorage.setItem(`${STORAGE_KEY}-${selectedPeriodId}-signature-${activeSignatureSlot}`, dataUrl);
+    } catch {
+      // Silent fail if localStorage is unavailable
+    }
+    setIsSignatureDialogOpen(false);
+  };
+
+  const handleDeleteSignature = (slotId) => {
+    setSignatureImages((currentImages) => ({
+      ...currentImages,
+      [slotId]: "",
+    }));
+    if (selectedPeriodId && typeof window !== "undefined") {
+      try {
+        window.localStorage.removeItem(`${STORAGE_KEY}-${selectedPeriodId}-signature-${slotId}`);
+      } catch {
+        // Silent fail if localStorage is unavailable
+      }
+    }
+  };
+
+  const handleOpenSignatureDialog = (slotId) => {
+    setActiveSignatureSlot(slotId);
+    setIsSignatureDialogOpen(true);
+    window.requestAnimationFrame(handleClearSignatureCanvas);
+  };
+
+  const handleInsertSection = () => {
+    const summaryIndex = editableRows.findIndex((row) => row.__isSummary);
+    const maxPosition = (selectedTable?.type === "inspectionSecondSummary" || selectedTable?.type === "inspectionBpFirstSummary" || selectedTable?.type === "inspectionBpSecondSummary" || selectedTable?.type === "inspectionBpFifthSummary") && summaryIndex >= 0
+      ? summaryIndex
+      : editableRows.length;
+    const position = Math.min(insertPosition, maxPosition);
+    
+    const sectionRow = sectionInsertType === "centered"
+      ? createCenteredSectionRow(sectionTitle || "Негизги бөлүкчөлөр")
+      : {
+          __isSection: true,
+          sectionTitle: sectionTitle || "Новая секция",
+          number: "",
+          personalNumber: "",
+          ticketNumber: "",
+          question1: "",
+          answer1: "",
+          question2: "",
+          answer2: "",
+          question3: "",
+          answer3: "",
+          totalGrade: "",
+          note: "",
+        };
+
+    const newRows = [
+      ...editableRows.slice(0, position),
+      sectionRow,
+      ...editableRows.slice(position)
+    ];
+
+    let rowCounter = 1;
+    const updatedRows = newRows.map((row) => {
+      if (row.__isSection || row.__isCenteredSection || row.__isSummary) {
+        return row;
+      }
+      return { ...row, number: rowCounter++ };
+    });
+
+    setEditableRows(updatedRows);
+    setIsInsertSectionDialogOpen(false);
+    setSectionTitle("");
+    setSectionInsertType("section");
+    setInsertPosition(0);
+  };
+
+  const handleAddCenteredSection = () => {
+    setSectionInsertType("centered");
+    setSectionTitle("Негизги бөлүкчөлөр");
+    setInsertPosition(0);
+    setIsInsertSectionDialogOpen(true);
+  };
+
+  const handleDeleteSection = (rowIndex) => {
+    if (window.confirm(`"${editableRows[rowIndex].sectionTitle}" секциясын өчүрүлсүнбү?`)) {
+      const newRows = editableRows.filter((_, index) => index !== rowIndex);
+      let rowCounter = 1;
+      const updatedRows = newRows.map((row) => {
+        if (row.__isSection) {
+          return row;
+        }
+        return { ...row, number: rowCounter++ };
+      });
+      setEditableRows(updatedRows);
+    }
+  };
+
+  const handleAddRow = () => {
+    const nextNumber = editableRows.filter(r => !r.__isSection && !r.__isCenteredSection && !r.__isSummary).length + 1;
+    const newRow = selectedTable?.type === "physicalTraining"
+      ? createEmptyPhysicalRow(nextNumber)
+      : selectedTable?.type === "shootingTraining"
+        ? createEmptyShootingRow(nextNumber)
+        : selectedTable?.type === "lineTraining"
+          ? createEmptyLineRow(nextNumber)
+          : selectedTable?.type === "inspectionSummary"
+            ? createEmptyInspectionSummaryRow(nextNumber)
+            : selectedTable?.type === "inspectionSecondSummary"
+              ? createEmptyInspectionSecondSummaryRow(`${nextNumber}.`)
+            : selectedTable?.type === "inspectionBpFirstSummary"
+              ? createEmptyBpFirstSummaryRow(`${nextNumber}.`)
+            : selectedTable?.type === "inspectionBpSecondSummary"
+              ? createEmptyInspectionSecondSummaryRow(`${nextNumber}.`)
+              : selectedTable?.type === "inspectionBpFifthSummary"
+                ? createEmptyBpFirstSummaryRow(`${nextNumber}.`)
+      : {
+          number: nextNumber,
+          personalNumber: "",
+          ticketNumber: "",
+          question1: "",
+          answer1: "",
+          question2: "",
+          answer2: "",
+          question3: "",
+          answer3: "",
+          totalGrade: "",
+          note: "",
+        };
+    const summaryIndex = editableRows.findIndex((row) => row.__isSummary);
+    if (summaryIndex >= 0) {
+      setEditableRows([
+        ...editableRows.slice(0, summaryIndex),
+        newRow,
+        ...editableRows.slice(summaryIndex),
+      ]);
+      return;
+    }
+    setEditableRows([...editableRows, newRow]);
+  };
+
+  const handleDeleteRow = () => {
+    if (editableRows.length === 0) return;
+    for (let i = editableRows.length - 1; i >= 0; i--) {
+      if (!editableRows[i].__isSection && !editableRows[i].__isCenteredSection && !editableRows[i].__isSummary) {
+        const newRows = editableRows.filter((_, index) => index !== i);
+        let rowCounter = 1;
+        const updatedRows = newRows.map((row) => {
+          if (row.__isSection || row.__isCenteredSection || row.__isSummary) {
+            return row;
+          }
+          return { ...row, number: rowCounter++ };
+        });
+        setEditableRows(updatedRows);
+        break;
+      }
+    }
+  };
+
+  const sections = data?.sections || [
+    {
+      id: "observation",
+      title: "Көзөмөл сабактары",
+      sections: [
+        {
+          id: "observation-tpv",
+          title: "ТПВ",
+          periods: [],
+        },
+        {
+          id: "observation-ogp",
+          title: "ОГП",
+          periods: [
+            {
+              id: "observation-ogp-period-1",
+              title: "1-ай",
+              table: {
+                title: "ОГП - 1-ай",
+                columns: [
+                  { key: "number", label: "№" },
+                  { key: "date", label: "Дата", type: "date" },
+                  { key: "topic", label: "Сабактын темасы" },
+                  { key: "place", label: "Өткөрүлгөн жер" },
+                  { key: "participants", label: "Катышкандар" },
+                  { key: "instructor", label: "Жетекчи" },
+                  { key: "grade", label: "Баа" },
+                ],
+                rows: Array.from({ length: 10 }, (_, i) => ({
+                  number: i + 1,
+                  date: "",
+                  topic: "",
+                  place: "",
+                  participants: "",
+                  instructor: "",
+                  grade: "",
+                })),
+              },
+            },
+          ],
+        },
+        {
+          id: "observation-fp",
+          title: "ФП",
+          periods: [],
+        },
+        {
+          id: "observation-spec",
+          title: "СПЕЦ",
+          periods: [
+            {
+              id: "observation-spec-period-1",
+              title: "1-ай",
+              table: {
+                title: "СПЕЦ - 1-ай",
+                columns: [
+                  { key: "number", label: "№" },
+                  { key: "date", label: "Дата", type: "date" },
+                  { key: "topic", label: "Сабактын темасы" },
+                  { key: "place", label: "Өткөрүлгөн жер" },
+                  { key: "participants", label: "Катышкандар" },
+                  { key: "instructor", label: "Жетекчи" },
+                  { key: "grade", label: "Баа" },
+                ],
+                rows: Array.from({ length: 10 }, (_, i) => ({
+                  number: i + 1,
+                  date: "",
+                  topic: "",
+                  place: "",
+                  participants: "",
+                  instructor: "",
+                  grade: "",
+                })),
+              },
+            },
+          ],
+        },
+        {
+          id: "observation-tp",
+          title: "ТП",
+          periods: [
+            {
+              id: "observation-tp-period-1",
+              title: "1-ай",
+              table: {
+                title: "ТП - 1-ай",
+                columns: [
+                  { key: "number", label: "№" },
+                  { key: "date", label: "Дата", type: "date" },
+                  { key: "topic", label: "Сабактын темасы" },
+                  { key: "place", label: "Өткөрүлгөн жер" },
+                  { key: "participants", label: "Катышкандар" },
+                  { key: "instructor", label: "Жетекчи" },
+                  { key: "grade", label: "Баа" },
+                ],
+                rows: Array.from({ length: 10 }, (_, i) => ({
+                  number: i + 1,
+                  date: "",
+                  topic: "",
+                  place: "",
+                  participants: "",
+                  instructor: "",
+                  grade: "",
+                })),
+              },
+            },
+          ],
+        },
+        {
+          id: "observation-op",
+          title: "ОП",
+          periods: [],
+        },
+        {
+          id: "observation-stp",
+          title: "СТП",
+          periods: [],
+        },
+        {
+          id: "observation-ovu",
+          title: "ОВУ",
+          periods: [
+            {
+              id: "observation-ovu-period-1",
+              title: "1-ай",
+              table: {
+                title: "ОВУ - 1-ай",
+                columns: [
+                  { key: "number", label: "№" },
+                  { key: "date", label: "Дата", type: "date" },
+                  { key: "topic", label: "Сабактын темасы" },
+                  { key: "place", label: "Өткөрүлгөн жер" },
+                  { key: "participants", label: "Катышкандар" },
+                  { key: "instructor", label: "Жетекчи" },
+                  { key: "grade", label: "Баа" },
+                ],
+                rows: Array.from({ length: 10 }, (_, i) => ({
+                  number: i + 1,
+                  date: "",
+                  topic: "",
+                  place: "",
+                  participants: "",
+                  instructor: "",
+                  grade: "",
+                })),
+              },
+            },
+          ],
+        },
+      ],
+    },
+    {
+      id: "inspection",
+      title: "Көзөмөл текшерүү сабактары",
+      sections: [
+        {
+          id: "inspection-summary-1",
+          title: "Сводная ведомость за 1 учебный период",
+          periods: [
+            {
+              id: "inspection-summary-1-period-1",
+              title: "1-ай",
+              table: createInspectionSummaryTable("Сводная ведомость за 1 учебный период"),
+            },
+          ],
+        },
+        {
+          id: "inspection-summary-2",
+          title: "Сводная ведомость за 2 учебный период",
+          periods: [
+            {
+              id: "inspection-summary-2-period-1",
+              title: "1-ай",
+              table: createInspectionSecondSummaryTable("20__ жылдын __ окуу мезгилинде 20____ аскер бөлүгүнүн ЧАЗ өздүк курамынын күжүрмөн даярдоо боюнча\nЖЫЙЫНТЫГЫ"),
+            },
+          ],
+        },
+        {
+          id: "inspection-bp-1",
+          title: "Итоги БП за 1 учебный период",
+          periods: [
+            {
+              id: "inspection-bp-1-period-1",
+              title: "1-ай",
+              table: createBpFirstSummaryTable("20____ жылдын ___ окуу мезгилинде 20____ аскер бөлүгүнүн _____ ЧАЗ\nөздүк курамынын милдетемелеринин аткарылышынын\nЖЫЙЫНТЫГЫ"),
+            },
+          ],
+        },
+        {
+          id: "inspection-bp-2",
+          title: "Итоги БП за 2 учебный период",
+          periods: [
+            {
+              id: "inspection-bp-2-period-1",
+              title: "1-ай",
+              table: createBpSecondSummaryTable("20___ жылдын ____ окуу мезгилинде ______аскер бөлүгүн өздүк курамынын күжүрмөн даярдоо боюнча\nЖЫЙЫНТЫГЫ"),
+            },
+          ],
+        },
+        {
+          id: "inspection-obligations-summary",
+          title: "Итоги выполнения обязательств подразделений",
+          periods: [
+            {
+              id: "inspection-obligations-summary-period-1",
+              title: "1-ай",
+              table: createBpFifthSummaryTable("20____ жылдын ___ окуу мезгилинин ______аскер бөлүктөрдүн бөлүкчөлөрүнүн\nмилдетемелерин аткарылышынын\nЖЫЙЫНТЫГЫ"),
+            },
+          ],
+        },
+      ],
+    },
+  ];
+
+  const selectedSection = sections.find((section) => section.id === selectedSectionId);
+  const selectedSubsections = getNestedSections(selectedSection);
+  const selectedSubsection = selectedSubsections.find((section) => section.id === selectedSubsectionId);
+  const shouldHideDefaultPeriods = sectionsWithCreate.includes(selectedSubsectionId);
+  const basePeriods = (selectedSubsection?.periods || []).filter(
+    (period) => !shouldHideDefaultPeriods || !HIDDEN_DEFAULT_PERIOD_TITLES.has(period.title)
+  );
+  const selectedCustomPeriods = customPeriods.filter(
+    (period) => period.subsectionId === selectedSubsectionId
+  );
+  const selectedPeriods = [...basePeriods, ...selectedCustomPeriods];
+  const selectedPeriod = selectedPeriods.find((period) => period.id === selectedPeriodId);
+  const selectedTable = selectedPeriod?.table || selectedSubsection?.table || selectedSection?.table;
+  const tableColumns = editableColumns.length > 0 ? editableColumns : selectedTable?.columns || [];
+  const tableHeaderRows = editableHeaderRows.length > 0 ? editableHeaderRows : selectedTable?.headerRows || [];
+  const isInspectionSecondSummary = selectedTable?.type === "inspectionSecondSummary";
+  const isInspectionBpFirstSummary = selectedTable?.type === "inspectionBpFirstSummary";
+  const isInspectionBpSecondSummary = selectedTable?.type === "inspectionBpSecondSummary";
+  const isInspectionBpFifthSummary = selectedTable?.type === "inspectionBpFifthSummary";
+  const isBpPreparedSummary = isInspectionBpFirstSummary || isInspectionBpFifthSummary;
+  const isInspectionBpPlainSummary = isInspectionBpSecondSummary || isInspectionBpFifthSummary;
+  const isCompactSummaryTable = isInspectionSecondSummary || isInspectionBpFirstSummary || isInspectionBpSecondSummary || isInspectionBpFifthSummary;
+
+  const handleSectionClick = (sectionId) => {
+    setSelectedSectionId(sectionId);
+    setSelectedSubsectionId(null);
+    setSelectedPeriodId(null);
+  };
+
+  const handleSubsectionClick = (subsectionId) => {
+    const nextSubsection = selectedSubsections.find((section) => section.id === subsectionId);
+    const shouldOpenOnlyPeriod = subsectionId === "inspection-summary-1" || subsectionId === "inspection-summary-2" || subsectionId === "inspection-bp-1" || subsectionId === "inspection-bp-2" || subsectionId === "inspection-obligations-summary";
+    const nextBasePeriods = (nextSubsection?.periods || []).filter(
+      (period) => !sectionsWithCreate.includes(subsectionId) || !HIDDEN_DEFAULT_PERIOD_TITLES.has(period.title)
+    );
+    const nextCustomPeriods = customPeriods.filter((period) => period.subsectionId === subsectionId);
+    const nextPeriods = [...nextBasePeriods, ...nextCustomPeriods];
+
+    setSelectedSubsectionId(subsectionId);
+    setSelectedPeriodId(shouldOpenOnlyPeriod && nextPeriods.length === 1 ? nextPeriods[0].id : null);
+  };
+
+  const handlePeriodClick = (periodId) => {
+    setSelectedPeriodId(periodId);
+  };
+
+  const handleBack = () => {
+    if (selectedPeriodId) {
+      if (selectedSubsectionId === "inspection-summary-1" || selectedSubsectionId === "inspection-summary-2" || selectedSubsectionId === "inspection-bp-1" || selectedSubsectionId === "inspection-bp-2" || selectedSubsectionId === "inspection-obligations-summary") {
+        setSelectedPeriodId(null);
+        setSelectedSubsectionId(null);
+      } else {
+        setSelectedPeriodId(null);
+      }
+    } else if (selectedSubsectionId) {
+      setSelectedSubsectionId(null);
+    } else if (selectedSectionId) {
+      setSelectedSectionId(null);
+    }
+  };
+
+  const handleCreateDocument = () => {
+    setDocumentTitle(
+      selectedSubsectionId === "observation-fp"
+        ? PHYSICAL_TRAINING_DOCUMENT_TITLE
+        : selectedSubsectionId === "observation-op"
+          ? SHOOTING_TRAINING_DOCUMENT_TITLE
+          : selectedSubsectionId === "observation-stp"
+            ? LINE_TRAINING_DOCUMENT_TITLE
+        : DEFAULT_DOCUMENT_TITLE
+    );
+    setIsCreateDialogOpen(true);
+  };
+
+  const handleCloseCreateDialog = () => {
+    setIsCreateDialogOpen(false);
+    setMonthInput("");
+    setDocumentTitle(DEFAULT_DOCUMENT_TITLE);
+  };
+
+  const handleSaveDocument = () => {
+    const finalTitle = monthInput
+      ? `${monthInput} айына ${documentTitle}`
+      : documentTitle;
+    const newPeriodId = `custom-${Date.now()}`;
+    const newPeriod = {
+      id: newPeriodId,
+      subsectionId: selectedSubsectionId,
+      title: finalTitle,
+      table: selectedSubsectionId === "observation-fp"
+        ? createPhysicalTrainingTable(finalTitle)
+        : selectedSubsectionId === "observation-op"
+          ? createShootingTrainingTable(finalTitle)
+          : selectedSubsectionId === "observation-stp"
+            ? createLineTrainingTable(finalTitle)
+        : createCustomTable(finalTitle),
+    };
+    setCustomPeriods([...customPeriods, newPeriod]);
+    setSelectedPeriodId(newPeriodId);
+    setIsCreateDialogOpen(false);
+    setMonthInput("");
+    setDocumentTitle(DEFAULT_DOCUMENT_TITLE);
+  };
+
+  const handleEditDocument = (period) => {
+    setEditingPeriodId(period.id);
+    const titleParts = period.title.split('\n');
+    if (titleParts.length > 1 && titleParts[0].includes('айына')) {
+      const monthPart = titleParts[0].replace(' айына', '');
+      setMonthInput(monthPart);
+      setDocumentTitle(titleParts.slice(1).join('\n'));
+    } else {
+      setMonthInput("");
+      setDocumentTitle(period.title);
+    }
+    setIsEditDialogOpen(true);
+  };
+
+  const handleCloseEditDialog = () => {
+    setIsEditDialogOpen(false);
+    setEditingPeriodId(null);
+    setMonthInput("");
+    setDocumentTitle(DEFAULT_DOCUMENT_TITLE);
+  };
+
+  const handleUpdateDocument = () => {
+    const finalTitle = monthInput
+      ? `${monthInput} айына\n${documentTitle}`
+      : documentTitle;
+    const updatedPeriods = customPeriods.map((period) =>
+      period.id === editingPeriodId
+        ? {
+            ...period,
+            title: finalTitle,
+            table: {
+              ...period.table,
+              title: finalTitle,
+            },
+          }
+        : period
+    );
+    setCustomPeriods(updatedPeriods);
+    setIsEditDialogOpen(false);
+    setEditingPeriodId(null);
+    setMonthInput("");
+    setDocumentTitle(DEFAULT_DOCUMENT_TITLE);
+  };
+
+  const handleDeleteDocument = (period) => {
+    if (window.confirm(`"${period.title}" өчүрүлсүнбү?`)) {
+      const updatedPeriods = customPeriods.filter((p) => p.id !== period.id);
+      setCustomPeriods(updatedPeriods);
+      if (selectedPeriodId === period.id) {
+        setSelectedPeriodId(null);
+      }
+    }
+  };
+
+  // Стили для Word-подобной таблицы
+  const wordTableStyles = {
+    container: {
+      padding: '20px',
+      backgroundColor: '#ffffff',
+      fontFamily: '"Times New Roman", Times, serif',
+    },
+    title: {
+      fontSize: '14pt',
+      fontWeight: 'bold',
+      textAlign: 'center',
+      marginBottom: '15px',
+      fontFamily: '"Times New Roman", Times, serif',
+      border: 'none',
+      backgroundColor: 'transparent',
+      outline: 'none',
+      width: '100%',
+      resize: 'vertical',
+      minHeight: '60px',
+      padding: '8px',
+    },
+    table: {
+      width: '100%',
+      borderCollapse: 'collapse',
+      fontSize: '11pt',
+      fontFamily: '"Times New Roman", Times, serif',
+    },
+    th: {
+      border: '1px solid #000000',
+      padding: '6px 8px',
+      textAlign: 'center',
+      verticalAlign: 'middle',
+      backgroundColor: '#f0f0f0',
+      fontWeight: 'bold',
+      fontFamily: '"Times New Roman", Times, serif',
+      whiteSpace: 'pre-line',
+    },
+    headerTextarea: {
+      border: 'none',
+      backgroundColor: 'transparent',
+      width: '100%',
+      minHeight: '24px',
+      color: 'inherit',
+      fontFamily: '"Times New Roman", Times, serif',
+      fontSize: '11pt',
+      fontWeight: 'bold',
+      textAlign: 'center',
+      outline: 'none',
+      resize: 'none',
+      overflow: 'hidden',
+      whiteSpace: 'pre-line',
+    },
+    headerTextareaVertical: {
+      border: 'none',
+      backgroundColor: 'transparent',
+      width: '36px',
+      minHeight: '190px',
+      color: 'inherit',
+      fontFamily: '"Times New Roman", Times, serif',
+      fontSize: '10pt',
+      fontWeight: 'bold',
+      textAlign: 'center',
+      outline: 'none',
+      resize: 'none',
+      overflow: 'hidden',
+      writingMode: 'vertical-rl',
+      transform: 'rotate(180deg)',
+      whiteSpace: 'pre-line',
+    },
+    td: {
+      border: '1px solid #000000',
+      padding: '4px 8px',
+      textAlign: 'center',
+      verticalAlign: 'middle',
+      fontFamily: '"Times New Roman", Times, serif',
+    },
+    sectionFirstCol: {
+      border: '1px solid #000000',
+      padding: '6px 8px',
+      textAlign: 'left',
+      verticalAlign: 'middle',
+      fontFamily: '"Times New Roman", Times, serif',
+      backgroundColor: '#e8e8e8',
+    },
+    sectionText: {
+      fontWeight: 'bold',
+      fontStyle: 'italic',
+      fontSize: '11pt',
+      paddingLeft: '10px',
+    },
+    sectionTitleInput: {
+      border: 'none',
+      backgroundColor: 'transparent',
+      width: '100%',
+      color: '#333',
+      fontFamily: '"Times New Roman", Times, serif',
+      fontSize: '11pt',
+      fontWeight: 'bold',
+      fontStyle: 'italic',
+      outline: 'none',
+      paddingLeft: '10px',
+    },
+    sectionEmptyCol: {
+      border: '1px solid #000000',
+      padding: '4px 8px',
+      backgroundColor: '#e8e8e8',
+      textAlign: 'center',
+      verticalAlign: 'middle',
+    },
+    sectionHighlightedCol: {
+      border: '1px solid #000000',
+      padding: '4px 8px',
+      backgroundColor: '#6f6a00',
+      textAlign: 'center',
+      verticalAlign: 'middle',
+    },
+    input: {
+      border: 'none',
+      backgroundColor: 'transparent',
+      width: '100%',
+      fontFamily: '"Times New Roman", Times, serif',
+      fontSize: '11pt',
+      textAlign: 'center',
+      outline: 'none',
+      padding: '2px',
+    },
+    sectionInput: {
+      border: 'none',
+      backgroundColor: 'transparent',
+      width: '100%',
+      fontFamily: '"Times New Roman", Times, serif',
+      fontSize: '11pt',
+      textAlign: 'center',
+      outline: 'none',
+      padding: '2px',
+      color: '#333',
+    },
+    textarea: {
+      border: 'none',
+      backgroundColor: 'transparent',
+      width: '100%',
+      fontFamily: '"Times New Roman", Times, serif',
+      fontSize: '11pt',
+      textAlign: 'center',
+      outline: 'none',
+      resize: 'vertical',
+      padding: '2px',
+    },
+    button: {
+      backgroundColor: '#4CAF50',
+      color: 'white',
+      border: '1px solid #388E3C',
+      padding: '6px 12px',
+      borderRadius: '4px',
+      cursor: 'pointer',
+      fontSize: '11pt',
+      fontFamily: '"Times New Roman", Times, serif',
+      marginRight: '6px',
+    },
+    buttonSecondary: {
+      backgroundColor: '#f0f0f0',
+      color: '#333',
+      border: '1px solid #999',
+    },
+    backButton: {
+      backgroundColor: 'transparent',
+      border: 'none',
+      color: '#0066cc',
+      cursor: 'pointer',
+      fontSize: '12pt',
+      textDecoration: 'underline',
+      fontFamily: '"Times New Roman", Times, serif',
+      padding: '8px 0',
+      marginBottom: '10px',
+    },
+    header: {
+      textAlign: 'center',
+      marginBottom: '20px',
+      paddingBottom: '10px',
+    },
+    headerTitle: {
+      fontSize: '18pt',
+      fontWeight: 'bold',
+      marginBottom: '5px',
+      fontFamily: '"Times New Roman", Times, serif',
+    },
+    dialog: {
+      position: 'fixed',
+      top: '50%',
+      left: '50%',
+      transform: 'translate(-50%, -50%)',
+      backgroundColor: '#fff',
+      padding: '30px',
+      border: '2px solid #000',
+      boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
+      zIndex: 1000,
+      maxWidth: '500px',
+      width: '90%',
+      fontFamily: '"Times New Roman", Times, serif',
+    },
+    dialogOverlay: {
+      position: 'fixed',
+      top: 0,
+      left: 0,
+      right: 0,
+      bottom: 0,
+      backgroundColor: 'rgba(0,0,0,0.5)',
+      zIndex: 999,
+    },
+    dialogTitle: {
+      fontSize: '16pt',
+      fontWeight: 'bold',
+      marginBottom: '20px',
+      textAlign: 'center',
+    },
+    dialogLabel: {
+      display: 'block',
+      marginBottom: '8px',
+      fontWeight: 'bold',
+    },
+    dialogInput: {
+      width: '100%',
+      padding: '8px',
+      border: '1px solid #ccc',
+      borderRadius: '4px',
+      fontSize: '12pt',
+      marginBottom: '15px',
+      fontFamily: '"Times New Roman", Times, serif',
+    },
+    dialogSelect: {
+      width: '100%',
+      padding: '8px',
+      border: '1px solid #ccc',
+      borderRadius: '4px',
+      fontSize: '12pt',
+      marginBottom: '15px',
+      fontFamily: '"Times New Roman", Times, serif',
+    },
+    dialogActions: {
+      display: 'flex',
+      justifyContent: 'flex-end',
+      gap: '10px',
+      marginTop: '20px',
+    },
+    dialogButton: {
+      padding: '8px 16px',
+      border: '1px solid #ccc',
+      borderRadius: '4px',
+      cursor: 'pointer',
+      fontSize: '11pt',
+      fontFamily: '"Times New Roman", Times, serif',
+    },
+    dialogButtonPrimary: {
+      backgroundColor: '#4CAF50',
+      color: 'white',
+      border: '1px solid #388E3C',
+    },
+    dialogButtonSecondary: {
+      backgroundColor: '#f5f5f5',
+    },
+    buttonDanger: {
+      backgroundColor: '#ff4444',
+      color: 'white',
+      border: '1px solid #cc0000',
+      padding: '4px 16px',
+      borderRadius: '4px',
+      cursor: 'pointer',
+      fontSize: '11pt',
+      fontFamily: '"Times New Roman", Times, serif',
+      marginLeft: '15px',
+      minWidth: '80px',
+    },
+    actionsContainer: {
+      display: 'flex',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      marginBottom: '15px',
+      flexWrap: 'wrap',
+      gap: '8px',
+    },
+    actionsLeft: {
+      display: 'flex',
+      gap: '6px',
+      flexWrap: 'wrap',
+    },
+    actionsRight: {
+      display: 'flex',
+      gap: '6px',
+      flexWrap: 'wrap',
+    },
+    sectionContainer: {
+      display: 'flex',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      width: '100%',
+    },
+    sectionContent: {
+      display: 'flex',
+      alignItems: 'center',
+      gap: '15px',
+      flex: 1,
+    },
+    footerWrapper: {
+      position: 'relative',
+      marginTop: '24px',
+    },
+    footerTextarea: {
+      border: 'none',
+      backgroundColor: 'transparent',
+      color: '#111',
+      width: '100%',
+      minHeight: '520px',
+      padding: '0',
+      fontFamily: '"Times New Roman", Times, serif',
+      fontSize: '13pt',
+      fontWeight: 'bold',
+      lineHeight: '1.45',
+      outline: 'none',
+      resize: 'vertical',
+      overflow: 'hidden',
+      whiteSpace: 'pre-wrap',
+    },
+    signatureImage: (slot) => ({
+      position: 'absolute',
+      left: '150px',
+      top: `${slot.top}px`,
+      width: '180px',
+      maxHeight: '72px',
+      objectFit: 'contain',
+      pointerEvents: 'none',
+    }),
+    footerSignatureButton: (slot) => ({
+      position: 'absolute',
+      left: '155px',
+      top: `${slot.buttonTop}px`,
+      backgroundColor: '#f7f7f7',
+      color: '#111',
+      border: '1px solid #777',
+      padding: '4px 10px',
+      borderRadius: '4px',
+      cursor: 'pointer',
+      fontSize: '10pt',
+      fontFamily: '"Times New Roman", Times, serif',
+      zIndex: 2,
+    }),
+    inlineSignatureButton: {
+      position: 'absolute',
+      left: '285px',
+      top: '70px',
+      backgroundColor: '#f7f7f7',
+      color: '#111',
+      border: '1px solid #777',
+      padding: '3px 10px',
+      borderRadius: '4px',
+      cursor: 'pointer',
+      fontSize: '10pt',
+      fontFamily: '"Times New Roman", Times, serif',
+      zIndex: 2,
+    },
+    inlineSignatureImage: {
+      position: 'absolute',
+      left: '270px',
+      top: '54px',
+      width: '145px',
+      maxHeight: '58px',
+      objectFit: 'contain',
+      pointerEvents: 'none',
+    },
+    inlineSignatureDeleteButton: {
+      position: 'absolute',
+      left: '425px',
+      top: '70px',
+      backgroundColor: '#ff4444',
+      color: 'white',
+      border: '1px solid #cc0000',
+      padding: '3px 10px',
+      borderRadius: '4px',
+      cursor: 'pointer',
+      fontSize: '10pt',
+      fontFamily: '"Times New Roman", Times, serif',
+      zIndex: 2,
+    },
+    compactSectionDeleteButton: {
+      position: 'absolute',
+      right: '6px',
+      top: '2px',
+      backgroundColor: '#ff4444',
+      color: 'white',
+      border: '1px solid #cc0000',
+      padding: '1px 6px',
+      borderRadius: '3px',
+      cursor: 'pointer',
+      fontSize: '8pt',
+      fontFamily: '"Times New Roman", Times, serif',
+    },
+    signatureCanvas: {
+      width: '100%',
+      maxWidth: '520px',
+      height: '180px',
+      border: '1px solid #222',
+      backgroundColor: '#fff',
+      borderRadius: '4px',
+      touchAction: 'none',
+      cursor: 'crosshair',
+    },
+  };
+
+  const compactTableStyle = isCompactSummaryTable
+    ? { ...wordTableStyles.table, fontSize: '9pt', tableLayout: 'fixed' }
+    : wordTableStyles.table;
+  const compactThStyle = isCompactSummaryTable
+    ? { ...wordTableStyles.th, padding: '2px 3px', fontSize: '9pt', lineHeight: '1.05' }
+    : wordTableStyles.th;
+  const compactTdStyle = isCompactSummaryTable
+    ? { ...wordTableStyles.td, padding: '1px 3px', fontSize: '9pt', height: '20px' }
+    : wordTableStyles.td;
+  const compactInputStyle = isCompactSummaryTable
+    ? { ...wordTableStyles.input, fontSize: '9pt', padding: '0 1px' }
+    : wordTableStyles.input;
+  const compactHeaderTextareaStyle = isCompactSummaryTable
+    ? { ...wordTableStyles.headerTextarea, fontSize: '9pt', lineHeight: '1.05', padding: '0' }
+    : wordTableStyles.headerTextarea;
+  const compactHeaderTextareaVerticalStyle = isCompactSummaryTable
+    ? {
+        ...wordTableStyles.headerTextareaVertical,
+        width: isBpPreparedSummary ? '24px' : '22px',
+        minHeight: isBpPreparedSummary ? '72px' : '72px',
+        fontSize: isBpPreparedSummary ? '12pt' : '8pt',
+        lineHeight: '1',
+        padding: '0',
+      }
+    : wordTableStyles.headerTextareaVertical;
+  const compactTitleStyle = isCompactSummaryTable
+    ? {
+        ...wordTableStyles.title,
+        fontSize: isBpPreparedSummary ? '13pt' : '12pt',
+        minHeight: isBpPreparedSummary ? '92px' : '48px',
+        marginBottom: '8px',
+        padding: '4px',
+        lineHeight: '1.25',
+        overflow: 'visible',
+      }
+    : wordTableStyles.title;
+  const compactFooterTextareaStyle = isInspectionSecondSummary
+    ? { ...wordTableStyles.footerTextarea, minHeight: '185px', fontSize: '11pt', fontWeight: 'normal', lineHeight: '1.35', marginTop: '18px', overflow: 'visible' }
+    : isInspectionBpPlainSummary
+      ? { ...wordTableStyles.footerTextarea, minHeight: '150px', fontSize: '11pt', fontWeight: 'normal', lineHeight: '1.35', marginTop: '18px', overflow: 'visible' }
+    : isInspectionBpFirstSummary
+      ? { ...wordTableStyles.footerTextarea, minHeight: '130px', fontSize: '11pt', lineHeight: '1.5', marginTop: '28px', overflow: 'visible' }
+    : wordTableStyles.footerTextarea;
+
+  if (!sections || sections.length === 0) {
+    return (
+      <div className="combat-training-results">
+        <header className="module-header">
+          <h1>Күжүрмөн даярдоонун жыйынтыктары</h1>
+        </header>
+        <div className="empty-state">
+          Маалымат жок
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="combat-training-results">
+      <header className="module-header" style={wordTableStyles.header}>
+        <h1 style={wordTableStyles.headerTitle}>Күжүрмөн даярдоонун жыйынтыктары</h1>
+      </header>
+
+      {!selectedSectionId ? (
+        <div className="module-metric-grid module-section-grid">
+          {sections.map((section) => (
+            <button
+              className="module-metric module-section-card"
+              key={section.id}
+              onClick={() => handleSectionClick(section.id)}
+              type="button"
+            >
+              <strong>{section.title}</strong>
+            </button>
+          ))}
+        </div>
+      ) : !selectedSubsectionId ? (
+        <div className="module-table-view">
+          <button className="module-back-button" onClick={handleBack} type="button" style={wordTableStyles.backButton}>
+            Артка
+          </button>
+          <div className="module-document-list">
+            {selectedSubsections.map((subsection) => (
+              <button
+                className="module-document-card"
+                key={subsection.id}
+                onClick={() => handleSubsectionClick(subsection.id)}
+                type="button"
+              >
+                <span aria-hidden="true" className="module-document-icon" />
+                <strong>{subsection.title}</strong>
+              </button>
+            ))}
+          </div>
+        </div>
+      ) : selectedPeriodId && selectedTable ? (
+        <div className="table-view" style={wordTableStyles.container}>
+          <button className="module-back-button" onClick={handleBack} type="button" style={wordTableStyles.backButton}>
+            Артка
+          </button>
+          
+          <textarea
+            className="module-table-title"
+            value={editableTitle}
+            onChange={handleTitleChange}
+            style={compactTitleStyle}
+            rows={isBpPreparedSummary ? 4 : isCompactSummaryTable ? 2 : 3}
+            placeholder="Введите название таблицы..."
+          />
+          
+          <div style={wordTableStyles.actionsContainer}>
+            <div style={wordTableStyles.actionsLeft}>
+              <button style={wordTableStyles.button} onClick={handleAddRow} type="button">
+                + Сап кошуу
+              </button>
+              <button 
+                style={{...wordTableStyles.button, ...wordTableStyles.buttonSecondary}} 
+                onClick={handleDeleteRow} 
+                type="button"
+                disabled={editableRows.filter(r => !r.__isSection && !r.__isCenteredSection && !r.__isSummary).length === 0}
+              >
+                - удалить строку
+              </button>
+              <button style={wordTableStyles.button} onClick={handleSaveTable} type="button">
+                Сохранить
+              </button>
+              <button style={{...wordTableStyles.button, ...wordTableStyles.buttonSecondary}} type="button">
+                Отправить
+              </button>
+              <button style={{...wordTableStyles.button, ...wordTableStyles.buttonSecondary}} type="button">
+                Изменить
+              </button>
+            </div>
+            <div style={wordTableStyles.actionsRight}>
+              <button 
+                style={wordTableStyles.button} 
+                onClick={() => {
+                  setSectionInsertType("section");
+                  setSectionTitle("");
+                  setInsertPosition(0);
+                  setIsInsertSectionDialogOpen(true);
+                }} 
+                type="button"
+              >
+                + Секция кошуу
+              </button>
+              {(selectedTable.type === "inspectionSecondSummary" || selectedTable.type === "inspectionBpFirstSummary" || selectedTable.type === "inspectionBpSecondSummary" || selectedTable.type === "inspectionBpFifthSummary") && (
+                <button
+                  style={{...wordTableStyles.button, ...wordTableStyles.buttonSecondary}}
+                  onClick={handleAddCenteredSection}
+                  type="button"
+                >
+                  + Борбордук сап
+                </button>
+              )}
+            </div>
+          </div>
+
+          <div className="table-wrap" style={{ border: '1px solid #000', overflowX: 'auto' }}>
+            <table className="training-table training-table--thematic-account" style={compactTableStyle}>
+              <colgroup>
+                {tableColumns.map((column) => (
+                  <col
+                    key={column.key}
+                    style={
+                      column.width
+                        ? {
+                            minWidth: `${column.width}px`,
+                            width: `${column.width}px`,
+                          }
+                        : undefined
+                    }
+                  />
+                ))}
+              </colgroup>
+              <thead>
+                {tableHeaderRows.length > 0 ? (
+                  tableHeaderRows.map((headerRow, rowIndex) => (
+                    <tr key={rowIndex}>
+                      {headerRow.map((cell) => (
+                        <th
+                          colSpan={cell.colSpan || 1}
+                          key={cell.key}
+                          rowSpan={cell.rowSpan || 1}
+                          style={{
+                            ...compactThStyle,
+                            color: cell.key === "militaryName" ? "#ff3030" : wordTableStyles.th.color,
+                            height: cell.vertical ? (isBpPreparedSummary ? "78px" : isCompactSummaryTable ? "82px" : "205px") : undefined,
+                          }}
+                        >
+                          <textarea
+                            className="training-table-input training-table-input--header"
+                            onChange={(event) => handleHeaderCellChange(rowIndex, headerRow.indexOf(cell), event.target.value)}
+                            rows={Math.max(1, String(cell.label || "").split("\n").length)}
+                            style={cell.vertical ? compactHeaderTextareaVerticalStyle : compactHeaderTextareaStyle}
+                            value={cell.label}
+                          />
+                        </th>
+                      ))}
+                    </tr>
+                  ))
+                ) : (
+                  <tr>
+                    {tableColumns.map((column, columnIndex) => (
+                      <th key={column.key} style={compactThStyle}>
+                        <textarea
+                          className="training-table-input training-table-input--header"
+                          onChange={(event) => handleColumnLabelChange(columnIndex, event.target.value)}
+                          rows={Math.max(1, String(column.label || "").split("\n").length)}
+                          style={compactHeaderTextareaStyle}
+                          value={column.label}
+                        />
+                      </th>
+                    ))}
+                  </tr>
+                )}
+              </thead>
+              <tbody>
+                {editableRows.map((row, rowIndex) => {
+                  if (row.__isCenteredSection) {
+                    return (
+                      <tr key={rowIndex}>
+                        <td
+                          colSpan={tableColumns.length}
+                          style={(isInspectionBpFirstSummary || isInspectionBpSecondSummary || isInspectionBpFifthSummary) ? { ...compactTdStyle, position: 'relative' } : wordTableStyles.sectionFirstCol}
+                        >
+                          <div style={{...wordTableStyles.sectionContainer, justifyContent: 'center'}}>
+                            <input
+                              className="training-table-input"
+                              onChange={(event) => handleSectionTitleChange(rowIndex, event.target.value)}
+                              style={{
+                                ...wordTableStyles.sectionTitleInput,
+                                textAlign: 'center',
+                                fontSize: (isInspectionBpFirstSummary || isInspectionBpSecondSummary || isInspectionBpFifthSummary) ? '10pt' : wordTableStyles.sectionTitleInput.fontSize,
+                                paddingLeft: 0,
+                              }}
+                              type="text"
+                              value={row.sectionTitle}
+                            />
+                            {(isInspectionBpFirstSummary || isInspectionBpSecondSummary || isInspectionBpFifthSummary) ? (
+                              <button
+                                onClick={() => handleDeleteSection(rowIndex)}
+                                style={wordTableStyles.compactSectionDeleteButton}
+                                type="button"
+                              >
+                                ×
+                              </button>
+                            ) : (
+                              <button
+                                onClick={() => handleDeleteSection(rowIndex)}
+                                style={wordTableStyles.buttonDanger}
+                              >
+                                Өчүрүү
+                              </button>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  }
+
+                  if (row.__isSection) {
+                    const columns = tableColumns;
+                    const sectionColSpan = selectedTable.sectionColSpan || 2;
+                    return (
+                      <tr key={rowIndex}>
+                        {columns.map((column, colIndex) => {
+                          if (colIndex === 0) {
+                            return (
+                              <td key={column.key} style={wordTableStyles.sectionFirstCol} colSpan={sectionColSpan}>
+                                <div style={wordTableStyles.sectionContainer}>
+                                  <input
+                                    className="training-table-input"
+                                    onChange={(event) => handleSectionTitleChange(rowIndex, event.target.value)}
+                                    style={wordTableStyles.sectionTitleInput}
+                                    type="text"
+                                    value={row.sectionTitle}
+                                  />
+                                  <button
+                                    onClick={() => handleDeleteSection(rowIndex)}
+                                    style={wordTableStyles.buttonDanger}
+                                  >
+                                    Өчүрүү
+                                  </button>
+                                </div>
+                              </td>
+                            );
+                          } else if (colIndex < sectionColSpan) {
+                            return null;
+                          } else {
+                            return (
+                              <td
+                                key={column.key}
+                                style={column.highlightSection ? wordTableStyles.sectionHighlightedCol : wordTableStyles.sectionEmptyCol}
+                              >
+                                <input
+                                  className="training-table-input"
+                                  onChange={(event) => handleCellChange(rowIndex, column.key, event.target.value)}
+                                  type="text"
+                                  value={row[column.key] || ""}
+                                  style={wordTableStyles.sectionInput}
+                                  placeholder=""
+                                />
+                              </td>
+                            );
+                          }
+                        })}
+                      </tr>
+                    );
+                  }
+
+                  return (
+                    <tr key={rowIndex}>
+                      {tableColumns.map((column, colIndex) => {
+                        const shouldMergeBpLabelCells =
+                          (isInspectionBpFirstSummary || isInspectionBpSecondSummary || isInspectionBpFifthSummary) && row.number === "" && Boolean(row.subdivision);
+                        const shouldMergeSummaryLabelCells =
+                          shouldMergeBpLabelCells || row.__isSummary || row.subdivision === "Баары:";
+
+                        if (shouldMergeSummaryLabelCells && colIndex === 0) {
+                          return (
+                            <td key={column.key} colSpan={2} style={compactTdStyle}>
+                              <input
+                                className="training-table-input"
+                                onChange={(event) => handleCellChange(rowIndex, "subdivision", event.target.value)}
+                                type="text"
+                                value={row.subdivision || ""}
+                                style={{...compactInputStyle, fontWeight: 'bold', textAlign: 'left'}}
+                              />
+                            </td>
+                          );
+                        }
+
+                        if (shouldMergeSummaryLabelCells && colIndex === 1) {
+                          return null;
+                        }
+
+                        return (
+                          <td key={column.key} style={compactTdStyle}>
+                            {column.type === "textarea" ? (
+                              <textarea
+                                className="training-table-input training-table-input--textarea"
+                                onChange={(event) => handleCellChange(rowIndex, column.key, event.target.value)}
+                                rows={column.rows || 2}
+                                value={row[column.key] || ""}
+                                style={isCompactSummaryTable ? { ...wordTableStyles.textarea, fontSize: '9pt', padding: '0 1px' } : wordTableStyles.textarea}
+                              />
+                            ) : (
+                              <input
+                                className="training-table-input"
+                                onChange={(event) => handleCellChange(rowIndex, column.key, event.target.value)}
+                                type={column.type === "number" ? "number" : "text"}
+                                value={row[column.key] || ""}
+                                style={compactInputStyle}
+                              />
+                            )}
+                          </td>
+                        );
+                      })}
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+          <div style={wordTableStyles.footerWrapper}>
+            <textarea
+              aria-label="Таблицанын жыйынтык бөлүгү"
+              className="module-table-footer"
+              onChange={handleFooterChange}
+              rows={isInspectionSecondSummary ? 8 : isInspectionBpPlainSummary ? 6 : isInspectionBpFirstSummary ? 5 : 17}
+              style={compactFooterTextareaStyle}
+              value={editableFooter}
+            />
+            {selectedTable.signatureMode === "singleInline" && !signatureImages.captain ? (
+              <button
+                onClick={() => handleOpenSignatureDialog("captain")}
+                style={wordTableStyles.inlineSignatureButton}
+                type="button"
+              >
+                Добавить подпись
+              </button>
+            ) : null}
+            {selectedTable.signatureMode === "singleInline" && signatureImages.captain ? (
+              <>
+                <img
+                  alt="Подпись"
+                  src={signatureImages.captain}
+                  style={wordTableStyles.inlineSignatureImage}
+                />
+                <button
+                  onClick={() => handleDeleteSignature("captain")}
+                  style={wordTableStyles.inlineSignatureDeleteButton}
+                  type="button"
+                >
+                  Удалить
+                </button>
+              </>
+            ) : null}
+            {!isInspectionSecondSummary && !isInspectionBpPlainSummary && selectedTable.signatureMode !== "singleInline" && SIGNATURE_SLOTS.map((slot) => (
+              signatureImages[slot.id] ? null : (
+                <button
+                  key={slot.id}
+                  onClick={() => handleOpenSignatureDialog(slot.id)}
+                  style={wordTableStyles.footerSignatureButton(slot)}
+                  type="button"
+                >
+                  Добавить подпись
+                </button>
+              )
+            ))}
+            {!isInspectionSecondSummary && !isInspectionBpPlainSummary && selectedTable.signatureMode !== "singleInline" && SIGNATURE_SLOTS.map((slot) => (
+              signatureImages[slot.id] ? (
+                <img
+                  alt="Подпись"
+                  key={slot.id}
+                  src={signatureImages[slot.id]}
+                  style={wordTableStyles.signatureImage(slot)}
+                />
+              ) : null
+            ))}
+          </div>
+        </div>
+      ) : (
+        <div className="module-table-view">
+          <button className="module-back-button" onClick={handleBack} type="button" style={wordTableStyles.backButton}>
+            Артка
+          </button>
+          <div className="module-period-list">
+            {selectedPeriods.map((period) => {
+              const isCustomPeriod = customPeriods.some((customPeriod) => customPeriod.id === period.id);
+              return (
+                <div className="module-period-row" key={period.id}>
+                  <button
+                    className="module-period-card module-period-card--document"
+                    onClick={() => handlePeriodClick(period.id)}
+                    type="button"
+                  >
+                    <span aria-hidden="true" className="module-document-icon" />
+                    <strong>{period.title}</strong>
+                  </button>
+                  {isCustomPeriod && (
+                    <div className="module-period-actions">
+                      <button onClick={() => handleEditDocument(period)} type="button">
+                        Өзгөртүү
+                      </button>
+                      <button onClick={() => handleDeleteDocument(period)} type="button">
+                        Өчүрүү
+                      </button>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+            {/* Кнопка "+ Создать" для всех разделов из списка sectionsWithCreate */}
+            {sectionsWithCreate.includes(selectedSubsectionId) && (
+              <button className="module-period-add-button" onClick={handleCreateDocument} type="button">
+                + Создать
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+
+      {isCreateDialogOpen && (
+        <div className="lesson-period-dialog" role="dialog" aria-modal="true" aria-labelledby="create-dialog-title">
+          <form className="lesson-period-dialog__panel" onSubmit={(event) => {
+            event.preventDefault();
+            handleSaveDocument();
+          }}>
+            <h2 id="create-dialog-title">Создать документ</h2>
+            <div className="lesson-period-dialog__field">
+              <label htmlFor="month-input">Ай:</label>
+              <input
+                id="month-input"
+                className="lesson-period-dialog__input"
+                onChange={(event) => setMonthInput(event.target.value)}
+                placeholder="март"
+                type="text"
+                value={monthInput}
+              />
+            </div>
+            <textarea
+              className="lesson-period-dialog__textarea"
+              onChange={(event) => setDocumentTitle(event.target.value)}
+              rows={5}
+              value={documentTitle}
+            />
+            <div className="lesson-period-dialog__actions">
+              <button onClick={handleCloseCreateDialog} type="button">
+                Жокко чыгаруу
+              </button>
+              <button type="submit">
+                Сактоо
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
+
+      {isEditDialogOpen && (
+        <div className="lesson-period-dialog" role="dialog" aria-modal="true" aria-labelledby="edit-dialog-title">
+          <form className="lesson-period-dialog__panel" onSubmit={(event) => {
+            event.preventDefault();
+            handleUpdateDocument();
+          }}>
+            <h2 id="edit-dialog-title">Өзгөртүү</h2>
+            <div className="lesson-period-dialog__field">
+              <label htmlFor="edit-month-input">Ай:</label>
+              <input
+                id="edit-month-input"
+                className="lesson-period-dialog__input"
+                onChange={(event) => setMonthInput(event.target.value)}
+                placeholder="март"
+                type="text"
+                value={monthInput}
+              />
+            </div>
+            <textarea
+              className="lesson-period-dialog__textarea"
+              onChange={(event) => setDocumentTitle(event.target.value)}
+              rows={5}
+              value={documentTitle}
+            />
+            <div className="lesson-period-dialog__actions">
+              <button onClick={handleCloseEditDialog} type="button">
+                Жокко чыгаруу
+              </button>
+              <button type="submit">
+                Сактоо
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
+
+      {isSignatureDialogOpen && (
+        <div className="lesson-period-dialog" role="dialog" aria-modal="true" aria-labelledby="signature-dialog-title">
+          <div className="lesson-period-dialog__panel">
+            <h2 id="signature-dialog-title">Подпись</h2>
+            <canvas
+              height={180}
+              onPointerDown={handleSignatureStart}
+              onPointerLeave={handleSignatureEnd}
+              onPointerMove={handleSignatureMove}
+              onPointerUp={handleSignatureEnd}
+              ref={signatureCanvasRef}
+              style={wordTableStyles.signatureCanvas}
+              width={520}
+            />
+            <div className="lesson-period-dialog__actions">
+              <button onClick={() => setIsSignatureDialogOpen(false)} type="button">
+                Жабуу
+              </button>
+              <button onClick={handleClearSignatureCanvas} type="button">
+                Очистить
+              </button>
+              <button onClick={handleSaveSignature} type="button">
+                Сактоо
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {isInsertSectionDialogOpen && (
+        <>
+          <div style={wordTableStyles.dialogOverlay} onClick={() => setIsInsertSectionDialogOpen(false)} />
+          <div style={wordTableStyles.dialog} role="dialog" aria-modal="true">
+            <h2 style={wordTableStyles.dialogTitle}>
+              {sectionInsertType === "centered" ? "Борбордук сап кошуу" : "Секция кошуу"}
+            </h2>
+            <div>
+              <label style={wordTableStyles.dialogLabel}>
+                {sectionInsertType === "centered" ? "Саптын тексти:" : "Секциянын аталышы:"}
+              </label>
+              <input
+                type="text"
+                value={sectionTitle}
+                onChange={(e) => setSectionTitle(e.target.value)}
+                placeholder={sectionInsertType === "centered" ? "Негизги бөлүкчөлөр" : "Мисалы: 1-бөлүмчө үчүн:"}
+                style={wordTableStyles.dialogInput}
+              />
+            </div>
+            <div>
+              <label style={wordTableStyles.dialogLabel}>Кайсы саптан кийин кошуу:</label>
+              <select
+                value={insertPosition}
+                onChange={(e) => setInsertPosition(Number(e.target.value))}
+                style={wordTableStyles.dialogSelect}
+              >
+                <option value={0}>Башына</option>
+                {editableRows.map((row, index) => {
+                  const rowNumber = row.__isSection || row.__isCenteredSection || row.__isSummary
+                    ? row.sectionTitle || row.subdivision
+                    : `№${row.number}`;
+                  return (
+                    <option key={index} value={index + 1}>
+                      {index + 1}-саптан кийин ({rowNumber})
+                    </option>
+                  );
+                })}
+                <option value={editableRows.length}>Аягына</option>
+              </select>
+            </div>
+            <div style={wordTableStyles.dialogActions}>
+              <button
+                onClick={() => setIsInsertSectionDialogOpen(false)}
+                style={{...wordTableStyles.dialogButton, ...wordTableStyles.dialogButtonSecondary}}
+              >
+                Жокко чыгаруу
+              </button>
+              <button
+                onClick={handleInsertSection}
+                style={{...wordTableStyles.dialogButton, ...wordTableStyles.dialogButtonPrimary}}
+              >
+                Кошуу
+              </button>
+            </div>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}

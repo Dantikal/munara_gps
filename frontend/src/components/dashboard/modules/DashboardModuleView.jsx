@@ -1,0 +1,57 @@
+import React from "react";
+
+import Analytics from "./Analytics.jsx";
+import CombatTrainingJournal from "./CombatTrainingJournal.jsx";
+import CombatTrainingResults from "./CombatTrainingResults.jsx";
+import Journal from "./Journal.jsx";
+import Library from "./Library.jsx";
+import Profile from "./Profile.jsx";
+import SavedTables from "./SavedTables.jsx";
+import Schedule from "./Schedule.jsx";
+import SMR from "./SMR.jsx";
+
+export default function DashboardModuleView({ activeModule, modules, onRefresh, user }) {
+  if (activeModule === "profile") {
+    return <Profile user={user} />;
+  }
+
+  if (activeModule === "library") {
+    return <Library data={modules?.library} onRefresh={onRefresh} />;
+  }
+
+  if (activeModule === "combatTrainingJournal") {
+    return (
+      <CombatTrainingJournal
+        data={modules?.combatTrainingJournal}
+        methodicalSubjects={modules?.smr?.subjects || []}
+        user={user}
+      />
+    );
+  }
+
+  if (activeModule === "combatTrainingResults") {
+    return <CombatTrainingResults data={modules?.combatTrainingResults} user={user} />;
+  }
+
+  if (activeModule === "savedTables") {
+    return <SavedTables />;
+  }
+
+  if (activeModule === "smr") {
+    return <SMR data={modules?.smr} user={user} />;
+  }
+
+  if (activeModule === "schedule") {
+    return <Schedule data={modules?.schedule} />;
+  }
+
+  if (activeModule === "journal") {
+    return <Journal data={modules?.journal} />;
+  }
+
+  if (activeModule === "analytics" || activeModule === "combatTrainingAnalytics") {
+    return <Analytics data={modules?.analytics} />;
+  }
+
+  return null;
+}
