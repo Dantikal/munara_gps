@@ -132,7 +132,10 @@ export default function Sidebar({
                   key={item.id}
                   onClick={() => handleClick(item.id)}
                 >
-                  {item.label}
+                  <span className="dashboard-sidebar__item-label">{item.label}</span>
+                  {item.id === "contactAdmin" && modules?.chatUnreadCount > 0 ? (
+                    <span className="dashboard-sidebar__item-badge">{modules.chatUnreadCount}</span>
+                  ) : null}
                 </button>
               ))}
           </div>

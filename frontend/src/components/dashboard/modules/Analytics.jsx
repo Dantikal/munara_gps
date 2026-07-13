@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from "react";
+﻿import React, { useEffect, useRef, useState } from "react";
 
 const kyrgyzstanCoatOfArmsUrl =
   "https://upload.wikimedia.org/wikipedia/commons/f/f1/Emblem_of_Kyrgyzstan.svg";
@@ -8,6 +8,9 @@ const MONTHLY_ANALYSIS_DOCUMENTS_STORAGE_KEY = "monthly-analysis-documents";
 const MONTHLY_ANALYSIS_ACTIVE_DOCUMENT_ID_KEY = "monthly-analysis-active-document-id";
 const ANALYSIS_DOCUMENTS_BY_SECTION_KEY = "analysis-documents-by-section";
 const ANALYSIS_ACTIVE_IDS_BY_SECTION_KEY = "analysis-active-document-ids-by-section";
+
+const getMonthlyAnalysisDraftStorageKey = (sectionId) =>
+  `${MONTHLY_ANALYSIS_DRAFT_STORAGE_KEY}:${sectionId || "monthly-analysis"}`;
 
 const analyticsSections = [
   {
@@ -28,6 +31,9 @@ export default function Analytics() {
   const commanderSignatureCanvasRef = useRef(null);
   const isDrawingCommanderSignatureRef = useRef(false);
   const hasHydratedMonthlyAnalysisRef = useRef(false);
+  const monthlyAnalysisPhotoInputRef = useRef(null);
+  const monthlyAnalysisVideoInputRef = useRef(null);
+  const monthlyAnalysisDocumentInputRef = useRef(null);
   const monthlyAnalysisDocumentsRef = useRef([]);
   const activeMonthlyAnalysisDocumentIdRef = useRef(null);
   const analysisDocumentsBySectionRef = useRef({});
@@ -49,6 +55,10 @@ export default function Analytics() {
   const [monthlyAnalysisTitle, setMonthlyAnalysisTitle] = useState("");
   const [monthlyAnalysisBody, setMonthlyAnalysisBody] = useState("");
   const [monthlyAnalysisExtraPages, setMonthlyAnalysisExtraPages] = useState([]);
+  const [monthlyAnalysisAttachments, setMonthlyAnalysisAttachments] = useState([]);
+  const monthlyAnalysisAttachmentUrlsRef = useRef([]);
+  const monthlyAnalysisBodyTextareaRef = useRef(null);
+  const monthlyAnalysisExtraTextareaRefs = useRef([]);
   const [monthlyAnalysisCommanderTitle, setMonthlyAnalysisCommanderTitle] = useState("");
   const [monthlyAnalysisCommanderRank, setMonthlyAnalysisCommanderRank] = useState("");
   const [monthlyAnalysisCommanderName, setMonthlyAnalysisCommanderName] = useState("");
@@ -56,6 +66,8 @@ export default function Analytics() {
   const [isCommanderSignatureDialogOpen, setIsCommanderSignatureDialogOpen] = useState(false);
   const [isMonthlyDocumentOpen, setIsMonthlyDocumentOpen] = useState(false);
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
+  const [isMonthlyAnalysisPickerOpen, setIsMonthlyAnalysisPickerOpen] = useState(false);
+  const [selectedMonthlyAnalysisSourceDocumentIds, setSelectedMonthlyAnalysisSourceDocumentIds] = useState([]);
   const [draftMonthlyAnalysisTitle, setDraftMonthlyAnalysisTitle] = useState("");
   const [monthlyAnalysisRegistryNumber, setMonthlyAnalysisRegistryNumber] = useState(null);
   const [monthlyAnalysisAddressee, setMonthlyAnalysisAddressee] = useState(
@@ -65,8 +77,36 @@ export default function Analytics() {
   const currentAnalysisSectionDocuments = selectedSectionId
     ? analysisDocumentsBySection[selectedSectionId] || []
     : [];
+  const analysisSourceSectionId =
+    selectedSectionId === "year-analysis"
+      ? "period-analysis"
+      : selectedSectionId === "period-analysis"
+        ? "monthly-analysis"
+        : "monthly-analysis";
   const monthlyAnalysisPlaceholder =
     "2021 аскер болугунун кара-бак чек ара заставасынын декабрь айына талдоосу";
+  const periodAnalysisPlaceholder =
+    "2030 аскер бөлүгүнүн Көк-Таш чек ара заставасынын 1-окуу мезгилинин жыйынтыгы жана талдоосу";
+  const yearAnalysisPlaceholder = "Окуу жылынын жыйынтыгы жана талдоосу";
+  const monthlyAnalysisSourceDocuments = analysisDocumentsBySection[analysisSourceSectionId] || [];
+  const monthlyAnalysisSourcePlaceholder =
+    analysisSourceSectionId === "period-analysis"
+      ? periodAnalysisPlaceholder
+      : monthlyAnalysisPlaceholder;
+  const monthlyAnalysisPickerTitle =
+    selectedSectionId === "year-analysis"
+      ? "Окуу мезгилеринин жыйынтыгы жана талдоосунан тандоо"
+      : "Айдын талдоосунан тандоо";
+  const monthlyAnalysisPickerEmptyText =
+    selectedSectionId === "year-analysis"
+      ? "Окуу мезгилеринин жыйынтыгында документ жок"
+      : "Айдын талдоосунда документ жок";
+  const currentAnalysisPlaceholder =
+    selectedSectionId === "period-analysis"
+      ? periodAnalysisPlaceholder
+      : selectedSectionId === "year-analysis"
+        ? yearAnalysisPlaceholder
+        : monthlyAnalysisPlaceholder;
   const currentDate = new Date();
   const currentDay = String(currentDate.getDate()).padStart(2, "0");
   const currentMonth = String(currentDate.getMonth() + 1).padStart(2, "0");
@@ -81,6 +121,79 @@ export default function Analytics() {
   const createMonthlyAnalysisDocumentId = () =>
     `monthly-analysis-${Date.now()}-${Math.random().toString(16).slice(2)}`;
 
+  const createMonthlyAnalysisAttachmentId = () =>
+    `monthly-analysis-attachment-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+
+  const sanitizeMonthlyAnalysisAttachments = (attachments) =>
+    (Array.isArray(attachments) ? attachments : []).map(({ objectUrl, ...attachment }) => attachment);
+
+  const syncMonthlyAnalysisTextareaHeight = (element) => {
+    if (!element) return;
+    element.style.height = "0px";
+    element.style.height = `${element.scrollHeight}px`;
+  };
+
+  const applyMonthlyAnalysisSourceDocumentToCurrentDocument = (sourceDocument) => {
+    if (!sourceDocument) return;
+
+    const nextAttachments = Array.isArray(sourceDocument.attachments) ? sourceDocument.attachments : [];
+    const nextExtraPages = Array.isArray(sourceDocument.extraPages) ? sourceDocument.extraPages : [];
+
+    setMonthlyAnalysisAddressee(sourceDocument.addressee || "");
+    setMonthlyAnalysisTitle(sourceDocument.title || "");
+    setMonthlyAnalysisBody(sourceDocument.body || "");
+    setMonthlyAnalysisAttachments(nextAttachments);
+    setMonthlyAnalysisExtraPages(nextExtraPages);
+    setMonthlyAnalysisCommanderTitle(sourceDocument.commanderTitle || "");
+    setMonthlyAnalysisCommanderRank(sourceDocument.commanderRank || "");
+    setMonthlyAnalysisCommanderName(sourceDocument.commanderName || "");
+    setMonthlyAnalysisCommanderSignature(sourceDocument.commanderSignature || "");
+
+    updateActiveMonthlyAnalysisDocument({
+      addressee: sourceDocument.addressee || "",
+      attachments: sanitizeMonthlyAnalysisAttachments(nextAttachments),
+      body: sourceDocument.body || "",
+      commanderName: sourceDocument.commanderName || "",
+      commanderRank: sourceDocument.commanderRank || "",
+      commanderSignature: sourceDocument.commanderSignature || "",
+      commanderTitle: sourceDocument.commanderTitle || "",
+      extraPages: nextExtraPages,
+      title: sourceDocument.title || "",
+    });
+
+    persistMonthlyAnalysisDraft({
+      addressee: sourceDocument.addressee || "",
+      attachments: sanitizeMonthlyAnalysisAttachments(nextAttachments),
+      body: sourceDocument.body || "",
+      commanderName: sourceDocument.commanderName || "",
+      commanderRank: sourceDocument.commanderRank || "",
+      commanderSignature: sourceDocument.commanderSignature || "",
+      commanderTitle: sourceDocument.commanderTitle || "",
+      draftTitle: sourceDocument.title || "",
+      extraPages: nextExtraPages,
+      title: sourceDocument.title || "",
+    });
+  };
+
+  const handleToggleMonthlyAnalysisSourceDocument = (documentId) => {
+    setSelectedMonthlyAnalysisSourceDocumentIds((currentIds) =>
+      currentIds.includes(documentId)
+        ? currentIds.filter((currentId) => currentId !== documentId)
+        : [...currentIds, documentId]
+    );
+  };
+
+  const composeMonthlyAnalysisDocumentsText = (documents) =>
+    documents
+      .map((document, index) => {
+        const parts = [];
+        if (document.title) parts.push(document.title);
+        if (document.body) parts.push(document.body);
+        return parts.filter(Boolean).join("\n\n").trim();
+      })
+      .filter(Boolean)
+      .join("\n\n");
+
   const applyMonthlyAnalysisDocumentToState = (document) => {
     if (!document) return;
 
@@ -88,6 +201,8 @@ export default function Analytics() {
     setMonthlyAnalysisTitle(document.title || "");
     setMonthlyAnalysisBody(document.body || "");
     setMonthlyAnalysisExtraPages(Array.isArray(document.extraPages) ? document.extraPages : []);
+    setMonthlyAnalysisAttachments(Array.isArray(document.attachments) ? document.attachments : []);
+    monthlyAnalysisAttachmentUrlsRef.current = [];
     setMonthlyAnalysisCommanderTitle(document.commanderTitle || "");
     setMonthlyAnalysisCommanderRank(document.commanderRank || "");
     setMonthlyAnalysisCommanderName(document.commanderName || "");
@@ -135,6 +250,7 @@ export default function Analytics() {
       commanderTitle: monthlyAnalysisCommanderTitle,
       created: monthlyAnalysisCreated,
       draftTitle: draftMonthlyAnalysisTitle,
+      attachments: monthlyAnalysisAttachments,
       extraPages: monthlyAnalysisExtraPages,
       isCreateDialogOpen,
       isMonthlyDocumentOpen,
@@ -144,7 +260,10 @@ export default function Analytics() {
       ...nextPartialState,
     };
 
-    window.localStorage.setItem(MONTHLY_ANALYSIS_DRAFT_STORAGE_KEY, JSON.stringify(draftPayload));
+    window.localStorage.setItem(
+      getMonthlyAnalysisDraftStorageKey(selectedSectionId),
+      JSON.stringify(draftPayload)
+    );
   };
 
   useEffect(() => {
@@ -214,6 +333,7 @@ export default function Analytics() {
         if (typeof parsedValue.draftTitle === "string") setDraftMonthlyAnalysisTitle(parsedValue.draftTitle);
         if (typeof parsedValue.body === "string") setMonthlyAnalysisBody(parsedValue.body);
         if (Array.isArray(parsedValue.extraPages)) setMonthlyAnalysisExtraPages(parsedValue.extraPages);
+        if (Array.isArray(parsedValue.attachments)) setMonthlyAnalysisAttachments(parsedValue.attachments);
         if (typeof parsedValue.commanderTitle === "string") {
           setMonthlyAnalysisCommanderTitle(parsedValue.commanderTitle);
         }
@@ -252,9 +372,53 @@ export default function Analytics() {
     monthlyAnalysisDocumentsRef.current = nextDocuments;
     setActiveMonthlyAnalysisDocumentId(nextActiveDocumentId);
     activeMonthlyAnalysisDocumentIdRef.current = nextActiveDocumentId;
-    setIsMonthlyDocumentOpen(false);
-    setIsCreateDialogOpen(false);
   }, [selectedSectionId, analysisDocumentsBySection, analysisActiveIdsBySection]);
+
+  useEffect(() => {
+    if (!hasHydratedMonthlyAnalysisRef.current) return;
+    if (!selectedSectionId || !analyticsSections.some((section) => section.id === selectedSectionId)) return;
+
+    try {
+      const storedValue = window.localStorage.getItem(getMonthlyAnalysisDraftStorageKey(selectedSectionId));
+      if (!storedValue) return;
+
+      const parsedValue = JSON.parse(storedValue);
+      if (!parsedValue || typeof parsedValue !== "object") return;
+
+      if (typeof parsedValue.created === "boolean") setMonthlyAnalysisCreated(parsedValue.created);
+      if (typeof parsedValue.title === "string") setMonthlyAnalysisTitle(parsedValue.title);
+      if (typeof parsedValue.draftTitle === "string") setDraftMonthlyAnalysisTitle(parsedValue.draftTitle);
+      if (typeof parsedValue.body === "string") setMonthlyAnalysisBody(parsedValue.body);
+      if (Array.isArray(parsedValue.extraPages)) setMonthlyAnalysisExtraPages(parsedValue.extraPages);
+      if (Array.isArray(parsedValue.attachments)) setMonthlyAnalysisAttachments(parsedValue.attachments);
+      if (typeof parsedValue.commanderTitle === "string") {
+        setMonthlyAnalysisCommanderTitle(parsedValue.commanderTitle);
+      }
+      if (typeof parsedValue.commanderRank === "string") {
+        setMonthlyAnalysisCommanderRank(parsedValue.commanderRank);
+      }
+      if (typeof parsedValue.commanderName === "string") {
+        setMonthlyAnalysisCommanderName(parsedValue.commanderName);
+      }
+      if (typeof parsedValue.commanderSignature === "string") {
+        setMonthlyAnalysisCommanderSignature(parsedValue.commanderSignature);
+      }
+      if (typeof parsedValue.addressee === "string") {
+        setMonthlyAnalysisAddressee(parsedValue.addressee);
+      }
+      if (typeof parsedValue.registryNumber === "number" && Number.isFinite(parsedValue.registryNumber)) {
+        setMonthlyAnalysisRegistryNumber(parsedValue.registryNumber);
+      }
+      if (typeof parsedValue.isMonthlyDocumentOpen === "boolean") {
+        setIsMonthlyDocumentOpen(parsedValue.isMonthlyDocumentOpen);
+      }
+      if (typeof parsedValue.isCreateDialogOpen === "boolean") {
+        setIsCreateDialogOpen(parsedValue.isCreateDialogOpen);
+      }
+    } catch {
+      // Ignore invalid section draft data.
+    }
+  }, [selectedSectionId]);
 
   useEffect(() => {
     if (!hasHydratedMonthlyAnalysisRef.current) return;
@@ -262,6 +426,29 @@ export default function Analytics() {
       applyMonthlyAnalysisDocumentToState(activeMonthlyAnalysisDocument);
     }
   }, [activeMonthlyAnalysisDocument]);
+
+  useEffect(() => {
+    syncMonthlyAnalysisTextareaHeight(monthlyAnalysisBodyTextareaRef.current);
+  }, [monthlyAnalysisBody]);
+
+  useEffect(() => {
+    monthlyAnalysisExtraTextareaRefs.current.forEach((textarea) => {
+      syncMonthlyAnalysisTextareaHeight(textarea);
+    });
+  }, [monthlyAnalysisExtraPages]);
+
+  useEffect(() => {
+    return () => {
+      monthlyAnalysisAttachmentUrlsRef.current.forEach((attachmentUrl) => {
+        try {
+          URL.revokeObjectURL(attachmentUrl);
+        } catch {
+          // ignore cleanup failures
+        }
+      });
+      monthlyAnalysisAttachmentUrlsRef.current = [];
+    };
+  }, []);
 
   useEffect(() => {
     if (!hasHydratedMonthlyAnalysisRef.current) return;
@@ -312,6 +499,7 @@ export default function Analytics() {
     monthlyAnalysisCommanderTitle,
     monthlyAnalysisCreated,
     draftMonthlyAnalysisTitle,
+    monthlyAnalysisAttachments,
     monthlyAnalysisExtraPages,
     isCreateDialogOpen,
     isMonthlyDocumentOpen,
@@ -321,6 +509,7 @@ export default function Analytics() {
 
   const handleCreateMonthlyAnalysis = () => {
     setDraftMonthlyAnalysisTitle("");
+    setIsMonthlyAnalysisPickerOpen(false);
     persistMonthlyAnalysisDraft({
       draftTitle: "",
       isCreateDialogOpen: true,
@@ -332,6 +521,7 @@ export default function Analytics() {
     setSelectedSectionId(sectionId);
     setIsMonthlyDocumentOpen(false);
     setIsCreateDialogOpen(false);
+    setIsMonthlyAnalysisPickerOpen(false);
     persistMonthlyAnalysisDraft({
       isCreateDialogOpen: false,
       isMonthlyDocumentOpen: false,
@@ -348,9 +538,11 @@ export default function Analytics() {
     setSelectedSectionId(selectedSectionId || document.sectionId || "monthly-analysis");
     setIsMonthlyDocumentOpen(true);
     setIsCreateDialogOpen(false);
+    setIsMonthlyAnalysisPickerOpen(false);
     applyMonthlyAnalysisDocumentToState(document);
     persistMonthlyAnalysisDraft({
       activeDocumentId: documentId,
+      attachments: Array.isArray(document.attachments) ? document.attachments : [],
       addressee: document.addressee || "",
       body: document.body || "",
       commanderName: document.commanderName || "",
@@ -412,6 +604,7 @@ export default function Analytics() {
           setMonthlyAnalysisTitle("");
           setMonthlyAnalysisBody("");
           setMonthlyAnalysisExtraPages([]);
+          setMonthlyAnalysisAttachments([]);
           setMonthlyAnalysisCommanderTitle("");
           setMonthlyAnalysisCommanderRank("");
           setMonthlyAnalysisCommanderName("");
@@ -452,6 +645,7 @@ export default function Analytics() {
     const newDocument = {
       id: newDocumentId,
       addressee: "КР Мамлекетик чек ара кызматынын күжүрмөн даярдоо башкармалыгынын башчысына",
+      attachments: [],
       body: "",
       commanderName: "",
       commanderRank: "",
@@ -466,12 +660,9 @@ export default function Analytics() {
       updatedAt: Date.now(),
     };
 
-    let nextDocuments = [];
-    setMonthlyAnalysisDocuments((currentDocuments) => {
-      nextDocuments = [...currentDocuments, newDocument];
-      monthlyAnalysisDocumentsRef.current = nextDocuments;
-      return nextDocuments;
-    });
+    const nextDocuments = [...monthlyAnalysisDocumentsRef.current, newDocument];
+    monthlyAnalysisDocumentsRef.current = nextDocuments;
+    setMonthlyAnalysisDocuments(nextDocuments);
 
     const sectionKey = selectedSectionId || "monthly-analysis";
     const nextDocumentsBySection = {
@@ -491,7 +682,7 @@ export default function Analytics() {
     activeMonthlyAnalysisDocumentIdRef.current = newDocumentId;
     applyMonthlyAnalysisDocumentToState(newDocument);
     setMonthlyAnalysisCreated(true);
-    setIsMonthlyDocumentOpen(false);
+    setIsMonthlyDocumentOpen(true);
     setIsCreateDialogOpen(false);
     setSelectedSectionId(selectedSectionId || "monthly-analysis");
     if (typeof window !== "undefined") {
@@ -513,9 +704,37 @@ export default function Analytics() {
       created: true,
       draftTitle: draftMonthlyAnalysisTitle,
       isCreateDialogOpen: false,
-      isMonthlyDocumentOpen: false,
+      isMonthlyDocumentOpen: true,
       activeDocumentId: newDocumentId,
       title: draftMonthlyAnalysisTitle,
+    });
+  };
+
+  const handleSaveCurrentMonthlyAnalysisDocument = () => {
+    if (!activeMonthlyAnalysisDocumentIdRef.current) return;
+
+    updateActiveMonthlyAnalysisDocument({
+      addressee: monthlyAnalysisAddressee,
+      attachments: sanitizeMonthlyAnalysisAttachments(monthlyAnalysisAttachments),
+      body: monthlyAnalysisBody,
+      commanderName: monthlyAnalysisCommanderName,
+      commanderRank: monthlyAnalysisCommanderRank,
+      commanderSignature: monthlyAnalysisCommanderSignature,
+      commanderTitle: monthlyAnalysisCommanderTitle,
+      extraPages: monthlyAnalysisExtraPages,
+      title: monthlyAnalysisTitle,
+    });
+    persistMonthlyAnalysisDraft({
+      addressee: monthlyAnalysisAddressee,
+      attachments: sanitizeMonthlyAnalysisAttachments(monthlyAnalysisAttachments),
+      body: monthlyAnalysisBody,
+      commanderName: monthlyAnalysisCommanderName,
+      commanderRank: monthlyAnalysisCommanderRank,
+      commanderSignature: monthlyAnalysisCommanderSignature,
+      commanderTitle: monthlyAnalysisCommanderTitle,
+      draftTitle: monthlyAnalysisTitle,
+      extraPages: monthlyAnalysisExtraPages,
+      title: monthlyAnalysisTitle,
     });
   };
 
@@ -562,6 +781,122 @@ export default function Analytics() {
       updateActiveMonthlyAnalysisDocument({ extraPages: nextPages });
       persistMonthlyAnalysisDraft({ extraPages: nextPages });
       return nextPages;
+    });
+  };
+
+  const handleMonthlyAnalysisAttachmentUpload = async (attachmentType, fileList) => {
+    if (isMonthlyAnalysisSent) return;
+    const files = Array.from(fileList || []).filter(Boolean);
+    if (files.length === 0) return;
+    const activeDocumentId = activeMonthlyAnalysisDocumentIdRef.current;
+    if (!activeDocumentId) return;
+
+    const nextAttachments = files.map((file) => {
+      const objectUrl = URL.createObjectURL(file);
+      monthlyAnalysisAttachmentUrlsRef.current.push(objectUrl);
+      return {
+        id: createMonthlyAnalysisAttachmentId(),
+        dataUrl: attachmentType === "photo" ? objectUrl : null,
+        fileName: file.name,
+        mimeType: file.type || "application/octet-stream",
+        objectUrl,
+        size: file.size,
+        type: attachmentType,
+      };
+    });
+
+    if (activeMonthlyAnalysisDocumentIdRef.current !== activeDocumentId) return;
+
+    setMonthlyAnalysisAttachments((currentAttachments) => {
+      const mergedAttachments = [...currentAttachments, ...nextAttachments];
+      const attachmentsForStorage = sanitizeMonthlyAnalysisAttachments(mergedAttachments);
+      updateActiveMonthlyAnalysisDocument({ attachments: attachmentsForStorage });
+      persistMonthlyAnalysisDraft({ attachments: attachmentsForStorage });
+      return mergedAttachments;
+    });
+  };
+
+  const handleMonthlyAnalysisAttachmentButtonClick = (attachmentType) => {
+    if (attachmentType === "photo") {
+      monthlyAnalysisPhotoInputRef.current?.click();
+      return;
+    }
+    if (attachmentType === "video") {
+      monthlyAnalysisVideoInputRef.current?.click();
+      return;
+    }
+    monthlyAnalysisDocumentInputRef.current?.click();
+  };
+
+  const handleOpenMonthlyAnalysisPicker = () => {
+    setSelectedMonthlyAnalysisSourceDocumentIds([]);
+    setIsMonthlyAnalysisPickerOpen(true);
+  };
+
+  const handleInsertMonthlyAnalysisSourceDocument = () => {
+    const selectedDocuments = monthlyAnalysisSourceDocuments.filter((document) =>
+      selectedMonthlyAnalysisSourceDocumentIds.includes(document.id)
+    );
+    if (selectedDocuments.length === 0) return;
+
+    const nextAttachments = selectedDocuments.flatMap((document) =>
+      Array.isArray(document.attachments) ? document.attachments : []
+    );
+    const nextExtraPages = selectedDocuments.flatMap((document) =>
+      Array.isArray(document.extraPages) ? document.extraPages : []
+    );
+    const nextBody = composeMonthlyAnalysisDocumentsText(selectedDocuments);
+    const primaryDocument = selectedDocuments[0];
+
+    setMonthlyAnalysisAddressee("");
+    setMonthlyAnalysisBody(nextBody);
+    setMonthlyAnalysisAttachments(nextAttachments);
+    setMonthlyAnalysisExtraPages(nextExtraPages);
+    setMonthlyAnalysisCommanderTitle(primaryDocument.commanderTitle || "");
+    setMonthlyAnalysisCommanderRank(primaryDocument.commanderRank || "");
+    setMonthlyAnalysisCommanderName(primaryDocument.commanderName || "");
+    setMonthlyAnalysisCommanderSignature(primaryDocument.commanderSignature || "");
+    updateActiveMonthlyAnalysisDocument({
+      addressee: "",
+      attachments: sanitizeMonthlyAnalysisAttachments(nextAttachments),
+      body: nextBody,
+      commanderName: primaryDocument.commanderName || "",
+      commanderRank: primaryDocument.commanderRank || "",
+      commanderSignature: primaryDocument.commanderSignature || "",
+      commanderTitle: primaryDocument.commanderTitle || "",
+      extraPages: nextExtraPages,
+    });
+    persistMonthlyAnalysisDraft({
+      addressee: "",
+      attachments: sanitizeMonthlyAnalysisAttachments(nextAttachments),
+      body: nextBody,
+      commanderName: primaryDocument.commanderName || "",
+      commanderRank: primaryDocument.commanderRank || "",
+      commanderSignature: primaryDocument.commanderSignature || "",
+      commanderTitle: primaryDocument.commanderTitle || "",
+      extraPages: nextExtraPages,
+    });
+    setIsMonthlyAnalysisPickerOpen(false);
+  };
+
+  const handleDeleteMonthlyAnalysisAttachment = (attachmentId) => {
+    if (isMonthlyAnalysisSent) return;
+
+    setMonthlyAnalysisAttachments((currentAttachments) => {
+      const attachmentToDelete = currentAttachments.find((attachment) => attachment.id === attachmentId);
+      if (attachmentToDelete?.objectUrl) {
+        try {
+          URL.revokeObjectURL(attachmentToDelete.objectUrl);
+        } catch {
+          // ignore cleanup failures
+        }
+      }
+
+      const nextAttachments = currentAttachments.filter((attachment) => attachment.id !== attachmentId);
+      const attachmentsForStorage = sanitizeMonthlyAnalysisAttachments(nextAttachments);
+      updateActiveMonthlyAnalysisDocument({ attachments: attachmentsForStorage });
+      persistMonthlyAnalysisDraft({ attachments: attachmentsForStorage });
+      return nextAttachments;
     });
   };
 
@@ -769,13 +1104,33 @@ export default function Analytics() {
     </div>
   );
 
-  if (selectedSection?.id === "monthly-analysis" && isMonthlyDocumentOpen) {
+  if (selectedSection && isMonthlyDocumentOpen) {
     return (
       <section className="module-panel monthly-analysis-print-root">
-        <button className="module-back-button" onClick={() => setIsMonthlyDocumentOpen(false)} type="button">
+        <button
+          className="module-back-button"
+          onClick={() => {
+            setIsMonthlyDocumentOpen(false);
+            setIsMonthlyAnalysisPickerOpen(false);
+          }}
+          type="button"
+        >
           Артка
         </button>
         <div className="module-actions">
+          <button className="module-action-button" onClick={handleSaveCurrentMonthlyAnalysisDocument} type="button">
+            Сактоо
+          </button>
+          {selectedSectionId === "period-analysis" || selectedSectionId === "year-analysis" ? (
+            <button
+              className="module-action-button"
+              disabled={isMonthlyAnalysisSent}
+              onClick={handleOpenMonthlyAnalysisPicker}
+              type="button"
+            >
+              Выбрать
+            </button>
+          ) : null}
           <button
             className="module-action-button"
             disabled={isMonthlyAnalysisSent}
@@ -937,6 +1292,7 @@ export default function Analytics() {
             placeholder="Документтин негизги текстин бул жерге жазыңыз..."
             readOnly={isMonthlyAnalysisSent}
             className="monthly-analysis-page__body"
+            ref={monthlyAnalysisBodyTextareaRef}
             rows={24}
             style={{
               border: "none",
@@ -953,6 +1309,104 @@ export default function Analytics() {
             }}
             value={monthlyAnalysisBody}
           />
+          <div className="monthly-analysis-page__body-print" aria-hidden="true">
+            {monthlyAnalysisBody}
+          </div>
+          <div className="monthly-analysis-attachments no-print">
+            <div className="monthly-analysis-attachments__toolbar">
+              <button
+                className="monthly-analysis-attachments__button monthly-analysis-attachments__button--green"
+                disabled={isMonthlyAnalysisSent}
+                onClick={() => handleMonthlyAnalysisAttachmentButtonClick("photo")}
+                type="button"
+              >
+                Фото жүктөө
+              </button>
+              <button
+                className="monthly-analysis-attachments__button monthly-analysis-attachments__button--green"
+                disabled={isMonthlyAnalysisSent}
+                onClick={() => handleMonthlyAnalysisAttachmentButtonClick("video")}
+                type="button"
+              >
+                Видео жүктөө
+              </button>
+              <button
+                className="monthly-analysis-attachments__button monthly-analysis-attachments__button--green"
+                disabled={isMonthlyAnalysisSent}
+                onClick={() => handleMonthlyAnalysisAttachmentButtonClick("document")}
+                type="button"
+              >
+                Иш документтерди жүктөө
+              </button>
+            </div>
+            <input
+              accept="image/*"
+              multiple
+              onChange={(event) => {
+                handleMonthlyAnalysisAttachmentUpload("photo", event.target.files);
+                event.target.value = "";
+              }}
+              ref={monthlyAnalysisPhotoInputRef}
+              style={{ display: "none" }}
+              type="file"
+            />
+            <input
+              accept="video/*"
+              multiple
+              onChange={(event) => {
+                handleMonthlyAnalysisAttachmentUpload("video", event.target.files);
+                event.target.value = "";
+              }}
+              ref={monthlyAnalysisVideoInputRef}
+              style={{ display: "none" }}
+              type="file"
+            />
+            <input
+              accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-powerpoint,application/vnd.openxmlformats-officedocument.presentationml.presentation"
+              multiple
+              onChange={(event) => {
+                handleMonthlyAnalysisAttachmentUpload("document", event.target.files);
+                event.target.value = "";
+              }}
+              ref={monthlyAnalysisDocumentInputRef}
+              style={{ display: "none" }}
+              type="file"
+            />
+            {monthlyAnalysisAttachments.length > 0 ? (
+              <div className="monthly-analysis-attachments__grid">
+                {monthlyAnalysisAttachments.map((attachment) => (
+                  <div className="monthly-analysis-attachment" key={attachment.id}>
+                    <button
+                      aria-label="Вложение удалить"
+                      className="monthly-analysis-attachment__remove"
+                      disabled={isMonthlyAnalysisSent}
+                      onClick={() => handleDeleteMonthlyAnalysisAttachment(attachment.id)}
+                      type="button"
+                    >
+                      ×
+                    </button>
+                    {attachment.type === "photo" ? (
+                      <img alt={attachment.fileName} src={attachment.objectUrl || attachment.dataUrl} />
+                    ) : attachment.type === "video" ? (
+                      <video controls src={attachment.objectUrl || attachment.dataUrl} />
+                    ) : (
+                      <a
+                        href={attachment.objectUrl || attachment.dataUrl}
+                        download={attachment.fileName}
+                        rel="noreferrer"
+                        target="_blank"
+                      >
+                        {attachment.fileName}
+                      </a>
+                    )}
+                    <div className="monthly-analysis-attachment__meta">
+                      <strong>{attachment.fileName}</strong>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : null}
+          </div>
           {monthlyAnalysisExtraPages.length === 0 ? signatureBlock : null}
         </div>
         {monthlyAnalysisExtraPages.map((pageText, pageIndex) => (
@@ -975,6 +1429,9 @@ export default function Analytics() {
               placeholder="Кошумча барактын текстин бул жерге жазыңыз..."
               readOnly={isMonthlyAnalysisSent}
             className="monthly-analysis-page__extra-text"
+            ref={(element) => {
+              monthlyAnalysisExtraTextareaRefs.current[pageIndex] = element;
+            }}
             rows={36}
               style={{
                 border: "none",
@@ -990,6 +1447,9 @@ export default function Analytics() {
               }}
               value={pageText}
             />
+            <div className="monthly-analysis-page__extra-text-print" aria-hidden="true">
+              {pageText}
+            </div>
             {pageIndex === monthlyAnalysisExtraPages.length - 1 ? signatureBlock : null}
             {!isMonthlyAnalysisSent ? (
               <button
@@ -1058,6 +1518,68 @@ export default function Analytics() {
             </div>
           </div>
         ) : null}
+        {isMonthlyAnalysisPickerOpen ? (
+          <div
+            className="lesson-period-dialog"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="monthly-analysis-picker-title"
+          >
+            <div className="lesson-period-dialog__panel" style={{ maxWidth: "980px", width: "980px" }}>
+              <h2 id="monthly-analysis-picker-title">{monthlyAnalysisPickerTitle}</h2>
+              {monthlyAnalysisSourceDocuments.length > 0 ? (
+                <div
+                  style={{
+                    display: "grid",
+                    gap: "10px",
+                    marginBottom: "16px",
+                    maxHeight: "460px",
+                    overflow: "auto",
+                  }}
+                >
+                  {monthlyAnalysisSourceDocuments.map((document) => {
+                    const isSelected = selectedMonthlyAnalysisSourceDocumentIds.includes(document.id);
+                    return (
+                      <button
+                        key={document.id}
+                        type="button"
+                        onClick={() => handleToggleMonthlyAnalysisSourceDocument(document.id)}
+                        style={{
+                          backgroundColor: isSelected ? "#dcebe3" : "#f7f8f4",
+                          border: isSelected ? "1px solid #0f5b3a" : "1px solid #bdcbc4",
+                          color: "#13221b",
+                          display: "grid",
+                          gap: "4px",
+                          padding: "12px 14px",
+                          textAlign: "left",
+                        }}
+                      >
+                        <strong>{document.title || monthlyAnalysisSourcePlaceholder}</strong>
+                        <span style={{ color: "#53645d", fontSize: "12px" }}>
+                          {document.body ? `${document.body.slice(0, 120)}${document.body.length > 120 ? "..." : ""}` : "Текст жок"}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              ) : (
+                <div style={{ color: "#53645d", marginBottom: "16px" }}>{monthlyAnalysisPickerEmptyText}</div>
+              )}
+              <div className="lesson-period-dialog__actions">
+                <button onClick={() => setIsMonthlyAnalysisPickerOpen(false)} type="button">
+                  Жокко чыгаруу
+                </button>
+                <button
+                  onClick={handleInsertMonthlyAnalysisSourceDocument}
+                  type="button"
+                  disabled={selectedMonthlyAnalysisSourceDocumentIds.length === 0}
+                >
+                  Талдоо жасоо
+                </button>
+              </div>
+            </div>
+          </div>
+        ) : null}
       </section>
     );
   }
@@ -1071,6 +1593,7 @@ export default function Analytics() {
             setSelectedSectionId(null);
             setIsCreateDialogOpen(false);
             setIsMonthlyDocumentOpen(false);
+            setIsMonthlyAnalysisPickerOpen(false);
             persistMonthlyAnalysisDraft({
               isCreateDialogOpen: false,
               isMonthlyDocumentOpen: false,
@@ -1105,7 +1628,7 @@ export default function Analytics() {
                   type="button"
                 >
                   <span aria-hidden="true" className="module-document-icon" />
-                  <strong>{document.title || monthlyAnalysisPlaceholder}</strong>
+                  <strong>{document.title || currentAnalysisPlaceholder}</strong>
                   {!document.registryNumber ? (
                     <span
                       onClick={(event) => {
@@ -1145,7 +1668,7 @@ export default function Analytics() {
                       setDraftMonthlyAnalysisTitle(nextValue);
                       persistMonthlyAnalysisDraft({ draftTitle: nextValue });
                     }}
-                    placeholder={monthlyAnalysisPlaceholder}
+                    placeholder={currentAnalysisPlaceholder}
                     rows={5}
                     value={draftMonthlyAnalysisTitle}
                   />

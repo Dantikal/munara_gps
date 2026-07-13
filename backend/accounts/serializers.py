@@ -4,7 +4,7 @@ from django.utils import timezone
 from rest_framework import serializers
 from rest_framework_simplejwt.tokens import RefreshToken
 
-from .models import CombatTrainingJournal, MethodicalManualSubject
+from .models import AdminChatMessage, CombatTrainingJournal, MethodicalManualSubject
 
 User = get_user_model()
 
@@ -170,6 +170,97 @@ class CombatTrainingJournalSerializer(serializers.ModelSerializer):
         if not storage_id:
             raise serializers.ValidationError("storage_id is required.")
         return storage_id
+
+
+class AdminChatMessageSerializer(serializers.ModelSerializer):
+    sender = UserPublicSerializer(read_only=True)
+    recipient = UserPublicSerializer(read_only=True)
+    senderId = serializers.IntegerField(write_only=True, required=False)
+    recipientId = serializers.IntegerField(write_only=True, required=False)
+    attachment = serializers.FileField(required=False, allow_null=True)
+    createdAt = serializers.DateTimeField(source="created_at", read_only=True)
+    isRead = serializers.BooleanField(source="is_read", read_only=True)
+
+    class Meta:
+        model = AdminChatMessage
+        fields = [
+            "id",
+            "sender",
+            "recipient",
+            "senderId",
+            "recipientId",
+            "body",
+            "attachment",
+            "attachment_kind",
+            "attachment_name",
+            "createdAt",
+            "isRead",
+        ]
+        read_only_fields = [
+            "id",
+            "sender",
+            "recipient",
+            "attachment_kind",
+            "attachment_name",
+            "isRead",
+        ]
+
+    def validate(self, attrs):
+        request_user = self.context["request"].user
+        body = (attrs.get("body") or "").strip()
+        attachment = attrs.get("attachment")
+        if not body and not attachment:
+            raise serializers.ValidationError({"body": "Введите текст или добавьте вложение."})
+
+        if request_user.role == User.Role.ADMIN:
+            recipient_id = attrs.get("recipientId")
+            if not recipient_id:
+                raise serializers.ValidationError({"recipientId": "Укажите получателя."})
+            recipient = User.objects.filter(pk=recipient_id).first()
+            if not recipient:
+                raise serializers.ValidationError({"recipientId": "Пользователь не найден."})
+            if recipient.pk == request_user.pk:
+                raise serializers.ValidationError({"recipientId": "Нельзя отправить сообщение самому себе."})
+
+        attrs["body"] = body
+        return attrs
+
+    def create(self, validated_data):
+        request = self.context["request"]
+        sender = request.user
+        recipient_id = validated_data.pop("recipientId", None)
+        validated_data.pop("senderId", None)
+        attachment = validated_data.get("attachment")
+
+        if sender.role == User.Role.ADMIN:
+            recipient = User.objects.filter(pk=recipient_id).first()
+        else:
+            recipient = User.objects.filter(role=User.Role.ADMIN).order_by("id").first()
+        if not recipient:
+            raise serializers.ValidationError({"recipientId": "Администратор не найден."})
+
+        if attachment and not validated_data.get("attachment_name"):
+            validated_data["attachment_name"] = attachment.name
+        if attachment and not validated_data.get("attachment_kind"):
+            name = attachment.name.lower()
+            content_type = getattr(attachment, "content_type", "") or ""
+            if content_type.startswith("image/") or name.endswith((".png", ".jpg", ".jpeg", ".gif", ".webp")):
+                validated_data["attachment_kind"] = AdminChatMessage.AttachmentKind.IMAGE
+            elif content_type.startswith("audio/") or name.endswith((".mp3", ".wav", ".ogg", ".m4a", ".aac", ".flac")):
+                validated_data["attachment_kind"] = AdminChatMessage.AttachmentKind.AUDIO
+            elif content_type.startswith("video/") or name.endswith((".mp4", ".mov", ".avi", ".mkv", ".webm")):
+                validated_data["attachment_kind"] = AdminChatMessage.AttachmentKind.VIDEO
+            else:
+                validated_data["attachment_kind"] = AdminChatMessage.AttachmentKind.FILE
+
+        return AdminChatMessage.objects.create(sender=sender, recipient=recipient, **validated_data)
+
+
+class AdminChatUserSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = User
+        fields = ["id", "full_name", "email", "role", "avatar", "photo_face"]
+        read_only_fields = fields
 
 
 class ProfileUpdateSerializer(serializers.ModelSerializer):

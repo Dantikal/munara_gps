@@ -10,6 +10,7 @@ const SECTION_TITLE = "Күжүрмөн даярдоо боюнча усулду
 
 export default function SMR({ data, user }) {
   const [subjects, setSubjects] = useState(data?.subjects || []);
+  const [selectedSubjectId, setSelectedSubjectId] = useState(null);
   const [newTitle, setNewTitle] = useState("");
   const [editingId, setEditingId] = useState(null);
   const [editingTitle, setEditingTitle] = useState("");
@@ -21,6 +22,19 @@ export default function SMR({ data, user }) {
   useEffect(() => {
     setSubjects(data?.subjects || []);
   }, [data?.subjects]);
+
+  useEffect(() => {
+    if (
+      selectedSubjectId !== null &&
+      !subjects.some((subject) => subject.id === selectedSubjectId)
+    ) {
+      setSelectedSubjectId(null);
+    }
+  }, [selectedSubjectId, subjects]);
+
+  const selectedSubject = subjects.find(
+    (subject) => subject.id === selectedSubjectId
+  );
 
   const resetMessages = () => {
     setNotice("");
@@ -110,6 +124,24 @@ export default function SMR({ data, user }) {
     }
   };
 
+  if (selectedSubject) {
+    return (
+      <section className="module-panel">
+        <button
+          className="module-back-button"
+          onClick={() => setSelectedSubjectId(null)}
+          type="button"
+        >
+          Артка
+        </button>
+        <header>
+          <h1>{selectedSubject.title}</h1>
+        </header>
+        <p className="dashboard-state">Бул бөлүмдө азырынча материалдар жок.</p>
+      </section>
+    );
+  }
+
   return (
     <section className="module-panel">
       <header>
@@ -149,7 +181,13 @@ export default function SMR({ data, user }) {
                     value={editingTitle}
                   />
                 ) : (
-                  <strong>{subject.title}</strong>
+                  <button
+                    className="methodical-subject-link"
+                    onClick={() => setSelectedSubjectId(subject.id)}
+                    type="button"
+                  >
+                    {subject.title}
+                  </button>
                 )}
 
                 {isAdmin && (

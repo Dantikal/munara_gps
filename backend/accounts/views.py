@@ -7,9 +7,11 @@ from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from .models import AdminChatMessage
 from .permissions import IsActiveUser, IsAdminRole
 from .serializers import (
     ActiveTokenObtainSerializer,
+    AdminChatMessageSerializer,
     AdminUserSerializer,
     ModerationSerializer,
     ProfileUpdateSerializer,
@@ -168,3 +170,46 @@ class ScopedUsersView(generics.ListAPIView):
         return qs.filter(
             Q(id=user.id) | Q(region=user.region, outpost_name=user.outpost_name)
         ).order_by("full_name")
+
+
+class AdminChatMessageView(generics.ListCreateAPIView):
+    serializer_class = AdminChatMessageSerializer
+    permission_classes = [IsActiveUser]
+    parser_classes = [MultiPartParser, FormParser, JSONParser]
+
+    def get_queryset(self):
+        user = self.request.user
+        qs = AdminChatMessage.objects.select_related("sender", "recipient").order_by("created_at", "id")
+
+        if user.role == User.Role.ADMIN:
+            partner_id = self.request.query_params.get("user_id")
+            if partner_id:
+                return qs.filter(Q(sender_id=partner_id, recipient=user) | Q(sender=user, recipient_id=partner_id))
+            return qs.filter(Q(sender__role=User.Role.ADMIN) | Q(recipient__role=User.Role.ADMIN))
+
+        return qs.filter(Q(sender=user, recipient__role=User.Role.ADMIN) | Q(sender__role=User.Role.ADMIN, recipient=user))
+
+    def perform_create(self, serializer):
+        serializer.save()
+
+    def list(self, request, *args, **kwargs):
+        queryset = self.get_queryset()
+        response = Response(self.get_serializer(queryset, many=True).data)
+
+        user = request.user
+        if user.role == User.Role.ADMIN:
+            partner_id = request.query_params.get("user_id")
+            if partner_id:
+                AdminChatMessage.objects.filter(
+                    sender_id=partner_id,
+                    recipient=user,
+                    is_read=False,
+                ).update(is_read=True)
+        else:
+            AdminChatMessage.objects.filter(
+                sender__role=User.Role.ADMIN,
+                recipient=user,
+                is_read=False,
+            ).update(is_read=True)
+
+        return response

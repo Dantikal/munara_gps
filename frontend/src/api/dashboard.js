@@ -57,3 +57,18 @@ export const updateCombatTrainingJournal = async (id, payload) => {
   const { data } = await api.patch(`/dashboard/combat-training-journals/${id}/`, payload);
   return data;
 };
+
+export const getAdminChatMessages = async (params = {}) => {
+  const { data } = await api.get("/auth/chat/messages/", { params });
+  return data;
+};
+
+export const createAdminChatMessage = async (payload) => {
+  const { data } = await api.post("/auth/chat/messages/", payload);
+  return data;
+};
+
+export const getScopedUsers = async () => {
+  const { data } = await api.get("/auth/users/");
+  return data;
+};

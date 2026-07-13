@@ -12,6 +12,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from .models import (
+    AdminChatMessage,
     CombatTrainingJournal,
     MethodicalManualSubject,
     TrainingPeriod,
@@ -247,6 +248,24 @@ def methodical_manual_subjects_payload():
         return MethodicalManualSubjectSerializer(subjects, many=True).data
     except (OperationalError, ProgrammingError):
         return []
+
+
+def chat_unread_count_for_user(user):
+    try:
+        if user.role == User.Role.ADMIN:
+            return AdminChatMessage.objects.filter(recipient=user, is_read=False).count()
+
+        admin = User.objects.filter(role=User.Role.ADMIN).first()
+        if not admin:
+            return 0
+
+        return AdminChatMessage.objects.filter(
+            sender=admin,
+            recipient=user,
+            is_read=False,
+        ).count()
+    except (OperationalError, ProgrammingError):
+        return 0
 
 
 def build_modules_payload(user):
@@ -504,6 +523,7 @@ def build_modules_payload(user):
     )
 
     return {
+        "chatUnreadCount": chat_unread_count_for_user(user),
         "library": {
             "title": "Сабактардын тематикасынын эсеби жана жүгүртмөсү",
             "scope": scope,

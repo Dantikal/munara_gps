@@ -4,6 +4,7 @@ from rest_framework_simplejwt.views import TokenRefreshView
 from .views import (
     AdminUserDetailView,
     AdminUsersView,
+    AdminChatMessageView,
     LoginView,
     MeView,
     ModerateRequestView,
@@ -24,4 +25,5 @@ urlpatterns = [
     path("admin/requests/", PendingRequestsView.as_view(), name="pending-requests"),
     path("admin/requests/<int:pk>/", UserRequestDetailView.as_view(), name="request-detail"),
     path("admin/requests/<int:pk>/moderate/", ModerateRequestView.as_view(), name="moderate-request"),
+    path("chat/messages/", AdminChatMessageView.as_view(), name="admin-chat-messages"),
 ]

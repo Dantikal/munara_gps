@@ -538,6 +538,123 @@ button.module-document-card.module-section-card strong {
   page-break-inside: avoid;
 }
 
+.monthly-analysis-attachments {
+  margin-top: 20px;
+}
+
+.monthly-analysis-attachments__toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.monthly-analysis-attachments__button {
+  align-items: center;
+  background: #f4f6f8;
+  border: 1px solid #c9d1d9;
+  border-radius: 4px;
+  cursor: pointer;
+  display: inline-flex;
+  gap: 8px;
+  padding: 8px 12px;
+}
+
+.monthly-analysis-attachments__button--green {
+  background: #1f7a3d;
+  border-color: #1f7a3d;
+  color: #fff;
+}
+
+.monthly-analysis-attachments__button--green:hover:not(:disabled),
+.monthly-analysis-attachments__button--green:focus-visible:not(:disabled) {
+  background: #176132;
+  border-color: #176132;
+}
+
+.monthly-analysis-attachments__button:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.monthly-analysis-attachments__grid {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+}
+
+.monthly-analysis-attachment {
+  position: relative;
+  background: #fbfcf8;
+  border: 1px solid #c9d1d9;
+  border-radius: 4px;
+  display: grid;
+  gap: 8px;
+  padding: 10px;
+}
+
+.monthly-analysis-attachment__remove {
+  align-items: center;
+  background: #b42318;
+  border: 0;
+  border-radius: 999px;
+  color: #fff;
+  cursor: pointer;
+  display: inline-flex;
+  font-size: 18px;
+  height: 24px;
+  justify-content: center;
+  line-height: 1;
+  padding: 0;
+  position: absolute;
+  right: 8px;
+  top: 8px;
+  width: 24px;
+  z-index: 1;
+}
+
+.monthly-analysis-attachment__remove:hover:not(:disabled),
+.monthly-analysis-attachment__remove:focus-visible:not(:disabled) {
+  background: #8f1d14;
+}
+
+.monthly-analysis-attachment__remove:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.monthly-analysis-attachment img,
+.monthly-analysis-attachment video {
+  display: block;
+  max-height: 220px;
+  object-fit: contain;
+  width: 100%;
+}
+
+.monthly-analysis-attachment__meta {
+  display: grid;
+  gap: 4px;
+}
+
+.monthly-analysis-attachment__meta strong {
+  font-size: 13px;
+  line-height: 1.3;
+  word-break: break-word;
+}
+
+.monthly-analysis-page__body,
+.monthly-analysis-page__extra-text {
+  overflow: hidden;
+  resize: none;
+}
+
+.monthly-analysis-page__body-print,
+.monthly-analysis-page__extra-text-print {
+  display: none;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
 @media print {
   @page {
     size: A4 portrait;
@@ -576,16 +693,19 @@ button.module-document-card.module-section-card strong {
   .monthly-analysis-print-root .lesson-period-dialog *,
   .monthly-analysis-print-root .module-document-card,
   .monthly-analysis-print-root .module-header,
-  .monthly-analysis-print-root .module-section-grid {
+  .monthly-analysis-print-root .module-section-grid,
+  .monthly-analysis-print-root .monthly-analysis-attachments {
     display: none !important;
   }
 
   .monthly-analysis-print-root .monthly-analysis-page {
     box-shadow: none !important;
-    break-after: page;
+    break-after: auto;
     border: 0 !important;
     margin: 0 auto !important;
-    page-break-after: always;
+    page-break-after: auto;
+    break-inside: auto;
+    page-break-inside: auto;
   }
 
   .monthly-analysis-print-root .monthly-analysis-page:last-of-type {
@@ -595,10 +715,29 @@ button.module-document-card.module-section-card strong {
 
   .monthly-analysis-print-root .monthly-analysis-page__body {
     min-height: 520px !important;
+    height: auto !important;
+    overflow: visible !important;
+  }
+
+  .monthly-analysis-print-root .monthly-analysis-page__body,
+  .monthly-analysis-print-root .monthly-analysis-page__extra-text {
+    display: none !important;
+  }
+
+  .monthly-analysis-print-root .monthly-analysis-page__body-print,
+  .monthly-analysis-print-root .monthly-analysis-page__extra-text-print {
+    display: block !important;
+    font-family: "Times New Roman", Times, serif;
+    font-size: 12pt;
+    line-height: 1.45;
+    white-space: pre-wrap;
+    word-break: break-word;
   }
 
   .monthly-analysis-print-root .monthly-analysis-page__extra-text {
     min-height: 880px !important;
+    height: auto !important;
+    overflow: visible !important;
   }
 
   .monthly-analysis-print-root .monthly-analysis-signature-block {
@@ -621,6 +760,6 @@ button.module-document-card.module-section-card strong {
   }
 
   .monthly-analysis-print-root textarea {
-    overflow: hidden !important;
+    overflow: visible !important;
   }
 }
