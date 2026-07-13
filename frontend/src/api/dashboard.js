@@ -68,6 +68,13 @@ export const createAdminChatMessage = async (payload) => {
   return data;
 };
 
+export const deleteAdminChatMessage = async (id, mode) => {
+  const { data } = await api.delete(`/auth/chat/messages/${id}/`, {
+    data: { mode },
+  });
+  return data;
+};
+
 export const getScopedUsers = async () => {
   const { data } = await api.get("/auth/users/");
   return data;

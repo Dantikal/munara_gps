@@ -184,10 +184,16 @@ class AdminChatMessageView(generics.ListCreateAPIView):
         if user.role == User.Role.ADMIN:
             partner_id = self.request.query_params.get("user_id")
             if partner_id:
-                return qs.filter(Q(sender_id=partner_id, recipient=user) | Q(sender=user, recipient_id=partner_id))
-            return qs.filter(Q(sender__role=User.Role.ADMIN) | Q(recipient__role=User.Role.ADMIN))
+                qs = qs.filter(Q(sender_id=partner_id, recipient=user) | Q(sender=user, recipient_id=partner_id))
+            else:
+                qs = qs.filter(Q(sender__role=User.Role.ADMIN) | Q(recipient__role=User.Role.ADMIN))
+        else:
+            qs = qs.filter(Q(sender=user, recipient__role=User.Role.ADMIN) | Q(sender__role=User.Role.ADMIN, recipient=user))
 
-        return qs.filter(Q(sender=user, recipient__role=User.Role.ADMIN) | Q(sender__role=User.Role.ADMIN, recipient=user))
+        return qs.exclude(
+            Q(sender=user, deleted_by_sender=True)
+            | Q(recipient=user, deleted_by_recipient=True)
+        )
 
     def perform_create(self, serializer):
         serializer.save()
@@ -213,3 +219,51 @@ class AdminChatMessageView(generics.ListCreateAPIView):
             ).update(is_read=True)
 
         return response
+
+
+class AdminChatMessageDeleteView(APIView):
+    permission_classes = [IsActiveUser]
+
+    def delete(self, request, pk):
+        user = request.user
+        message = generics.get_object_or_404(
+            AdminChatMessage.objects.filter(Q(sender=user) | Q(recipient=user)),
+            pk=pk,
+        )
+        mode = request.data.get("mode", "self")
+
+        if mode == "everyone":
+            if message.sender_id != user.id:
+                return Response(
+                    {"detail": "Удалить сообщение у всех может только отправитель."},
+                    status=status.HTTP_403_FORBIDDEN,
+                )
+
+            if message.attachment:
+                message.attachment.delete(save=False)
+            message.body = ""
+            message.attachment = None
+            message.attachment_kind = ""
+            message.attachment_name = ""
+            message.deleted_for_everyone = True
+            message.save(
+                update_fields=(
+                    "body",
+                    "attachment",
+                    "attachment_kind",
+                    "attachment_name",
+                    "deleted_for_everyone",
+                )
+            )
+            return Response(
+                AdminChatMessageSerializer(message, context={"request": request}).data
+            )
+
+        if message.sender_id == user.id:
+            message.deleted_by_sender = True
+            message.save(update_fields=("deleted_by_sender",))
+        else:
+            message.deleted_by_recipient = True
+            message.save(update_fields=("deleted_by_recipient",))
+
+        return Response(status=status.HTTP_204_NO_CONTENT)

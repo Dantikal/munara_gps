@@ -180,6 +180,9 @@ class AdminChatMessageSerializer(serializers.ModelSerializer):
     attachment = serializers.FileField(required=False, allow_null=True)
     createdAt = serializers.DateTimeField(source="created_at", read_only=True)
     isRead = serializers.BooleanField(source="is_read", read_only=True)
+    isDeletedForEveryone = serializers.BooleanField(
+        source="deleted_for_everyone", read_only=True
+    )
 
     class Meta:
         model = AdminChatMessage
@@ -195,6 +198,7 @@ class AdminChatMessageSerializer(serializers.ModelSerializer):
             "attachment_name",
             "createdAt",
             "isRead",
+            "isDeletedForEveryone",
         ]
         read_only_fields = [
             "id",
@@ -203,7 +207,17 @@ class AdminChatMessageSerializer(serializers.ModelSerializer):
             "attachment_kind",
             "attachment_name",
             "isRead",
+            "isDeletedForEveryone",
         ]
+
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        if instance.deleted_for_everyone:
+            data["body"] = ""
+            data["attachment"] = None
+            data["attachment_kind"] = ""
+            data["attachment_name"] = ""
+        return data
 
     def validate(self, attrs):
         request_user = self.context["request"].user

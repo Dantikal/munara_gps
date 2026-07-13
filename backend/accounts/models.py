@@ -284,6 +284,9 @@ class AdminChatMessage(models.Model):
     attachment_name = models.CharField("Имя вложения", max_length=255, blank=True)
     created_at = models.DateTimeField("Создано", auto_now_add=True)
     is_read = models.BooleanField("Прочитано", default=False)
+    deleted_by_sender = models.BooleanField("Удалено отправителем у себя", default=False)
+    deleted_by_recipient = models.BooleanField("Удалено получателем у себя", default=False)
+    deleted_for_everyone = models.BooleanField("Удалено у всех", default=False)
 
     class Meta:
         ordering = ("created_at", "id")
