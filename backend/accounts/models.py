@@ -188,6 +188,22 @@ class CombatTrainingJournal(models.Model):
         return self.title
 
 
+class CombatTrainingJournalSubject(models.Model):
+    title = models.CharField("Название предмета", max_length=255, unique=True)
+    order = models.PositiveIntegerField("Порядок", default=0)
+    is_active = models.BooleanField("Активен", default=True)
+    created_at = models.DateTimeField("Создано", auto_now_add=True)
+    updated_at = models.DateTimeField("Обновлено", auto_now=True)
+
+    class Meta:
+        ordering = ("order", "id")
+        verbose_name = "Предмет журнала боевой подготовки"
+        verbose_name_plural = "Предметы журнала боевой подготовки"
+
+    def __str__(self):
+        return self.title
+
+
 class TrainingTable(models.Model):
     class Variant(models.TextChoices):
         DEFAULT = "", "Обычная таблица"

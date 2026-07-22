@@ -20,6 +20,7 @@ from .models import (
     CombatTrainingNewsLike,
     CombatTrainingNewsRead,
     CombatTrainingJournal,
+    CombatTrainingJournalSubject,
     CombatTrainingPlan,
     MethodicalManualDocument,
     MethodicalManualSubject,
@@ -32,6 +33,7 @@ from .models import (
 from .permissions import IsActiveUser, IsAdminRole
 from .serializers import (
     CombatTrainingJournalSerializer,
+    CombatTrainingJournalSubjectSerializer,
     CombatTrainingNewsSerializer,
     MethodicalManualDocumentSerializer,
     MethodicalManualSubjectSerializer,
@@ -1272,6 +1274,25 @@ class CombatTrainingJournalListCreateView(APIView):
         return Response(
             CombatTrainingJournalSerializer(journal).data,
             status=status.HTTP_201_CREATED if created else status.HTTP_200_OK,
+        )
+
+
+class CombatTrainingJournalSubjectListCreateView(APIView):
+    permission_classes = [IsActiveUser]
+
+    def get(self, request):
+        subjects = CombatTrainingJournalSubject.objects.filter(is_active=True)
+        return Response(CombatTrainingJournalSubjectSerializer(subjects, many=True).data)
+
+    def post(self, request):
+        if request.user.role != User.Role.ADMIN:
+            raise PermissionDenied("Добавлять предметы может только администратор.")
+        serializer = CombatTrainingJournalSubjectSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        subject = serializer.save()
+        return Response(
+            CombatTrainingJournalSubjectSerializer(subject).data,
+            status=status.HTTP_201_CREATED,
         )
 
 

@@ -163,6 +163,16 @@ export const deleteCombatTrainingJournal = async (id) => {
   await api.delete(`/dashboard/combat-training-journals/${id}/`);
 };
 
+export const getCombatTrainingJournalSubjects = async () => {
+  const { data } = await api.get("/dashboard/combat-training-journal-subjects/");
+  return data;
+};
+
+export const createCombatTrainingJournalSubject = async (payload) => {
+  const { data } = await api.post("/dashboard/combat-training-journal-subjects/", payload);
+  return data;
+};
+
 export const getCombatTrainingNews = async () => {
   const { data } = await api.get("/dashboard/combat-training-news/");
   return data.results || [];

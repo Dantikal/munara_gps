@@ -4,6 +4,7 @@ from .dashboard_views import (
     AdminDashboardView,
     CombatTrainingJournalDetailView,
     CombatTrainingJournalListCreateView,
+    CombatTrainingJournalSubjectListCreateView,
     CombatTrainingPlanDetailView,
     CombatTrainingPlanListCreateView,
     CombatTrainingNewsDetailView,
@@ -90,6 +91,11 @@ urlpatterns = [
         "combat-training-journals/",
         CombatTrainingJournalListCreateView.as_view(),
         name="combat-training-journal-list",
+    ),
+    path(
+        "combat-training-journal-subjects/",
+        CombatTrainingJournalSubjectListCreateView.as_view(),
+        name="combat-training-journal-subject-list",
     ),
     path(
         "combat-training-news/",

@@ -12,6 +12,7 @@ from .models import (
     CombatTrainingNews,
     CombatTrainingNewsAttachment,
     CombatTrainingJournal,
+    CombatTrainingJournalSubject,
     MethodicalManualDocument,
     MethodicalManualSubject,
 )
@@ -387,6 +388,19 @@ class CombatTrainingJournalSerializer(serializers.ModelSerializer):
         if not storage_id:
             raise serializers.ValidationError("storage_id is required.")
         return storage_id
+
+
+class CombatTrainingJournalSubjectSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = CombatTrainingJournalSubject
+        fields = ["id", "title", "order", "is_active", "created_at", "updated_at"]
+        read_only_fields = ["id", "created_at", "updated_at"]
+
+    def validate_title(self, value):
+        title = value.strip()
+        if not title:
+            raise serializers.ValidationError("Укажите название предмета.")
+        return title
 
 
 class AdminChatMessageSerializer(serializers.ModelSerializer):

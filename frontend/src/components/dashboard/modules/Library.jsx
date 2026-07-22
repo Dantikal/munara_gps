@@ -869,7 +869,7 @@ const buildLessonScheduleLikePhoto = (table) => {
   };
 };
 
-export default function Library({ data, onBack, onRefresh }) {
+export default function Library({ data, onBack, onRefresh, onSubmissionCreated }) {
   const currentUser = useSelector((state) => state.auth.user);
   const tableViewRef = useRef(null);
   const tableScrollRef = useRef(null);
@@ -2001,6 +2001,7 @@ export default function Library({ data, onBack, onRefresh }) {
       }
       setSubmissionDialogOpen(false);
       setSubmissionDocumentTitle("");
+      onSubmissionCreated?.(submission);
     } catch (error) {
       setSubmissionError(
         getApiErrorMessage(error, "Таблицаны жөнөтүү мүмкүн болгон жок.")

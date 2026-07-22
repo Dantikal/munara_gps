@@ -2,11 +2,12 @@ import React, { useEffect, useMemo, useState } from "react";
 
 import {
   createCombatTrainingJournal,
+  createCombatTrainingJournalSubject,
   deleteCombatTrainingJournal,
   deleteThematicAccountSubmission,
   forwardThematicAccountSubmission,
   getCombatTrainingJournals,
-  getMethodicalSubjects,
+  getCombatTrainingJournalSubjects,
   getThematicAccountSubmissions,
   updateCombatTrainingJournal,
 } from "../../../api/dashboard.js";
@@ -330,7 +331,7 @@ export default function CombatTrainingJournal({ data, methodicalSubjects = [], u
   );
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [isSubjectCreateOpen, setIsSubjectCreateOpen] = useState(false);
-  const [availableSubjects, setAvailableSubjects] = useState(methodicalSubjects);
+  const [availableSubjects, setAvailableSubjects] = useState([]);
   const [journals, setJournals] = useState([]);
   const [selectedMethodicalSubjectId, setSelectedMethodicalSubjectId] = useState("");
   const [manualSubjectTitle, setManualSubjectTitle] = useState("");
@@ -423,7 +424,23 @@ export default function CombatTrainingJournal({ data, methodicalSubjects = [], u
   }, [journalScope, registryStorageKey, selectedJournalCategory]);
 
   useEffect(() => {
-    setAvailableSubjects(methodicalSubjects);
+    let isMounted = true;
+    getCombatTrainingJournalSubjects()
+      .then((items) => {
+        if (isMounted) {
+          setAvailableSubjects(Array.isArray(items) ? items : []);
+          setSubjectLoadError("");
+        }
+      })
+      .catch(() => {
+        if (isMounted) {
+          setAvailableSubjects(methodicalSubjects);
+          setSubjectLoadError("Не удалось загрузить список предметов.");
+        }
+      });
+    return () => {
+      isMounted = false;
+    };
   }, [methodicalSubjects]);
 
   useEffect(() => {
@@ -432,10 +449,10 @@ export default function CombatTrainingJournal({ data, methodicalSubjects = [], u
       return;
     }
 
-    setSubjects(getStoredJournals(subjectRegistryStorageKey));
+    setSubjects(availableSubjects);
     setSelectedSubject(null);
     setIsSubjectCreateOpen(false);
-  }, [selectedJournal, subjectRegistryStorageKey]);
+  }, [selectedJournal, availableSubjects]);
 
   const selectableSubjects = availableSubjects.filter(
     (subject) =>
@@ -445,37 +462,40 @@ export default function CombatTrainingJournal({ data, methodicalSubjects = [], u
       )
   );
   const getJournalSubjectTitle = (subject) =>
-    buildSubjectRegistrationTitle(subject.title || availableSubjects.find(
+    subject.title || availableSubjects.find(
       (availableSubject) =>
         String(availableSubject.id) === String(subject.methodicalSubjectId)
-    )?.title);
+    )?.title || "";
 
   const journalData = useMemo(() => {
-    if (!selectedJournal || !data?.table) {
+    if (!selectedJournal || !selectedSubject || !data?.table) {
       return null;
     }
 
-    const storageId = getJournalStorageId(selectedJournal);
+    const journalId = getJournalStorageId(selectedJournal);
+    const subjectId = selectedSubject.id || getStorageSafeValue(selectedSubject.title);
+    const storageId = `${journalId}:subject:${subjectId}`;
     const tableStorageKey = `munara-library-table:${journalScope || "default"}:${storageId}:main`;
+    const subjectJournalTitle = buildSubjectRegistrationTitle(selectedSubject.title);
 
     return {
       ...data,
       description: "",
       id: storageId,
-      table: buildSubjectJournalTable(selectedJournalTitle, {
+      table: buildSubjectJournalTable(subjectJournalTitle, {
         enableCellColoring: true,
         hideDate: true,
       }),
-      title: selectedJournalTitle,
+      title: subjectJournalTitle,
       tableStorageKey,
       headerStorageKey: `${tableStorageKey}:fields-v2`,
       tableActionStorageKey: `${tableStorageKey}:action`,
       submissionPeriodId: storageId,
       submissionSectionId: journalSubmissionSectionId,
       autoSubmitOnSave: false,
-      submissionDocumentTitle: selectedJournalTitle,
+      submissionDocumentTitle: subjectJournalTitle,
     };
-  }, [selectedJournal, selectedJournalTitle, data, journalScope, journalSubmissionSectionId]);
+  }, [selectedJournal, selectedSubject, data, journalScope, journalSubmissionSectionId]);
 
   if (selectedJournalSubmission) {
     const submissionStorageKey = `combat-journal-submission:${selectedJournalSubmission.id}`;
@@ -500,8 +520,16 @@ export default function CombatTrainingJournal({ data, methodicalSubjects = [], u
       <Library
         data={journalData}
         onBack={() => {
-          setSelectedJournal(null);
+          setSelectedSubject(null);
           loadJournalSubmissions();
+        }}
+        onSubmissionCreated={(submission) => {
+          setJournalSubmissions((items) => [
+            submission,
+            ...items.filter((item) => item.id !== submission.id),
+          ]);
+          setSelectedSubject(null);
+          setSelectedJournal(null);
         }}
       />
     );
@@ -643,8 +671,11 @@ export default function CombatTrainingJournal({ data, methodicalSubjects = [], u
     }
   };
 
-  const handleCreateSubject = (event) => {
+  const handleCreateSubject = async (event) => {
     event.preventDefault();
+    if (user?.role !== "admin") {
+      return;
+    }
     const manualTitle = manualSubjectTitle.trim();
 
     const selectedMethodicalSubject = availableSubjects.find(
@@ -656,23 +687,20 @@ export default function CombatTrainingJournal({ data, methodicalSubjects = [], u
     }
 
     const subjectTitle = manualTitle || selectedMethodicalSubject.title;
-    const nextSubject = {
-      createdAt: new Date().toISOString(),
-      ...(selectedMethodicalSubject ? { methodicalSubjectId: selectedMethodicalSubject.id } : {}),
-      title: buildSubjectRegistrationTitle(subjectTitle),
-    };
-    nextSubject.id = getSubjectStorageId(nextSubject);
-
-    const nextSubjects = [
-      nextSubject,
-      ...subjects.filter((subject) => subject.id !== nextSubject.id),
-    ];
-
-    setSubjects(nextSubjects);
-    saveStoredJournals(subjectRegistryStorageKey, nextSubjects);
-    setSelectedMethodicalSubjectId("");
-    setManualSubjectTitle("");
-    setIsSubjectCreateOpen(false);
+    try {
+      const createdSubject = await createCombatTrainingJournalSubject({
+        title: subjectTitle,
+        order: availableSubjects.length + 1,
+      });
+      setAvailableSubjects((items) => [...items, createdSubject]);
+      setSubjects((items) => [...items, createdSubject]);
+      setSelectedMethodicalSubjectId("");
+      setManualSubjectTitle("");
+      setSubjectLoadError("");
+      setIsSubjectCreateOpen(false);
+    } catch {
+      setSubjectLoadError("Не удалось добавить предмет. Проверьте название и повторите попытку.");
+    }
   };
 
   const openSubjectEditDialog = (subject) => {
@@ -719,7 +747,7 @@ export default function CombatTrainingJournal({ data, methodicalSubjects = [], u
     setIsSubjectCreateOpen(true);
 
     try {
-      setAvailableSubjects(await getMethodicalSubjects());
+      setAvailableSubjects(await getCombatTrainingJournalSubjects());
     } catch {
       setSubjectLoadError(
         "\u041d\u0435 \u0443\u0434\u0430\u043b\u043e\u0441\u044c \u0437\u0430\u0433\u0440\u0443\u0437\u0438\u0442\u044c \u0441\u043f\u0438\u0441\u043e\u043a \u043f\u0440\u0435\u0434\u043c\u0435\u0442\u043e\u0432."
@@ -798,7 +826,13 @@ export default function CombatTrainingJournal({ data, methodicalSubjects = [], u
       <section className="module-panel">
         <button
           className="module-back-button"
-          onClick={() => setSelectedJournal(null)}
+          onClick={() => {
+            setSelectedJournal(null);
+            setSelectedSubject(null);
+            if (user?.role !== "admin") {
+              setSelectedJournalCategory(null);
+            }
+          }}
           type="button"
         >
           {"\u0410\u0440\u0442\u043a\u0430"}
@@ -809,20 +843,15 @@ export default function CombatTrainingJournal({ data, methodicalSubjects = [], u
         <div className="combat-journal-subject-header">
           <h2>{SUBJECT_SECTION_TITLE}</h2>
           <div className="saved-table-card__actions">
-            <button
-              className="combat-journal-create-button"
-              onClick={() => openJournalEditDialog(selectedJournal)}
-              type="button"
-            >
-              {"\u0418\u0437\u043c\u0435\u043d\u0438\u0442\u044c \u0436\u0443\u0440\u043d\u0430\u043b"}
-            </button>
-            <button
-              className="combat-journal-create-button"
-              onClick={openSubjectCreateDialog}
-              type="button"
-            >
-              {"\u0421\u043e\u0437\u0434\u0430\u0442\u044c \u043f\u0440\u0435\u0434\u043c\u0435\u0442"}
-            </button>
+            {user?.role === "admin" ? (
+              <button
+                className="combat-journal-create-button"
+                onClick={openSubjectCreateDialog}
+                type="button"
+              >
+                {"\u0414\u043e\u0431\u0430\u0432\u0438\u0442\u044c \u043f\u0440\u0435\u0434\u043c\u0435\u0442"}
+              </button>
+            ) : null}
           </div>
         </div>
         {renderJournalEditDialog()}
@@ -897,15 +926,6 @@ export default function CombatTrainingJournal({ data, methodicalSubjects = [], u
                 {formatCreatedAt(subject.createdAt) && (
                   <span>{"\u0421\u043e\u0437\u0434\u0430\u043d\u043e"}: {formatCreatedAt(subject.createdAt)}</span>
                 )}
-                <div
-                  className="saved-table-card__actions"
-                  onClick={(event) => event.stopPropagation()}
-                  onKeyDown={(event) => event.stopPropagation()}
-                >
-                  <button onClick={() => openSubjectEditDialog(subject)} type="button">
-                    {"\u0418\u0437\u043c\u0435\u043d\u0438\u0442\u044c"}
-                  </button>
-                </div>
               </article>
             ))}
           </div>
@@ -1131,6 +1151,14 @@ export default function CombatTrainingJournal({ data, methodicalSubjects = [], u
                 setSelectedAdminUnitNumber(null);
                 setSelectedAdminOutpostName(null);
                 setSelectedJournalCategory(category.id);
+                if (user?.role !== "admin") {
+                  setSelectedJournal({
+                    id: `combat-training-journal-${category.id}`,
+                    title: category.title,
+                    unitName: getDefaultUnitName(user),
+                    year: DEFAULT_YEAR,
+                  });
+                }
               }}
               type="button"
             >
@@ -1164,16 +1192,18 @@ export default function CombatTrainingJournal({ data, methodicalSubjects = [], u
       <header>
         <h1>{selectedCategory?.title || COMBAT_TRAINING_JOURNAL_TITLE}</h1>
       </header>
-      {user?.role !== "admin" && (
+      {(
         <button
           className="combat-journal-create-button"
-          onClick={() => {
-            setJournalTitle("");
-            setIsCreateOpen(true);
-          }}
+          onClick={() => setSelectedJournal({
+            id: `combat-training-journal-${selectedJournalCategory}`,
+            title: selectedCategory?.title || COMBAT_TRAINING_JOURNAL_TITLE,
+            unitName: "",
+            year: DEFAULT_YEAR,
+          })}
           type="button"
         >
-          {"\u0421\u043e\u0437\u0434\u0430\u0442\u044c"}
+          Предметы журнала
         </button>
       )}
       {user?.role !== "admin" && isCreateOpen && (
@@ -1204,53 +1234,6 @@ export default function CombatTrainingJournal({ data, methodicalSubjects = [], u
         </div>
       )}
       {renderJournalEditDialog()}
-      {user?.role !== "admin" && (journals.length > 0 ? (
-        <div className="saved-table-list">
-          {journals.map((journal) => (
-            <article
-              className="saved-table-card"
-              key={getJournalStorageId(journal)}
-              onClick={() => setSelectedJournal(journal)}
-              onKeyDown={(event) => openCardWithKeyboard(event, () => setSelectedJournal(journal))}
-              role="button"
-              tabIndex={0}
-            >
-              <strong>{getJournalTitle(journal)}</strong>
-              <span>
-                {journalSubmissions.some(
-                  (submission) => submission.periodId === getJournalStorageId(journal)
-                )
-                  ? "Заполнено"
-                  : "Не заполнено"}
-              </span>
-              <div
-                className="saved-table-card__actions"
-                onClick={(event) => event.stopPropagation()}
-                onKeyDown={(event) => event.stopPropagation()}
-              >
-                {user?.role === "admin" || journal.ownerId === user?.id ? (
-                  <button onClick={() => openJournalEditDialog(journal)} type="button">
-                    {"\u0418\u0437\u043c\u0435\u043d\u0438\u0442\u044c"}
-                  </button>
-                ) : null}
-                {user?.role === "admin" && journal.serverId ? (
-                  <button
-                    disabled={deletingJournalId === journal.serverId}
-                    onClick={() => handleDeleteJournal(journal)}
-                    type="button"
-                  >
-                    {deletingJournalId === journal.serverId ? "Өчүрүү..." : "Өчүрүү"}
-                  </button>
-                ) : null}
-              </div>
-            </article>
-          ))}
-        </div>
-      ) : (
-        <p className="dashboard-state">
-          {"\u0421\u043e\u0437\u0434\u0430\u043d\u043d\u044b\u0445 \u0436\u0443\u0440\u043d\u0430\u043b\u043e\u0432 \u043f\u043e\u043a\u0430 \u043d\u0435\u0442."}
-        </p>
-      ))}
       {renderJournalSubmissions()}
       <SubmissionForwardDialog
         onClose={() => setForwardingSubmission(null)}
