@@ -11,6 +11,7 @@ import {
   OUTPOSTS_BY_MILITARY_UNIT,
   formatOutpostName,
 } from "../../../data/militaryUnits.js";
+import useDocumentHistory from "../../../hooks/useDocumentHistory.js";
 import SubmissionForwardDialog from "./SubmissionForwardDialog.jsx";
 import SubmissionEditPermissionButton from "./SubmissionEditPermissionButton.jsx";
 
@@ -856,6 +857,9 @@ export default function CombatTrainingResults({ data, user }) {
   const [sectionTitle, setSectionTitle] = useState("");
   const [sectionInsertType, setSectionInsertType] = useState("section");
   const [insertPosition, setInsertPosition] = useState(0);
+  const [rowActionDialog, setRowActionDialog] = useState(null);
+  const [selectedRowIndex, setSelectedRowIndex] = useState(-1);
+  const [newRowNumber, setNewRowNumber] = useState("1");
   const [editableTitle, setEditableTitle] = useState("");
   const [editableFooter, setEditableFooter] = useState(DEFAULT_TABLE_FOOTER);
   const [signatureImages, setSignatureImages] = useState({});
@@ -1403,9 +1407,27 @@ export default function CombatTrainingResults({ data, user }) {
     }
   };
 
-  const handleAddRow = () => {
-    const nextNumber = editableRows.filter(r => !r.__isSection && !r.__isCenteredSection && !r.__isSummary).length + 1;
-    const newRow = selectedTable?.type === "physicalTraining"
+  const getEditableDataRowIndexes = () => editableRows
+    .map((row, index) => ({row, index}))
+    .filter(({row}) =>
+      !row.__isSection &&
+      !row.__isCenteredSection &&
+      !row.__isSummary &&
+      !row.__isResultColumn
+    )
+    .map(({index}) => index);
+
+  const buildEmptyRow = (requestedNumber) => {
+    const defaultNumber = editableRows.filter(
+      (row) =>
+        !row.__isSection &&
+        !row.__isCenteredSection &&
+        !row.__isSummary &&
+        !row.__isResultColumn
+    ).length + 1;
+    const nextNumber = String(requestedNumber || defaultNumber).trim() || String(defaultNumber);
+    const dottedNumber = `${nextNumber.replace(/\.+$/, "")}.`;
+    return selectedTable?.type === "physicalTraining"
       ? createEmptyPhysicalRow(nextNumber)
       : selectedTable?.type === "shootingTraining"
         ? createEmptyShootingRow(nextNumber)
@@ -1414,13 +1436,13 @@ export default function CombatTrainingResults({ data, user }) {
           : selectedTable?.type === "inspectionSummary"
             ? createEmptyInspectionSummaryRow(nextNumber)
             : selectedTable?.type === "inspectionSecondSummary"
-              ? createEmptyInspectionSecondSummaryRow(`${nextNumber}.`)
+              ? createEmptyInspectionSecondSummaryRow(dottedNumber)
             : selectedTable?.type === "inspectionBpFirstSummary"
-              ? createEmptyBpFirstSummaryRow(`${nextNumber}.`)
+              ? createEmptyBpFirstSummaryRow(dottedNumber)
             : selectedTable?.type === "inspectionBpSecondSummary"
-              ? createEmptyInspectionSecondSummaryRow(`${nextNumber}.`)
+              ? createEmptyInspectionSecondSummaryRow(dottedNumber)
               : selectedTable?.type === "inspectionBpFifthSummary"
-                ? createEmptyBpFirstSummaryRow(`${nextNumber}.`)
+                ? createEmptyBpFirstSummaryRow(dottedNumber)
               : selectedTable?.type === "kojResults"
                 ? createEmptyKojRow(
                     nextNumber,
@@ -1439,34 +1461,49 @@ export default function CombatTrainingResults({ data, user }) {
           totalGrade: "",
           note: "",
         };
-    const summaryIndex = editableRows.findIndex((row) => row.__isSummary);
-    if (summaryIndex >= 0) {
-      setEditableRows([
-        ...editableRows.slice(0, summaryIndex),
-        newRow,
-        ...editableRows.slice(summaryIndex),
-      ]);
-      return;
-    }
-    setEditableRows([...editableRows, newRow]);
+  };
+
+  const renumberEditableRows = (rows) => {
+    let rowCounter = 1;
+    return rows.map((row) => {
+      if (row.__isSection || row.__isCenteredSection || row.__isSummary || row.__isResultColumn) {
+        return row;
+      }
+      return {...row, number: rowCounter++};
+    });
+  };
+
+  const handleAddRow = () => {
+    const rowIndexes = getEditableDataRowIndexes();
+    setSelectedRowIndex(rowIndexes.length > 0 ? rowIndexes[rowIndexes.length - 1] : -1);
+    setNewRowNumber(String(rowIndexes.length + 1));
+    setRowActionDialog("add");
   };
 
   const handleDeleteRow = () => {
-    if (editableRows.length === 0) return;
-    for (let i = editableRows.length - 1; i >= 0; i--) {
-      if (!editableRows[i].__isSection && !editableRows[i].__isCenteredSection && !editableRows[i].__isSummary) {
-        const newRows = editableRows.filter((_, index) => index !== i);
-        let rowCounter = 1;
-        const updatedRows = newRows.map((row) => {
-          if (row.__isSection || row.__isCenteredSection || row.__isSummary) {
-            return row;
-          }
-          return { ...row, number: rowCounter++ };
-        });
-        setEditableRows(updatedRows);
-        break;
-      }
+    const rowIndexes = getEditableDataRowIndexes();
+    if (rowIndexes.length === 0) return;
+    setSelectedRowIndex(rowIndexes[rowIndexes.length - 1]);
+    setRowActionDialog("delete");
+  };
+
+  const handleConfirmRowAction = () => {
+    if (rowActionDialog === "add") {
+      const insertionIndex = selectedRowIndex < 0 ? 0 : selectedRowIndex + 1;
+      const nextRows = [
+        ...editableRows.slice(0, insertionIndex),
+        buildEmptyRow(newRowNumber),
+        ...editableRows.slice(insertionIndex),
+      ];
+      setEditableRows(nextRows);
+    } else if (rowActionDialog === "delete" && selectedRowIndex >= 0) {
+      setEditableRows(renumberEditableRows(
+        editableRows.filter((_, index) => index !== selectedRowIndex)
+      ));
     }
+    setRowActionDialog(null);
+    setSelectedRowIndex(-1);
+    setNewRowNumber("1");
   };
 
   const sections = data?.sections || [
@@ -1721,12 +1758,37 @@ export default function CombatTrainingResults({ data, user }) {
   const isInspectionBpFirstSummary = selectedTable?.type === "inspectionBpFirstSummary";
   const isInspectionBpSecondSummary = selectedTable?.type === "inspectionBpSecondSummary";
   const isInspectionBpFifthSummary = selectedTable?.type === "inspectionBpFifthSummary";
+  const shouldSyncResultsTableScroll =
+    selectedSectionId === "observation" || isInspectionSummary;
   const isBpPreparedSummary = isInspectionBpFirstSummary || isInspectionBpFifthSummary;
   const isInspectionBpPlainSummary = isInspectionBpSecondSummary || isInspectionBpFifthSummary;
   const isCompactSummaryTable = isInspectionSecondSummary || isInspectionBpFirstSummary || isInspectionBpSecondSummary || isInspectionBpFifthSummary;
+  const resultsTableHistory = useDocumentHistory({
+    resetKey: [
+      selectedSectionId,
+      selectedSubsectionId,
+      selectedPeriodId,
+      selectedAdminUnitNumber,
+      selectedAdminOutpostName,
+    ].filter(Boolean).join(":") || "results-no-table",
+    value: {
+      rows: editableRows,
+      columns: editableColumns,
+      headerRows: editableHeaderRows,
+      title: editableTitle,
+      footer: editableFooter,
+    },
+    onChange: (snapshot) => {
+      setEditableRows(snapshot.rows || []);
+      setEditableColumns(snapshot.columns || []);
+      setEditableHeaderRows(snapshot.headerRows || []);
+      setEditableTitle(snapshot.title || "");
+      setEditableFooter(snapshot.footer || "");
+    },
+  });
 
   useEffect(() => {
-    if (!isInspectionSummary) {
+    if (!shouldSyncResultsTableScroll) {
       return undefined;
     }
 
@@ -1763,7 +1825,12 @@ export default function CombatTrainingResults({ data, user }) {
       window.removeEventListener("resize", updateScrollWidth);
       resizeObserver?.disconnect();
     };
-  }, [editableRows.length, isInspectionSummary, selectedPeriodId, tableColumns]);
+  }, [
+    editableRows.length,
+    selectedPeriodId,
+    shouldSyncResultsTableScroll,
+    tableColumns,
+  ]);
 
   const syncResultsTableScroll = (source, targetRef) => {
     if (targetRef.current && targetRef.current.scrollLeft !== source.scrollLeft) {
@@ -2858,6 +2925,22 @@ export default function CombatTrainingResults({ data, user }) {
           
           <div style={wordTableStyles.actionsContainer}>
             <div style={wordTableStyles.actionsLeft}>
+              <button
+                disabled={!resultsTableHistory.canUndo}
+                onClick={resultsTableHistory.undo}
+                style={wordTableStyles.button}
+                type="button"
+              >
+                ↶ Назад
+              </button>
+              <button
+                disabled={!resultsTableHistory.canRedo}
+                onClick={resultsTableHistory.redo}
+                style={wordTableStyles.button}
+                type="button"
+              >
+                ↷ Вперёд
+              </button>
               <button style={wordTableStyles.button} onClick={handleAddRow} type="button">
                 + Сап кошуу
               </button>
@@ -2865,7 +2948,7 @@ export default function CombatTrainingResults({ data, user }) {
                 style={{...wordTableStyles.button, ...wordTableStyles.buttonSecondary}} 
                 onClick={handleDeleteRow} 
                 type="button"
-                disabled={editableRows.filter(r => !r.__isSection && !r.__isCenteredSection && !r.__isSummary).length === 0}
+                disabled={getEditableDataRowIndexes().length === 0}
               >
                 - удалить строку
               </button>
@@ -2919,7 +3002,7 @@ export default function CombatTrainingResults({ data, user }) {
             </div>
           </div>
 
-          {isInspectionSummary ? (
+          {shouldSyncResultsTableScroll ? (
             <div
               className="results-table-scroll-top"
               onScroll={(event) => syncResultsTableScroll(event.currentTarget, resultsTableScrollRef)}
@@ -2931,11 +3014,11 @@ export default function CombatTrainingResults({ data, user }) {
           <div
             className="table-wrap"
             onScroll={
-              isInspectionSummary
+              shouldSyncResultsTableScroll
                 ? (event) => syncResultsTableScroll(event.currentTarget, resultsTopScrollRef)
                 : undefined
             }
-            ref={isInspectionSummary ? resultsTableScrollRef : undefined}
+            ref={shouldSyncResultsTableScroll ? resultsTableScrollRef : undefined}
             style={{ border: '1px solid #000', overflowX: 'auto' }}
           >
             <table className="training-table training-table--thematic-account" style={compactTableStyle}>
@@ -3366,6 +3449,85 @@ export default function CombatTrainingResults({ data, user }) {
         }}
         submission={forwardingSubmission}
       />
+      {rowActionDialog && (
+        <>
+          <div
+            style={wordTableStyles.dialogOverlay}
+            onClick={() => setRowActionDialog(null)}
+          />
+          <div style={wordTableStyles.dialog} role="dialog" aria-modal="true">
+            <h2 style={wordTableStyles.dialogTitle}>
+              {rowActionDialog === "add" ? "Добавить строку" : "Удалить строку"}
+            </h2>
+            <div>
+              <label style={wordTableStyles.dialogLabel}>
+                {rowActionDialog === "add"
+                  ? "После какой строки добавить новую строку:"
+                  : "Какую строку удалить:"}
+              </label>
+              <select
+                autoFocus
+                value={selectedRowIndex}
+                onChange={(event) => setSelectedRowIndex(Number(event.target.value))}
+                style={wordTableStyles.dialogSelect}
+              >
+                {rowActionDialog === "add" ? (
+                  <option value={-1}>В начало таблицы</option>
+                ) : null}
+                {editableRows.map((row, index) => {
+                  if (row.__isSection || row.__isCenteredSection || row.__isSummary || row.__isResultColumn) {
+                    return null;
+                  }
+                  const details =
+                    row.personalNumber ||
+                    row.fullName ||
+                    row.name ||
+                    row.subdivision ||
+                    "";
+                  return (
+                    <option key={index} value={index}>
+                      Строка №{row.number || index + 1}{details ? ` — ${details}` : ""}
+                    </option>
+                  );
+                })}
+              </select>
+            </div>
+            {rowActionDialog === "add" ? (
+              <div>
+                <label style={wordTableStyles.dialogLabel}>Номер новой строки:</label>
+                <input
+                  autoComplete="off"
+                  inputMode="numeric"
+                  placeholder="Например: 5"
+                  type="text"
+                  value={newRowNumber}
+                  onChange={(event) => setNewRowNumber(event.target.value)}
+                  style={wordTableStyles.dialogInput}
+                />
+              </div>
+            ) : null}
+            <div style={wordTableStyles.dialogActions}>
+              <button
+                onClick={() => setRowActionDialog(null)}
+                style={{...wordTableStyles.dialogButton, ...wordTableStyles.dialogButtonSecondary}}
+                type="button"
+              >
+                Отмена
+              </button>
+              <button
+                onClick={handleConfirmRowAction}
+                style={{
+                  ...wordTableStyles.dialogButton,
+                  ...wordTableStyles.dialogButtonPrimary,
+                }}
+                type="button"
+              >
+                {rowActionDialog === "add" ? "Добавить" : "Удалить"}
+              </button>
+            </div>
+          </div>
+        </>
+      )}
       {isInsertSectionDialogOpen && (
         <>
           <div style={wordTableStyles.dialogOverlay} onClick={() => setIsInsertSectionDialogOpen(false)} />

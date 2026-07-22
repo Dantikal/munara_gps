@@ -274,6 +274,7 @@ class ThematicAccountSubmission(models.Model):
     period_slug = models.CharField("Период", max_length=100, blank=True)
     table_data = models.JSONField("Таблица", default=dict)
     created_at = models.DateTimeField("Отправлено", auto_now_add=True)
+    updated_at = models.DateTimeField("Обновлено", auto_now=True)
 
     class Meta:
         ordering = ("-created_at", "-id")
@@ -282,6 +283,25 @@ class ThematicAccountSubmission(models.Model):
 
     def __str__(self):
         return self.document_title
+
+
+class CombatTrainingJournalRevision(models.Model):
+    submission = models.ForeignKey(
+        ThematicAccountSubmission,
+        on_delete=models.CASCADE,
+        related_name="revisions",
+    )
+    document_title = models.CharField("Название журнала", max_length=255)
+    table_data = models.JSONField("Снимок таблицы", default=dict)
+    created_at = models.DateTimeField("Сохранено", auto_now_add=True)
+
+    class Meta:
+        ordering = ("-created_at", "-id")
+        verbose_name = "Обновление журнала боевой подготовки"
+        verbose_name_plural = "Обновления журналов боевой подготовки"
+
+    def __str__(self):
+        return f"{self.document_title} — {self.created_at:%d.%m.%Y %H:%M}"
 
 
 class SubmissionEditRequest(models.Model):

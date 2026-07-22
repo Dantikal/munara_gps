@@ -4,8 +4,10 @@ import {
   createCombatTrainingJournal,
   createCombatTrainingJournalSubject,
   deleteCombatTrainingJournal,
+  deleteCombatTrainingJournalRevision,
   deleteThematicAccountSubmission,
   forwardThematicAccountSubmission,
+  getCombatTrainingJournalOutposts,
   getCombatTrainingJournals,
   getCombatTrainingJournalSubjects,
   getThematicAccountSubmissions,
@@ -244,6 +246,15 @@ const getSubjectStorageId = (subject) =>
         subject.createdAt ? String(new Date(subject.createdAt).getTime()) : Date.now(),
       ].join("-");
 
+const getSubjectSubmissionPeriodId = (journal, subject) => {
+  if (!journal || !subject) {
+    return "";
+  }
+
+  const subjectId = subject.id || getStorageSafeValue(subject.title);
+  return `${getJournalStorageId(journal)}:subject:${subjectId}`;
+};
+
 const getStoredJournals = (storageKey) => {
   if (!storageKey || typeof window === "undefined") {
     return [];
@@ -340,14 +351,19 @@ export default function CombatTrainingJournal({ data, methodicalSubjects = [], u
   const [selectedJournalCategory, setSelectedJournalCategory] = useState(null);
   const [selectedAdminUnitNumber, setSelectedAdminUnitNumber] = useState(null);
   const [selectedAdminOutpostName, setSelectedAdminOutpostName] = useState(null);
+  const [isAdminUnitSubjectsOpen, setIsAdminUnitSubjectsOpen] = useState(false);
   const [selectedJournal, setSelectedJournal] = useState(null);
   const [selectedSubject, setSelectedSubject] = useState(null);
   const [journalEditDraft, setJournalEditDraft] = useState(null);
   const [subjectEditDraft, setSubjectEditDraft] = useState(null);
   const [journalSubmissions, setJournalSubmissions] = useState([]);
+  const [journalNotificationSubmissions, setJournalNotificationSubmissions] = useState([]);
+  const [registeredJournalOutposts, setRegisteredJournalOutposts] = useState([]);
   const [selectedJournalSubmission, setSelectedJournalSubmission] = useState(null);
+  const [emptySubjectNotice, setEmptySubjectNotice] = useState("");
   const [journalSubmissionError, setJournalSubmissionError] = useState("");
   const [deletingJournalSubmissionId, setDeletingJournalSubmissionId] = useState(null);
+  const [deletingRevisionId, setDeletingRevisionId] = useState(null);
   const [deletingJournalId, setDeletingJournalId] = useState(null);
   const [forwardingSubmission, setForwardingSubmission] = useState(null);
   const selectedCategory = JOURNAL_CATEGORIES.find(
@@ -368,6 +384,19 @@ export default function CombatTrainingJournal({ data, methodicalSubjects = [], u
     : selectedJournalCategory === "command-training"
       ? "combat-training-command-journal"
       : null;
+  const getCategoryNotificationCount = (categoryId) => {
+    const sectionId = categoryId === "personnel-training"
+      ? "combat-training-personnel-journal"
+      : "combat-training-command-journal";
+    return new Set(
+      journalNotificationSubmissions
+        .filter(
+          (submission) =>
+            submission.sectionId === sectionId && submission.senderRole === "outpost"
+        )
+        .map((submission) => `${submission.senderId}:${submission.periodId}`)
+    ).size;
+  };
 
   const loadJournalSubmissions = async () => {
     try {
@@ -391,6 +420,54 @@ export default function CombatTrainingJournal({ data, methodicalSubjects = [], u
       setJournalSubmissions([]);
     }
   }, [journalSubmissionSectionId, user?.id, user?.role]);
+
+  useEffect(() => {
+    if (user?.role !== "regional") {
+      setJournalNotificationSubmissions([]);
+      return undefined;
+    }
+
+    let isActive = true;
+    getThematicAccountSubmissions()
+      .then((items) => {
+        if (isActive) {
+          setJournalNotificationSubmissions(Array.isArray(items) ? items : []);
+        }
+      })
+      .catch(() => {
+        if (isActive) {
+          setJournalNotificationSubmissions([]);
+        }
+      });
+
+    return () => {
+      isActive = false;
+    };
+  }, [selectedJournalCategory, user?.id, user?.role]);
+
+  useEffect(() => {
+    if (user?.role !== "regional") {
+      setRegisteredJournalOutposts([]);
+      return undefined;
+    }
+
+    let isActive = true;
+    getCombatTrainingJournalOutposts()
+      .then((items) => {
+        if (isActive) {
+          setRegisteredJournalOutposts(Array.isArray(items) ? items : []);
+        }
+      })
+      .catch(() => {
+        if (isActive) {
+          setRegisteredJournalOutposts([]);
+        }
+      });
+
+    return () => {
+      isActive = false;
+    };
+  }, [user?.id, user?.role]);
 
   useEffect(() => {
     let isMounted = true;
@@ -467,25 +544,64 @@ export default function CombatTrainingJournal({ data, methodicalSubjects = [], u
         String(availableSubject.id) === String(subject.methodicalSubjectId)
     )?.title || "";
 
+  const getSubjectSubmission = (subject) => {
+    const periodId = getSubjectSubmissionPeriodId(selectedJournal, subject);
+    return journalSubmissions.find(
+      (submission) =>
+        submission.periodId === periodId &&
+        (!user?.id || String(submission.senderId) === String(user.id))
+    ) || null;
+  };
+  const getSubjectLastUpdatedAt = (subject) => {
+    const submission = getSubjectSubmission(subject);
+    return submission?.updatedAt || submission?.createdAt || "";
+  };
+  const journalUpdates = journalSubmissions
+    .filter(
+      (submission) =>
+        submission.periodId?.startsWith(`${selectedJournalStorageId}:subject:`) &&
+        (!user?.id || String(submission.senderId) === String(user.id))
+    )
+    .flatMap((submission) => {
+      const subject = subjects.find(
+        (item) => getSubjectSubmissionPeriodId(selectedJournal, item) === submission.periodId
+      );
+      const subjectTitle = subject
+        ? getJournalSubjectTitle(subject)
+        : submission.documentTitle;
+
+      return (submission.revisions || []).map((revision) => ({
+        ...revision,
+        key: `${submission.id}:${revision.id}`,
+        submissionId: submission.id,
+        subjectTitle,
+      }));
+    })
+    .sort((left, right) => new Date(right.createdAt) - new Date(left.createdAt));
+
   const journalData = useMemo(() => {
     if (!selectedJournal || !selectedSubject || !data?.table) {
       return null;
     }
 
-    const journalId = getJournalStorageId(selectedJournal);
-    const subjectId = selectedSubject.id || getStorageSafeValue(selectedSubject.title);
-    const storageId = `${journalId}:subject:${subjectId}`;
+    const storageId = getSubjectSubmissionPeriodId(selectedJournal, selectedSubject);
     const tableStorageKey = `munara-library-table:${journalScope || "default"}:${storageId}:main`;
     const subjectJournalTitle = buildSubjectRegistrationTitle(selectedSubject.title);
+    const savedSubmission = journalSubmissions.find(
+      (submission) =>
+        submission.periodId === storageId &&
+        (!user?.id || String(submission.senderId) === String(user.id))
+    );
+    const canUpdateSubmission = ["outpost", "regional"].includes(user?.role);
 
     return {
       ...data,
       description: "",
       id: storageId,
-      table: buildSubjectJournalTable(subjectJournalTitle, {
-        enableCellColoring: true,
-        hideDate: true,
-      }),
+      table: savedSubmission?.table || buildSubjectJournalTable(subjectJournalTitle, {
+          enableCellColoring: true,
+          hideDate: true,
+        }),
       title: subjectJournalTitle,
       tableStorageKey,
       headerStorageKey: `${tableStorageKey}:fields-v2`,
@@ -493,9 +609,20 @@ export default function CombatTrainingJournal({ data, methodicalSubjects = [], u
       submissionPeriodId: storageId,
       submissionSectionId: journalSubmissionSectionId,
       autoSubmitOnSave: false,
+      directSubmissionUpdate: canUpdateSubmission,
+      submissionActionLabel: canUpdateSubmission ? "Обновить" : undefined,
       submissionDocumentTitle: subjectJournalTitle,
     };
-  }, [selectedJournal, selectedSubject, data, journalScope, journalSubmissionSectionId]);
+  }, [
+    selectedJournal,
+    selectedSubject,
+    data,
+    journalScope,
+    journalSubmissionSectionId,
+    journalSubmissions,
+    user?.id,
+    user?.role,
+  ]);
 
   if (selectedJournalSubmission) {
     const submissionStorageKey = `combat-journal-submission:${selectedJournalSubmission.id}`;
@@ -529,7 +656,6 @@ export default function CombatTrainingJournal({ data, methodicalSubjects = [], u
             ...items.filter((item) => item.id !== submission.id),
           ]);
           setSelectedSubject(null);
-          setSelectedJournal(null);
         }}
       />
     );
@@ -829,7 +955,10 @@ export default function CombatTrainingJournal({ data, methodicalSubjects = [], u
           onClick={() => {
             setSelectedJournal(null);
             setSelectedSubject(null);
-            if (user?.role !== "admin") {
+            if (
+              user?.role !== "admin" &&
+              !(user?.role === "regional" && selectedJournalCategory === "command-training")
+            ) {
               setSelectedJournalCategory(null);
             }
           }}
@@ -923,6 +1052,11 @@ export default function CombatTrainingJournal({ data, methodicalSubjects = [], u
                 tabIndex={0}
               >
                 <strong>{getJournalSubjectTitle(subject)}</strong>
+                {getSubjectLastUpdatedAt(subject) ? (
+                  <span>
+                    Последнее обновление: {formatCreatedAt(getSubjectLastUpdatedAt(subject))}
+                  </span>
+                ) : null}
                 {formatCreatedAt(subject.createdAt) && (
                   <span>{"\u0421\u043e\u0437\u0434\u0430\u043d\u043e"}: {formatCreatedAt(subject.createdAt)}</span>
                 )}
@@ -933,6 +1067,53 @@ export default function CombatTrainingJournal({ data, methodicalSubjects = [], u
           <p className="dashboard-state">
             {"\u0421\u043e\u0437\u0434\u0430\u043d\u043d\u044b\u0445 \u043f\u0440\u0435\u0434\u043c\u0435\u0442\u043e\u0432 \u043f\u043e\u043a\u0430 \u043d\u0435\u0442."}
           </p>
+        )}
+        <div className="combat-journal-subject-header">
+          <h2>Обновления журнала</h2>
+        </div>
+        {journalUpdates.length > 0 ? (
+          <div className="saved-table-list">
+            {journalUpdates.map((revision) => (
+              <article
+                className="saved-table-card"
+                key={revision.key}
+                onClick={() => setSelectedJournalSubmission({
+                  ...revision,
+                  id: `revision-${revision.key}`,
+                  documentTitle: revision.subjectTitle,
+                })}
+                onKeyDown={(event) => openCardWithKeyboard(
+                  event,
+                  () => setSelectedJournalSubmission({
+                    ...revision,
+                    id: `revision-${revision.key}`,
+                    documentTitle: revision.subjectTitle,
+                  })
+                )}
+                role="button"
+                tabIndex={0}
+              >
+                <strong>{revision.subjectTitle}</strong>
+                <span>Обновлено: {formatCreatedAt(revision.createdAt)}</span>
+                <span>Нажмите, чтобы посмотреть сохранённую версию</span>
+                <div
+                  className="saved-table-card__actions"
+                  onClick={(event) => event.stopPropagation()}
+                  onKeyDown={(event) => event.stopPropagation()}
+                >
+                  <button
+                    disabled={deletingRevisionId === revision.id}
+                    onClick={() => handleDeleteJournalRevision(revision)}
+                    type="button"
+                  >
+                    {deletingRevisionId === revision.id ? "Удаление..." : "Удалить"}
+                  </button>
+                </div>
+              </article>
+            ))}
+          </div>
+        ) : (
+          <p className="dashboard-state">Обновлений пока нет.</p>
         )}
       </section>
     );
@@ -956,6 +1137,32 @@ export default function CombatTrainingJournal({ data, methodicalSubjects = [], u
       setDeletingJournalSubmissionId(null);
     }
   };
+
+  async function handleDeleteJournalRevision(revision) {
+    if (!window.confirm("Удалить это обновление из истории?")) {
+      return;
+    }
+
+    setDeletingRevisionId(revision.id);
+    setJournalSubmissionError("");
+    try {
+      await deleteCombatTrainingJournalRevision(revision.id);
+      setJournalSubmissions((items) => items.map((submission) =>
+        submission.id === revision.submissionId
+          ? {
+              ...submission,
+              revisions: (submission.revisions || []).filter(
+                (item) => item.id !== revision.id
+              ),
+            }
+          : submission
+      ));
+    } catch {
+      setJournalSubmissionError("Не удалось удалить обновление журнала.");
+    } finally {
+      setDeletingRevisionId(null);
+    }
+  }
 
   const renderJournalSubmissions = () => {
     if (!journalSubmissionSectionId) {
@@ -1002,6 +1209,204 @@ export default function CombatTrainingJournal({ data, methodicalSubjects = [], u
       </article>
     );
 
+    if (
+      user?.role === "regional" &&
+      ["personnel-training", "command-training"].includes(selectedJournalCategory)
+    ) {
+      const incomingSubmissions = journalSubmissions.filter(
+        (submission) => submission.senderRole === "outpost"
+      );
+      const registeredNames = registeredJournalOutposts.map(
+        (outpost) => formatOutpostName(outpost.name)
+      );
+      const directoryNames = (OUTPOSTS_BY_MILITARY_UNIT[user?.region] || []).map(
+        ([, name]) => formatOutpostName(name)
+      );
+      const outpostNames = Array.from(new Set([
+        ...directoryNames,
+        ...registeredNames,
+        ...incomingSubmissions.map((submission) => formatOutpostName(submission.outpostName)),
+      ].filter(Boolean)));
+      const getUpdatedSubjectCount = (outpostName) => new Set(
+        incomingSubmissions
+          .filter(
+            (submission) => formatOutpostName(submission.outpostName) === outpostName
+          )
+          .map((submission) => submission.periodId)
+          .filter(Boolean)
+      ).size;
+
+      if (!selectedAdminOutpostName) {
+        return (
+          <div className="module-submission-list">
+            {selectedJournalCategory === "command-training" ? (
+              <div className="saved-table-list">
+                <article
+                  className="saved-table-card"
+                  onClick={() => setSelectedJournal({
+                    id: "combat-training-journal-command-training",
+                    title: selectedCategory?.title || COMBAT_TRAINING_JOURNAL_TITLE,
+                    unitName: getDefaultUnitName(user),
+                    year: DEFAULT_YEAR,
+                  })}
+                  onKeyDown={(event) => openCardWithKeyboard(
+                    event,
+                    () => setSelectedJournal({
+                      id: "combat-training-journal-command-training",
+                      title: selectedCategory?.title || COMBAT_TRAINING_JOURNAL_TITLE,
+                      unitName: getDefaultUnitName(user),
+                      year: DEFAULT_YEAR,
+                    })
+                  )}
+                  role="button"
+                  tabIndex={0}
+                >
+                  <strong>Предметтер</strong>
+                  <span>Аскер бөлүгүнүн журналдары жана жаңыртуулары</span>
+                </article>
+              </div>
+            ) : null}
+            <h2>{user?.region} аскер бөлүгүнүн заставалары</h2>
+            {outpostNames.length > 0 ? (
+              <div className="saved-table-list">
+                {outpostNames.map((outpostName) => (
+                <button
+                  className={`saved-table-card${
+                    getUpdatedSubjectCount(outpostName) > 0
+                      ? " saved-table-card--with-notification"
+                      : ""
+                  }`}
+                  key={outpostName}
+                  onClick={() => {
+                    setEmptySubjectNotice("");
+                    setSelectedAdminOutpostName(outpostName);
+                  }}
+                  type="button"
+                >
+                  <strong>{outpostName}</strong>
+                  {getUpdatedSubjectCount(outpostName) > 0 ? (
+                    <span
+                      aria-label={`Обновлено предметов: ${getUpdatedSubjectCount(outpostName)}`}
+                      className="combat-journal-notification-badge"
+                    >
+                      {getUpdatedSubjectCount(outpostName)}
+                    </span>
+                  ) : null}
+                </button>
+                ))}
+              </div>
+            ) : (
+              <p className="dashboard-state">Бул аскер бөлүгүнө катталган заставалар азырынча жок.</p>
+            )}
+          </div>
+        );
+      }
+
+      const selectedOutpostSubmissions = incomingSubmissions.filter(
+        (submission) => formatOutpostName(submission.outpostName) === selectedAdminOutpostName
+      );
+      const getOutpostSubjectSubmission = (subject) => selectedOutpostSubmissions.find(
+        (submission) => submission.periodId?.endsWith(`:subject:${subject.id}`)
+      );
+      const outpostUpdates = selectedOutpostSubmissions
+        .flatMap((submission) => {
+          const subject = availableSubjects.find(
+            (item) => submission.periodId?.endsWith(`:subject:${item.id}`)
+          );
+          return (submission.revisions || []).map((revision) => ({
+            ...revision,
+            key: `${submission.id}:${revision.id}`,
+            submissionId: submission.id,
+            subjectTitle: subject?.title || submission.documentTitle,
+          }));
+        })
+        .sort((left, right) => new Date(right.createdAt) - new Date(left.createdAt));
+
+      return (
+        <div className="module-submission-list">
+          <h2>{selectedAdminOutpostName}</h2>
+          <h3>Предметы</h3>
+          <div className="saved-table-list">
+            {availableSubjects.map((subject) => {
+              const submission = getOutpostSubjectSubmission(subject);
+              return (
+                <button
+                  className="saved-table-card"
+                  key={subject.id}
+                  onClick={() => {
+                    if (submission) {
+                      setEmptySubjectNotice("");
+                      setSelectedJournalSubmission(submission);
+                    } else {
+                      setEmptySubjectNotice(
+                        `В предмете «${subject.title}» ещё нет обновлений.`
+                      );
+                    }
+                  }}
+                  type="button"
+                >
+                  <strong>{subject.title}</strong>
+                  <span>
+                    {submission
+                      ? `Последнее обновление: ${formatCreatedAt(submission.updatedAt || submission.createdAt)}`
+                      : "Обновлений пока нет"}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+          {emptySubjectNotice ? (
+            <p className="dashboard-state">{emptySubjectNotice}</p>
+          ) : null}
+          <h3>История обновлений</h3>
+          {outpostUpdates.length > 0 ? (
+            <div className="saved-table-list">
+              {outpostUpdates.map((revision) => (
+                <article
+                  className="saved-table-card"
+                  key={revision.key}
+                  onClick={() => setSelectedJournalSubmission({
+                    ...revision,
+                    id: `revision-${revision.key}`,
+                    documentTitle: revision.subjectTitle,
+                  })}
+                  onKeyDown={(event) => openCardWithKeyboard(
+                    event,
+                    () => setSelectedJournalSubmission({
+                      ...revision,
+                      id: `revision-${revision.key}`,
+                      documentTitle: revision.subjectTitle,
+                    })
+                  )}
+                  role="button"
+                  tabIndex={0}
+                >
+                  <strong>{revision.subjectTitle}</strong>
+                  <span>Обновлено: {formatCreatedAt(revision.createdAt)}</span>
+                  <div
+                    className="saved-table-card__actions"
+                    onClick={(event) => event.stopPropagation()}
+                    onKeyDown={(event) => event.stopPropagation()}
+                  >
+                    <button
+                      disabled={deletingRevisionId === revision.id}
+                      onClick={() => handleDeleteJournalRevision(revision)}
+                      type="button"
+                    >
+                      {deletingRevisionId === revision.id ? "Удаление..." : "Удалить"}
+                    </button>
+                  </div>
+                </article>
+              ))}
+            </div>
+          ) : (
+            <p className="dashboard-state">У этой заставы обновлений пока нет.</p>
+          )}
+          {journalSubmissionError && <p className="dashboard-error">{journalSubmissionError}</p>}
+        </div>
+      );
+    }
+
     if (user?.role === "admin") {
       const unitNumbers = Array.from(new Set([
         ...(data?.unitNumbers || []),
@@ -1027,6 +1432,46 @@ export default function CombatTrainingJournal({ data, methodicalSubjects = [], u
             (submission) => formatOutpostName(submission.outpostName) === selectedAdminOutpostName
           )
         : [];
+      const getAdminOutpostSubjectSubmission = (subject) => selectedOutpostSubmissions.find(
+        (submission) => submission.periodId?.endsWith(`:subject:${subject.id}`)
+      );
+      const adminOutpostUpdates = selectedOutpostSubmissions
+        .flatMap((submission) => {
+          const subject = availableSubjects.find(
+            (item) => submission.periodId?.endsWith(`:subject:${item.id}`)
+          );
+          return (submission.revisions || []).map((revision) => ({
+            ...revision,
+            key: `${submission.id}:${revision.id}`,
+            submissionId: submission.id,
+            subjectTitle: subject?.title || submission.documentTitle,
+          }));
+        })
+        .sort((left, right) => new Date(right.createdAt) - new Date(left.createdAt));
+      const getAdminOutpostUpdatedSubjectCount = (outpostName) => new Set(
+        outpostSubmissions
+          .filter(
+            (submission) => formatOutpostName(submission.outpostName) === outpostName
+          )
+          .map((submission) => submission.periodId)
+          .filter(Boolean)
+      ).size;
+      const getAdminUnitSubjectSubmission = (subject) => militaryUnitSubmissions.find(
+        (submission) => submission.periodId?.endsWith(`:subject:${subject.id}`)
+      );
+      const adminUnitUpdates = militaryUnitSubmissions
+        .flatMap((submission) => {
+          const subject = availableSubjects.find(
+            (item) => submission.periodId?.endsWith(`:subject:${item.id}`)
+          );
+          return (submission.revisions || []).map((revision) => ({
+            ...revision,
+            key: `${submission.id}:${revision.id}`,
+            submissionId: submission.id,
+            subjectTitle: subject?.title || submission.documentTitle,
+          }));
+        })
+        .sort((left, right) => new Date(right.createdAt) - new Date(left.createdAt));
 
       if (!selectedAdminUnitNumber) {
         return (
@@ -1038,6 +1483,7 @@ export default function CombatTrainingJournal({ data, methodicalSubjects = [], u
                 onClick={() => {
                   setSelectedAdminUnitNumber(unitNumber);
                   setSelectedAdminOutpostName(null);
+                  setIsAdminUnitSubjectsOpen(false);
                 }}
                 type="button"
               >
@@ -1052,15 +1498,167 @@ export default function CombatTrainingJournal({ data, methodicalSubjects = [], u
         return (
           <div className="module-submission-list">
             <h2>{selectedAdminOutpostName}</h2>
-            <h3>Заставадан жөнөтүлгөн журналдар</h3>
-            {selectedOutpostSubmissions.length > 0 ? (
+            <h3>Предметтер</h3>
+            <div className="saved-table-list">
+              {availableSubjects.map((subject) => {
+                const submission = getAdminOutpostSubjectSubmission(subject);
+                return (
+                  <button
+                    className="saved-table-card"
+                    key={subject.id}
+                    onClick={() => {
+                      if (submission) {
+                        setEmptySubjectNotice("");
+                        setSelectedJournalSubmission(submission);
+                      } else {
+                        setEmptySubjectNotice(
+                          `В предмете «${subject.title}» ещё нет обновлений.`
+                        );
+                      }
+                    }}
+                    type="button"
+                  >
+                    <strong>{subject.title}</strong>
+                    <span>
+                      {submission
+                        ? `Последнее обновление: ${formatCreatedAt(submission.updatedAt || submission.createdAt)}`
+                        : "Обновлений пока нет"}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+            {emptySubjectNotice ? (
+              <p className="dashboard-state">{emptySubjectNotice}</p>
+            ) : null}
+            <h3>История обновлений</h3>
+            {adminOutpostUpdates.length > 0 ? (
               <div className="saved-table-list">
-                {selectedOutpostSubmissions.map((submission) => renderSubmissionCard(submission))}
+                {adminOutpostUpdates.map((revision) => (
+                  <article
+                    className="saved-table-card"
+                    key={revision.key}
+                    onClick={() => setSelectedJournalSubmission({
+                      ...revision,
+                      id: `revision-${revision.key}`,
+                      documentTitle: revision.subjectTitle,
+                    })}
+                    onKeyDown={(event) => openCardWithKeyboard(
+                      event,
+                      () => setSelectedJournalSubmission({
+                        ...revision,
+                        id: `revision-${revision.key}`,
+                        documentTitle: revision.subjectTitle,
+                      })
+                    )}
+                    role="button"
+                    tabIndex={0}
+                  >
+                    <strong>{revision.subjectTitle}</strong>
+                    <span>Обновлено: {formatCreatedAt(revision.createdAt)}</span>
+                    <div
+                      className="saved-table-card__actions"
+                      onClick={(event) => event.stopPropagation()}
+                      onKeyDown={(event) => event.stopPropagation()}
+                    >
+                      <button
+                        disabled={deletingRevisionId === revision.id}
+                        onClick={() => handleDeleteJournalRevision(revision)}
+                        type="button"
+                      >
+                        {deletingRevisionId === revision.id ? "Удаление..." : "Удалить"}
+                      </button>
+                    </div>
+                  </article>
+                ))}
               </div>
             ) : (
-              <p className="dashboard-state">
-                Бул заставадан жөнөтүлгөн журналдар азырынча жок.
-              </p>
+              <p className="dashboard-state">У этой заставы обновлений пока нет.</p>
+            )}
+            {journalSubmissionError && <p className="dashboard-error">{journalSubmissionError}</p>}
+          </div>
+        );
+      }
+
+      if (isAdminUnitSubjectsOpen && selectedJournalCategory === "command-training") {
+        return (
+          <div className="module-submission-list">
+            <h2>{selectedAdminUnitNumber} аскер бөлүгү · Предметтер</h2>
+            <div className="saved-table-list">
+              {availableSubjects.map((subject) => {
+                const submission = getAdminUnitSubjectSubmission(subject);
+                return (
+                  <button
+                    className="saved-table-card"
+                    key={subject.id}
+                    onClick={() => {
+                      if (submission) {
+                        setEmptySubjectNotice("");
+                        setSelectedJournalSubmission(submission);
+                      } else {
+                        setEmptySubjectNotice(
+                          `В предмете «${subject.title}» ещё нет обновлений.`
+                        );
+                      }
+                    }}
+                    type="button"
+                  >
+                    <strong>{subject.title}</strong>
+                    <span>
+                      {submission
+                        ? `Последнее обновление: ${formatCreatedAt(submission.updatedAt || submission.createdAt)}`
+                        : "Обновлений пока нет"}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+            {emptySubjectNotice ? (
+              <p className="dashboard-state">{emptySubjectNotice}</p>
+            ) : null}
+            <h3>История обновлений</h3>
+            {adminUnitUpdates.length > 0 ? (
+              <div className="saved-table-list">
+                {adminUnitUpdates.map((revision) => (
+                  <article
+                    className="saved-table-card"
+                    key={revision.key}
+                    onClick={() => setSelectedJournalSubmission({
+                      ...revision,
+                      id: `revision-${revision.key}`,
+                      documentTitle: revision.subjectTitle,
+                    })}
+                    onKeyDown={(event) => openCardWithKeyboard(
+                      event,
+                      () => setSelectedJournalSubmission({
+                        ...revision,
+                        id: `revision-${revision.key}`,
+                        documentTitle: revision.subjectTitle,
+                      })
+                    )}
+                    role="button"
+                    tabIndex={0}
+                  >
+                    <strong>{revision.subjectTitle}</strong>
+                    <span>Обновлено: {formatCreatedAt(revision.createdAt)}</span>
+                    <div
+                      className="saved-table-card__actions"
+                      onClick={(event) => event.stopPropagation()}
+                      onKeyDown={(event) => event.stopPropagation()}
+                    >
+                      <button
+                        disabled={deletingRevisionId === revision.id}
+                        onClick={() => handleDeleteJournalRevision(revision)}
+                        type="button"
+                      >
+                        {deletingRevisionId === revision.id ? "Удаление..." : "Удалить"}
+                      </button>
+                    </div>
+                  </article>
+                ))}
+              </div>
+            ) : (
+              <p className="dashboard-state">У этого аскер бөлүгү обновлений пока нет.</p>
             )}
             {journalSubmissionError && <p className="dashboard-error">{journalSubmissionError}</p>}
           </div>
@@ -1070,25 +1668,63 @@ export default function CombatTrainingJournal({ data, methodicalSubjects = [], u
       return (
         <div className="module-submission-list">
           <h2>{selectedAdminUnitNumber} аскер бөлүгү</h2>
-          <h3>Аскер бөлүгүнөн жөнөтүлгөн журналдар</h3>
-          {militaryUnitSubmissions.length > 0 ? (
+          {selectedJournalCategory === "command-training" ? (
             <div className="saved-table-list">
-              {militaryUnitSubmissions.map((submission) => renderSubmissionCard(submission))}
+              <article
+                className="saved-table-card"
+                onClick={() => {
+                  setEmptySubjectNotice("");
+                  setIsAdminUnitSubjectsOpen(true);
+                }}
+                onKeyDown={(event) => openCardWithKeyboard(event, () => {
+                  setEmptySubjectNotice("");
+                  setIsAdminUnitSubjectsOpen(true);
+                })}
+                role="button"
+                tabIndex={0}
+              >
+                <strong>Предметтер</strong>
+                <span>Аскер бөлүгүнүн предметтери жана жаңыртуулары</span>
+              </article>
             </div>
           ) : (
-            <p className="dashboard-state">Аскер бөлүгүнөн жөнөтүлгөн журналдар азырынча жок.</p>
+            <>
+              <h3>Аскер бөлүгүнөн жөнөтүлгөн журналдар</h3>
+              {militaryUnitSubmissions.length > 0 ? (
+                <div className="saved-table-list">
+                  {militaryUnitSubmissions.map((submission) => renderSubmissionCard(submission))}
+                </div>
+              ) : (
+                <p className="dashboard-state">Аскер бөлүгүнөн жөнөтүлгөн журналдар азырынча жок.</p>
+              )}
+            </>
           )}
           <h3>Заставалар</h3>
           {outpostNames.length > 0 ? (
             <div className="saved-table-list">
               {outpostNames.map((outpostName) => (
                 <button
-                  className="saved-table-card"
+                  className={`saved-table-card${
+                    getAdminOutpostUpdatedSubjectCount(outpostName) > 0
+                      ? " saved-table-card--with-notification"
+                      : ""
+                  }`}
                   key={outpostName}
-                  onClick={() => setSelectedAdminOutpostName(outpostName)}
+                  onClick={() => {
+                    setEmptySubjectNotice("");
+                    setSelectedAdminOutpostName(outpostName);
+                  }}
                   type="button"
                 >
                   <strong>{outpostName}</strong>
+                  {getAdminOutpostUpdatedSubjectCount(outpostName) > 0 ? (
+                    <span
+                      aria-label={`Обновлено предметов: ${getAdminOutpostUpdatedSubjectCount(outpostName)}`}
+                      className="combat-journal-notification-badge"
+                    >
+                      {getAdminOutpostUpdatedSubjectCount(outpostName)}
+                    </span>
+                  ) : null}
                 </button>
               ))}
             </div>
@@ -1144,14 +1780,25 @@ export default function CombatTrainingJournal({ data, methodicalSubjects = [], u
         <div className="saved-table-list">
           {JOURNAL_CATEGORIES.map((category) => (
             <button
-              className="saved-table-card"
+              className={`saved-table-card${
+                user?.role === "regional" && getCategoryNotificationCount(category.id) > 0
+                  ? " saved-table-card--with-notification"
+                  : ""
+              }`}
               key={category.id}
               onClick={() => {
                 setJournals([]);
                 setSelectedAdminUnitNumber(null);
                 setSelectedAdminOutpostName(null);
+                setIsAdminUnitSubjectsOpen(false);
                 setSelectedJournalCategory(category.id);
-                if (user?.role !== "admin") {
+                if (
+                  user?.role !== "admin" &&
+                  !(
+                    user?.role === "regional" &&
+                    ["personnel-training", "command-training"].includes(category.id)
+                  )
+                ) {
                   setSelectedJournal({
                     id: `combat-training-journal-${category.id}`,
                     title: category.title,
@@ -1163,6 +1810,14 @@ export default function CombatTrainingJournal({ data, methodicalSubjects = [], u
               type="button"
             >
               <strong>{category.title}</strong>
+              {user?.role === "regional" && getCategoryNotificationCount(category.id) > 0 ? (
+                <span
+                  aria-label={`Всего обновлённых предметов: ${getCategoryNotificationCount(category.id)}`}
+                  className="combat-journal-notification-badge"
+                >
+                  {getCategoryNotificationCount(category.id)}
+                </span>
+              ) : null}
             </button>
           ))}
         </div>
@@ -1177,6 +1832,8 @@ export default function CombatTrainingJournal({ data, methodicalSubjects = [], u
         onClick={() => {
           if (selectedAdminOutpostName) {
             setSelectedAdminOutpostName(null);
+          } else if (isAdminUnitSubjectsOpen) {
+            setIsAdminUnitSubjectsOpen(false);
           } else if (selectedAdminUnitNumber) {
             setSelectedAdminUnitNumber(null);
           } else {
@@ -1192,7 +1849,10 @@ export default function CombatTrainingJournal({ data, methodicalSubjects = [], u
       <header>
         <h1>{selectedCategory?.title || COMBAT_TRAINING_JOURNAL_TITLE}</h1>
       </header>
-      {(
+      {user?.role !== "admin" && !((
+          user?.role === "regional" &&
+          ["personnel-training", "command-training"].includes(selectedJournalCategory)
+        )) && (
         <button
           className="combat-journal-create-button"
           onClick={() => setSelectedJournal({
@@ -1203,7 +1863,7 @@ export default function CombatTrainingJournal({ data, methodicalSubjects = [], u
           })}
           type="button"
         >
-          Предметы журнала
+          Предметтер
         </button>
       )}
       {user?.role !== "admin" && isCreateOpen && (

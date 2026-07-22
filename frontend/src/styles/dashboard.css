@@ -2274,6 +2274,37 @@ button.module-section-card:focus-visible {
   margin: 0;
 }
 
+.lesson-period-dialog__panel--document-create {
+  gap: 24px;
+  max-width: 960px;
+  padding: 30px;
+  width: min(100%, 960px);
+}
+
+.lesson-period-dialog__panel--document-create h2 {
+  font-size: 24px;
+}
+
+.lesson-period-dialog__panel--document-create .module-inline-field {
+  align-items: stretch;
+  display: grid;
+  font-size: 16px;
+  gap: 10px;
+}
+
+.lesson-period-dialog__panel--document-create input {
+  font-size: 17px;
+  min-height: 56px;
+  padding: 12px 16px;
+  width: 100%;
+}
+
+.lesson-period-dialog__panel--document-create .lesson-period-dialog__actions button {
+  font-size: 16px;
+  min-height: 46px;
+  min-width: 132px;
+}
+
 .lesson-period-title-builder {
   align-items: baseline;
   color: #000000;
@@ -2308,6 +2339,11 @@ button.module-section-card:focus-visible {
 
 .lesson-period-title-builder__input::placeholder {
   color: #8e9a94;
+  opacity: 1;
+}
+
+.lesson-period-dialog__panel input::placeholder {
+  color: #8a9590;
   opacity: 1;
 }
 
@@ -2400,6 +2436,33 @@ button.module-section-card:focus-visible {
   padding: 12px 14px;
   text-align: left;
   width: 100%;
+}
+
+.saved-table-card--with-notification {
+  padding-right: 58px;
+  position: relative;
+}
+
+.saved-table-card .combat-journal-notification-badge {
+  align-items: center;
+  background: #1f8a44;
+  border: 2px solid #dff3e6;
+  border-radius: 999px;
+  box-shadow: 0 2px 7px rgb(31 138 68 / 24%);
+  color: #fff;
+  display: inline-flex;
+  font-size: 13px;
+  font-weight: 700;
+  height: 30px;
+  justify-content: center;
+  line-height: 1;
+  min-width: 30px;
+  padding: 0;
+  position: absolute;
+  right: 14px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 30px;
 }
 
 .saved-table-card:hover,

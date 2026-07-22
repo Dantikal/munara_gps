@@ -23,6 +23,14 @@ class LessonSchedulePeriodApiTests(APITestCase):
             status=User.Status.ACTIVE,
             region="2021",
         )
+        self.regional = User.objects.create_user(
+            username="regional-2021@example.com",
+            email="regional-2021@example.com",
+            password="test-password",
+            role=User.Role.REGIONAL,
+            status=User.Status.ACTIVE,
+            region="2021",
+        )
         self.section, _ = TrainingSection.objects.get_or_create(
             slug="lesson-schedule",
             defaults={"title": "Сабактардын жүгүртмөсү"},
@@ -52,8 +60,50 @@ class LessonSchedulePeriodApiTests(APITestCase):
             section["id"]: section for section in command_training["sections"]
         }
 
-        self.assertTrue(command_sections["command-thematic-account"]["periods"])
+        self.assertNotIn("periods", command_sections["command-thematic-account"])
         self.assertTrue(command_sections["command-lesson-schedule"]["periods"])
+
+    def test_outpost_and_regional_can_manage_own_thematic_account_documents(self):
+        list_url = reverse("library-period-list")
+        for user, section_slug, title in (
+            (self.owner, "thematic-account", "Заставанын тематикалык эсеби"),
+            (self.regional, "command-thematic-account", "Аскер бөлүгүнүн тематикалык эсеби"),
+        ):
+            self.client.force_authenticate(user)
+            create_response = self.client.post(
+                list_url,
+                {"section": section_slug, "title": title},
+                format="json",
+            )
+            self.assertEqual(create_response.status_code, 201)
+            self.assertTrue(create_response.data["canEdit"])
+            self.assertTrue(create_response.data["canDelete"])
+
+            period = TrainingPeriod.objects.get(
+                section__slug=section_slug,
+                slug=create_response.data["id"],
+            )
+            self.assertEqual(period.created_by, user)
+
+            detail_url = reverse(
+                "library-period-detail",
+                kwargs={"section_slug": section_slug, "period_slug": period.slug},
+            )
+            update_response = self.client.patch(
+                detail_url,
+                {"title": f"{title} жаңыртылды"},
+                format="json",
+            )
+            self.assertEqual(update_response.status_code, 200)
+
+            self.client.force_authenticate(self.other_user)
+            self.assertEqual(
+                self.client.patch(detail_url, {"title": "Чоочун"}, format="json").status_code,
+                403,
+            )
+
+            self.client.force_authenticate(user)
+            self.assertEqual(self.client.delete(detail_url).status_code, 204)
 
     def test_creator_can_delete_added_week_and_other_user_cannot_see_it(self):
         self.client.force_authenticate(self.owner)

@@ -20,6 +20,7 @@ from .models import (
     CombatTrainingNewsLike,
     CombatTrainingNewsRead,
     CombatTrainingJournal,
+    CombatTrainingJournalRevision,
     CombatTrainingJournalSubject,
     CombatTrainingPlan,
     MethodicalManualDocument,
@@ -31,6 +32,7 @@ from .models import (
     ThematicAccountSubmission,
 )
 from .permissions import IsActiveUser, IsAdminRole
+from .outposts import format_outpost_name
 from .serializers import (
     CombatTrainingJournalSerializer,
     CombatTrainingJournalSubjectSerializer,
@@ -90,7 +92,7 @@ PERSONNEL_TRAINING_SUBMISSION_SECTION_SLUGS = {
     "thematic-account",
     "lesson-schedule",
 }
-REMOVED_THEMATIC_PERIOD_SLUGS = {"period-2", "period-3", "period-4"}
+REMOVED_THEMATIC_PERIOD_SLUGS = {"period-1", "period-2", "period-3", "period-4"}
 REMOVED_THEMATIC_PERIOD_TITLE_PARTS = (
     "2026-окуу жылынын 2 мезгилине",
     "2026-окуу жылынын 3 мезгилине",
@@ -243,7 +245,10 @@ def build_library_sections_from_db(user=None):
                 else period.title
             )
             period_payload = {"id": period.slug, "title": period_title}
-            if user and user.role == User.Role.ADMIN:
+            if user and (
+                user.role == User.Role.ADMIN
+                or period.created_by_id == user.id
+            ):
                 period_payload["canEdit"] = True
                 period_payload["canDelete"] = True
             is_legacy_custom_lesson_period = (
@@ -1296,6 +1301,35 @@ class CombatTrainingJournalSubjectListCreateView(APIView):
         )
 
 
+class CombatTrainingJournalOutpostListView(APIView):
+    permission_classes = [IsActiveUser]
+
+    def get(self, request):
+        if request.user.role not in {User.Role.REGIONAL, User.Role.ADMIN}:
+            raise PermissionDenied("Нет доступа к списку застав.")
+
+        outposts = User.objects.filter(
+            role=User.Role.OUTPOST,
+            status=User.Status.ACTIVE,
+        ).exclude(outpost_name="")
+        if request.user.role == User.Role.REGIONAL:
+            outposts = outposts.filter(region=request.user.region)
+
+        result = []
+        seen = set()
+        for outpost in outposts.order_by("region", "outpost_name", "id"):
+            key = (outpost.region, format_outpost_name(outpost.outpost_name))
+            if key in seen:
+                continue
+            seen.add(key)
+            result.append({
+                "id": outpost.id,
+                "name": key[1],
+                "unitNumber": outpost.region,
+            })
+        return Response(result)
+
+
 class CombatTrainingJournalDetailView(APIView):
     permission_classes = [IsActiveUser]
 
@@ -1399,7 +1433,7 @@ def thematic_submission_payload(submission):
         edit_request = submission.edit_request
     except SubmissionEditRequest.DoesNotExist:
         edit_request = None
-    return {
+    payload = {
         "id": submission.id,
         "senderId": submission.sender_id,
         "senderRole": submission.sender.role,
@@ -1411,9 +1445,24 @@ def thematic_submission_payload(submission):
         "periodId": submission.period_slug,
         "table": submission.table_data,
         "createdAt": submission.created_at.isoformat(),
+        "updatedAt": submission.updated_at.isoformat(),
         "editRequestStatus": edit_request.status if edit_request else None,
         "canEdit": bool(edit_request and edit_request.status == SubmissionEditRequest.Status.APPROVED),
     }
+    if submission.section_slug in {
+        "combat-training-personnel-journal",
+        "combat-training-command-journal",
+    }:
+        payload["revisions"] = [
+            {
+                "id": revision.id,
+                "documentTitle": revision.document_title,
+                "table": revision.table_data,
+                "createdAt": revision.created_at.isoformat(),
+            }
+            for revision in submission.revisions.all()
+        ]
+    return payload
 
 
 def submission_edit_request_payload(item):
@@ -1433,7 +1482,7 @@ class ThematicAccountSubmissionListCreateView(APIView):
     permission_classes = [IsActiveUser]
 
     def get(self, request):
-        submissions = ThematicAccountSubmission.objects.select_related("sender")
+        submissions = ThematicAccountSubmission.objects.select_related("sender").prefetch_related("revisions")
         if request.user.role == User.Role.OUTPOST:
             submissions = submissions.filter(sender=request.user)
         elif request.user.role == User.Role.REGIONAL:
@@ -1503,7 +1552,7 @@ class ThematicAccountSubmissionListCreateView(APIView):
             if submission:
                 for field, value in submission_defaults.items():
                     setattr(submission, field, value)
-                submission.save(update_fields=[*submission_defaults.keys()])
+                submission.save(update_fields=[*submission_defaults.keys(), "updated_at"])
             else:
                 submission = ThematicAccountSubmission.objects.create(
                     sender=request.user,
@@ -1524,7 +1573,7 @@ class ThematicAccountSubmissionListCreateView(APIView):
             if submission:
                 for field, value in submission_defaults.items():
                     setattr(submission, field, value)
-                submission.save(update_fields=[*submission_defaults.keys()])
+                submission.save(update_fields=[*submission_defaults.keys(), "updated_at"])
             else:
                 submission = ThematicAccountSubmission.objects.create(
                     sender=request.user,
@@ -1540,6 +1589,15 @@ class ThematicAccountSubmissionListCreateView(APIView):
                 **submission_defaults,
             )
             created = True
+        if section_slug in {
+            "combat-training-personnel-journal",
+            "combat-training-command-journal",
+        }:
+            CombatTrainingJournalRevision.objects.create(
+                submission=submission,
+                document_title=document_title,
+                table_data=copy.deepcopy(table_data),
+            )
         return Response(
             thematic_submission_payload(submission),
             status=201 if created else 200,
@@ -1579,6 +1637,29 @@ class ThematicAccountSubmissionDetailView(APIView):
                 return Response(thematic_submission_payload(submission))
 
         submission.delete()
+        return Response(status=204)
+
+
+class CombatTrainingJournalRevisionDetailView(APIView):
+    permission_classes = [IsActiveUser]
+
+    def delete(self, request, pk):
+        revision = get_object_or_404(
+            CombatTrainingJournalRevision.objects.select_related("submission__sender"),
+            pk=pk,
+        )
+        submission = revision.submission
+        is_sender = submission.sender_id == request.user.id
+        is_matching_regional_unit = (
+            request.user.role == User.Role.REGIONAL
+            and submission.sender.role == User.Role.OUTPOST
+            and submission.unit_number == request.user.region
+        )
+        is_admin = request.user.role == User.Role.ADMIN
+        if not (is_sender or is_matching_regional_unit or is_admin):
+            raise PermissionDenied("Нет права удалять это обновление журнала.")
+
+        revision.delete()
         return Response(status=204)
 
 
@@ -1794,7 +1875,7 @@ def library_period_payload(period):
 
 
 class LibraryPeriodListCreateView(APIView):
-    permission_classes = [IsAdminRole]
+    permission_classes = [IsActiveUser]
 
     def post(self, request):
         section_slug = str(request.data.get("section") or request.data.get("sectionId") or "").strip()
@@ -1803,6 +1884,11 @@ class LibraryPeriodListCreateView(APIView):
             raise ValidationError({"title": "Укажите название документа."})
 
         section = get_object_or_404(TrainingSection, slug=section_slug, is_active=True)
+        if (
+            request.user.role != User.Role.ADMIN
+            and section.slug not in THEMATIC_ACCOUNT_SECTION_SLUGS
+        ):
+            raise PermissionDenied("Нет права создавать документы в этом разделе.")
         template_period = (
             TrainingPeriod.objects.filter(section=section, is_active=True)
             .select_related("table")
@@ -1816,7 +1902,7 @@ class LibraryPeriodListCreateView(APIView):
                 TrainingPeriod.objects.filter(section=section).aggregate(max_order=Max("order"))["max_order"]
                 or 0
             )
-            base_slug = "admin-document"
+            base_slug = f"user-document-{request.user.id}"
             suffix = TrainingPeriod.objects.filter(section=section).count() + 1
             slug = f"{base_slug}-{suffix}"
             while TrainingPeriod.objects.filter(section=section, slug=slug).exists():
@@ -1825,7 +1911,7 @@ class LibraryPeriodListCreateView(APIView):
 
             period = TrainingPeriod.objects.create(
                 section=section,
-                created_by=None,
+                created_by=request.user,
                 slug=slug,
                 title=title,
                 order=max_order + 10,
@@ -1879,14 +1965,20 @@ class LibraryPeriodListCreateView(APIView):
 
 
 class LibraryPeriodDetailView(APIView):
-    permission_classes = [IsAdminRole]
+    permission_classes = [IsActiveUser]
 
     def get_object(self, section_slug, period_slug):
-        return get_object_or_404(
+        period = get_object_or_404(
             TrainingPeriod,
             section__slug=section_slug,
             slug=period_slug,
         )
+        if (
+            self.request.user.role != User.Role.ADMIN
+            and period.created_by_id != self.request.user.id
+        ):
+            raise PermissionDenied("Можно изменять только созданные вами документы.")
+        return period
 
     def patch(self, request, section_slug, period_slug):
         period = self.get_object(section_slug, period_slug)

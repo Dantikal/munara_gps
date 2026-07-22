@@ -86,6 +86,11 @@ export const getThematicAccountSubmissions = async () => {
   return data;
 };
 
+export const getCombatTrainingJournalOutposts = async () => {
+  const { data } = await api.get("/dashboard/combat-training-journal-outposts/");
+  return data;
+};
+
 export const createThematicAccountSubmission = async (payload) => {
   const { data } = await api.post("/dashboard/thematic-account-submissions/", payload);
   return data;
@@ -96,6 +101,10 @@ export const deleteThematicAccountSubmission = async (id, subjectId) => {
     params: subjectId ? { subjectId } : undefined,
   });
   return data || null;
+};
+
+export const deleteCombatTrainingJournalRevision = async (id) => {
+  await api.delete(`/dashboard/combat-training-journal-revisions/${id}/`);
 };
 
 export const forwardThematicAccountSubmission = async (id, documentTitle) => {

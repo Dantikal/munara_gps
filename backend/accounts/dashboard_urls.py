@@ -4,6 +4,8 @@ from .dashboard_views import (
     AdminDashboardView,
     CombatTrainingJournalDetailView,
     CombatTrainingJournalListCreateView,
+    CombatTrainingJournalOutpostListView,
+    CombatTrainingJournalRevisionDetailView,
     CombatTrainingJournalSubjectListCreateView,
     CombatTrainingPlanDetailView,
     CombatTrainingPlanListCreateView,
@@ -55,6 +57,11 @@ urlpatterns = [
         name="thematic-account-submission-detail",
     ),
     path(
+        "combat-training-journal-revisions/<int:pk>/",
+        CombatTrainingJournalRevisionDetailView.as_view(),
+        name="combat-training-journal-revision-detail",
+    ),
+    path(
         "thematic-account-submissions/<int:pk>/forward/",
         ThematicAccountSubmissionForwardView.as_view(),
         name="thematic-account-submission-forward",
@@ -96,6 +103,11 @@ urlpatterns = [
         "combat-training-journal-subjects/",
         CombatTrainingJournalSubjectListCreateView.as_view(),
         name="combat-training-journal-subject-list",
+    ),
+    path(
+        "combat-training-journal-outposts/",
+        CombatTrainingJournalOutpostListView.as_view(),
+        name="combat-training-journal-outpost-list",
     ),
     path(
         "combat-training-news/",

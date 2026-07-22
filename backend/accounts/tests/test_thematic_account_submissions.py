@@ -1,7 +1,7 @@
 from django.urls import reverse
 from rest_framework.test import APITestCase
 
-from accounts.models import User
+from accounts.models import CombatTrainingJournalRevision, User
 
 
 class ThematicAccountSubmissionApiTests(APITestCase):
@@ -35,6 +35,26 @@ class ThematicAccountSubmissionApiTests(APITestCase):
             region="2022",
         )
         self.url = reverse("thematic-account-submission-list")
+
+    def test_regional_user_sees_registered_outposts_from_own_unit(self):
+        User.objects.create_user(
+            username="outpost-2022@example.com",
+            email="outpost-2022@example.com",
+            password="test-password",
+            role=User.Role.OUTPOST,
+            status=User.Status.ACTIVE,
+            unit_type=User.UnitType.OUTPOST,
+            region="2022",
+            outpost_name="Other unit outpost",
+        )
+        self.client.force_authenticate(self.regional)
+
+        response = self.client.get(reverse("combat-training-journal-outpost-list"))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(len(response.data), 1)
+        self.assertEqual(response.data[0]["unitNumber"], "2021")
+        self.assertEqual(response.data[0]["name"], self.outpost.outpost_name)
 
     def test_outpost_submission_is_visible_only_to_matching_unit(self):
         self.client.force_authenticate(self.outpost)
@@ -238,8 +258,20 @@ class ThematicAccountSubmissionApiTests(APITestCase):
             format="json",
         )
         self.assertEqual(response.status_code, 200)
+        self.assertIn("updatedAt", response.data)
+        self.assertEqual(CombatTrainingJournalRevision.objects.count(), 2)
+        self.assertEqual(len(response.data["revisions"]), 2)
+        self.assertEqual(response.data["revisions"][0]["table"]["rows"][0]["hours"], "2")
+        self.assertEqual(response.data["revisions"][1]["table"]["rows"], [])
 
+        revision_id = response.data["revisions"][0]["id"]
         self.client.force_authenticate(self.regional)
+        delete_response = self.client.delete(
+            reverse("combat-training-journal-revision-detail", args=[revision_id])
+        )
+        self.assertEqual(delete_response.status_code, 204)
+        self.assertEqual(CombatTrainingJournalRevision.objects.count(), 1)
+
         response = self.client.get(self.url)
         self.assertEqual(len(response.data), 1)
         self.assertEqual(response.data[0]["documentTitle"], "Июль айынын күжүрмөн даярдоо журналы")

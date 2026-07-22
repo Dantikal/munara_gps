@@ -17,6 +17,7 @@ import {
   OUTPOSTS_BY_MILITARY_UNIT,
   formatOutpostName,
 } from "../../../data/militaryUnits.js";
+import useDocumentHistory from "../../../hooks/useDocumentHistory.js";
 import SubmissionForwardDialog from "./SubmissionForwardDialog.jsx";
 import SubmissionEditPermissionButton from "./SubmissionEditPermissionButton.jsx";
 
@@ -53,7 +54,7 @@ const COMMAND_SUBMISSION_SECTION_IDS = new Set([
   "command-thematic-account",
   "command-lesson-schedule",
 ]);
-const REMOVED_THEMATIC_PERIOD_IDS = new Set(["period-2", "period-3", "period-4"]);
+const REMOVED_THEMATIC_PERIOD_IDS = new Set(["period-1", "period-2", "period-3", "period-4"]);
 const REMOVED_THEMATIC_PERIOD_TITLE_PARTS = [
   "2026-окуу жылынын 2 мезгилине",
   "2026-окуу жылынын 3 мезгилине",
@@ -379,12 +380,12 @@ const createTypicalWeekTable = (title) => ({
 });
 
 const thematicAccountPeriodConfig = {
-  adminOnly: true,
-  buttonLabel: "+ Таблица кошуу",
-  maxPeriods: 2,
-  promptLabel: "Таблицанын аталышы",
-  getDefaultTitle: (periodNumber) =>
-    `20__-окуу жылынын ${periodNumber} мезгилине`,
+  buttonLabel: "+ Создать",
+  promptLabel: "Название",
+  usesServerCreate: true,
+  usesTextDialog: true,
+  userManaged: true,
+  getDefaultTitle: () => "",
 };
 const lessonSchedulePeriodConfig = {
   buttonLabel: "+ Жума кошуу",
@@ -394,13 +395,23 @@ const lessonSchedulePeriodConfig = {
   getDefaultTitle: (weekNumber) => buildLessonSchedulePeriodTitle(weekNumber),
 };
 const typicalWeekPeriodConfig = {
-  adminOnly: true,
   buttonLabel: "+ Создать",
   promptLabel: "Название",
   usesTextDialog: true,
+  userManaged: true,
   createTable: createTypicalWeekTable,
   getDefaultTitle: () => "",
 };
+
+const buildThematicAccountDocumentPlaceholder = (user, isCommand = false) => {
+  const unitName = `${user?.region || "2021"} аскер бөлүгүнүн`;
+  const outpostName = user?.role === "outpost"
+    ? ` ${formatOutpostName(user?.outpost_name || "Жаштык")}нын`
+    : "";
+  const trainingType = isCommand ? " командирдик даярдоо боюнча" : "";
+  return `${unitName}${outpostName}${trainingType} 20__окуу жылынын тематикалык эсеби`;
+};
+
 const customPeriodConfigs = {
   "command-lesson-schedule": lessonSchedulePeriodConfig,
   "command-thematic-account": thematicAccountPeriodConfig,
@@ -1036,6 +1047,8 @@ export default function Library({ data, onBack, onRefresh, onSubmissionCreated }
   const showsRegionalOutgoingSubmissions =
     currentUser?.role === "regional" &&
     OUTPOST_SUBMISSION_SECTION_IDS.has(submissionSectionId) &&
+    !COMMAND_SUBMISSION_SECTION_IDS.has(submissionSectionId) &&
+    !isRegionalTypicalWeekIncomingLocation &&
     (
       showsOutpostSubmissions ||
       isRegionalCommandMilitaryUnitLocation ||
@@ -1113,8 +1126,30 @@ export default function Library({ data, onBack, onRefresh, onSubmissionCreated }
   const tableActionStorageKey = data?.tableActionStorageKey || getActionStorageKey(tableStorageKey);
   const cellColorStorageKey = tableStorageKey ? `${tableStorageKey}:cell-colors` : null;
   const isViewingSubmission = Boolean(selectedSubmission) || Boolean(data?.readOnly);
-  const isTableEditing = tableStatus === "editing" && !isViewingSubmission;
-  const isSubmitDisabled = data?.disableSubmit || tableStatus === "submitted" || isViewingSubmission;
+  const isDirectSubmissionUpdate = Boolean(data?.directSubmissionUpdate);
+  const isTableEditing = (isDirectSubmissionUpdate || tableStatus === "editing") && !isViewingSubmission;
+  const isSubmitDisabled =
+    data?.disableSubmit ||
+    (!isDirectSubmissionUpdate && tableStatus === "submitted") ||
+    isViewingSubmission ||
+    isSubmittingThematicAccount;
+  const tableHistory = useDocumentHistory({
+    resetKey: tableStorageKey || "library-no-table",
+    value: {
+      rows: editableRows,
+      headerValues: editableHeaderValues,
+      title: editableTitle,
+      cellColors,
+    },
+    onChange: (snapshot) => {
+      setEditableRows(snapshot.rows || []);
+      setEditableHeaderValues(snapshot.headerValues || {});
+      setEditableTitle(snapshot.title || "");
+      setCellColors(snapshot.cellColors || {});
+      setTableStatus("editing");
+      setTableNotice("");
+    },
+  });
   const customPeriodConfig = customPeriodConfigs[activePeriodContainerId];
   const isAdmin = currentUser?.role === "admin";
   const canAddCustomPeriod = Boolean(
@@ -1126,7 +1161,16 @@ export default function Library({ data, onBack, onRefresh, onSubmissionCreated }
         selectedPeriods.some((period) => period.table)) &&
       (!customPeriodConfig.maxPeriods || selectedPeriods.length < customPeriodConfig.maxPeriods)
   );
-  const canManageCustomPeriods = Boolean(customPeriodConfig && isAdmin);
+  const canManageCustomPeriods = Boolean(
+    customPeriodConfig &&
+    (
+      isAdmin ||
+      (
+        customPeriodConfig.userManaged &&
+        ["outpost", "regional"].includes(currentUser?.role)
+      )
+    )
+  );
 
   useEffect(() => {
     setSelectedSectionId(null);
@@ -1307,9 +1351,13 @@ export default function Library({ data, onBack, onRefresh, onSubmissionCreated }
   ]);
 
   useEffect(() => {
-    setTableStatus(selectedTable ? getStoredTableStatus(tableActionStorageKey) : "editing");
+    setTableStatus(
+      selectedTable && !isDirectSubmissionUpdate
+        ? getStoredTableStatus(tableActionStorageKey)
+        : "editing"
+    );
     setTableNotice("");
-  }, [selectedTable, tableActionStorageKey]);
+  }, [isDirectSubmissionUpdate, selectedTable, tableActionStorageKey]);
 
   useEffect(() => {
     setActiveCellColor("");
@@ -1642,7 +1690,7 @@ export default function Library({ data, onBack, onRefresh, onSubmissionCreated }
       return;
     }
 
-    if (isAdmin) {
+    if (isAdmin || customPeriodConfig.usesServerCreate) {
       try {
         await createLibraryPeriod({section: activePeriodContainerId, title});
         if (onRefresh) await onRefresh();
@@ -1669,7 +1717,7 @@ export default function Library({ data, onBack, onRefresh, onSubmissionCreated }
       return;
     }
 
-    if (isAdmin) {
+    if (isAdmin || customPeriodConfig.usesServerCreate) {
       try {
         await createLibraryPeriod({
           section: activePeriodContainerId,
@@ -1958,8 +2006,53 @@ export default function Library({ data, onBack, onRefresh, onSubmissionCreated }
     markCurrentTableSubmitted();
   };
 
-  const handleTableSend = () => {
+  const handleTableSend = async () => {
     const canCreateSubmission = ["outpost", "regional"].includes(currentUser?.role);
+
+    if (
+      isDirectSubmissionUpdate &&
+      canCreateSubmission &&
+      OUTPOST_SUBMISSION_SECTION_IDS.has(submissionSectionId) &&
+      !selectedSubmission
+    ) {
+      setIsSubmittingThematicAccount(true);
+      setTableNotice("");
+      persistCurrentTable("editing");
+      upsertSavedTable({
+        id: tableStorageKey,
+        title: editableTitle || selectedTable?.title || data?.title,
+        savedAt: new Date().toISOString(),
+        scope: data?.scope,
+        table: selectedTable
+          ? {...selectedTable, title: editableTitle || selectedTable.title}
+          : selectedTable,
+        tableStorageKey,
+        headerStorageKey,
+        tableActionStorageKey,
+      });
+
+      try {
+        const submission = await createThematicAccountSubmission({
+          documentTitle:
+            data?.submissionDocumentTitle || editableTitle || selectedTable?.title || data?.title,
+          sectionId: submissionSectionId,
+          periodId: data?.submissionPeriodId || selectedPeriod?.id || "",
+          table: buildCurrentSubmissionTable(),
+        });
+        setThematicSubmissions((items) => [
+          submission,
+          ...items.filter((item) => item.id !== submission.id),
+        ]);
+        setTableStatus("editing");
+        setTableNotice("Журнал обновлён и сохранён.");
+        onSubmissionCreated?.(submission);
+      } catch (error) {
+        setTableNotice(getApiErrorMessage(error, "Не удалось обновить журнал."));
+      } finally {
+        setIsSubmittingThematicAccount(false);
+      }
+      return;
+    }
 
     if (canCreateSubmission && OUTPOST_SUBMISSION_SECTION_IDS.has(submissionSectionId) && !selectedSubmission) {
       setSubmissionDocumentTitle("");
@@ -2279,6 +2372,12 @@ export default function Library({ data, onBack, onRefresh, onSubmissionCreated }
     .join(" ");
   const renderTableActions = () => (
     <div className="module-table-actions module-table-actions--top">
+      <button disabled={!isTableEditing || !tableHistory.canUndo} onClick={tableHistory.undo} type="button">
+        ↶ Назад
+      </button>
+      <button disabled={!isTableEditing || !tableHistory.canRedo} onClick={tableHistory.redo} type="button">
+        ↷ Вперёд
+      </button>
       <button disabled={!isTableEditing} onClick={handleAddTableRow} type="button">
         + Сап кошуу
       </button>
@@ -2304,7 +2403,7 @@ export default function Library({ data, onBack, onRefresh, onSubmissionCreated }
       </button>
       {!data?.autoSubmitOnSave && (
         <button disabled={isSubmitDisabled} onClick={handleTableSend} type="button">
-          Отправить
+          {data?.submissionActionLabel || "Отправить"}
         </button>
       )}
       <button disabled={isTableEditing} onClick={handleTableEdit} type="button">
@@ -2577,6 +2676,12 @@ export default function Library({ data, onBack, onRefresh, onSubmissionCreated }
             </table>
           </div>
           {!isViewingSubmission && <div className="module-table-actions">
+            <button disabled={!isTableEditing || !tableHistory.canUndo} onClick={tableHistory.undo} type="button">
+              ↶ Назад
+            </button>
+            <button disabled={!isTableEditing || !tableHistory.canRedo} onClick={tableHistory.redo} type="button">
+              ↷ Вперёд
+            </button>
             <button disabled={!isTableEditing} onClick={handleAddTableRow} type="button">
               + Сап кошуу
             </button>
@@ -2602,7 +2707,7 @@ export default function Library({ data, onBack, onRefresh, onSubmissionCreated }
             </button>
             {!data?.autoSubmitOnSave && (
               <button disabled={isSubmitDisabled} onClick={handleTableSend} type="button">
-                Отправить
+                {data?.submissionActionLabel || "Отправить"}
               </button>
             )}
             <button disabled={isTableEditing} onClick={handleTableEdit} type="button">
@@ -2972,7 +3077,7 @@ export default function Library({ data, onBack, onRefresh, onSubmissionCreated }
       )}
       {customTableDraft && (
         <div className="lesson-period-dialog" role="dialog" aria-modal="true" aria-labelledby="custom-table-dialog-title">
-          <form className="lesson-period-dialog__panel" onSubmit={(event) => {
+          <form className="lesson-period-dialog__panel lesson-period-dialog__panel--document-create" onSubmit={(event) => {
             event.preventDefault();
             handleCreateCustomTable();
           }}>
@@ -2985,7 +3090,12 @@ export default function Library({ data, onBack, onRefresh, onSubmissionCreated }
                   setCustomTableTitle(event.target.value);
                   setCustomTableError("");
                 }}
-                placeholder="Введите название"
+                placeholder={THEMATIC_ACCOUNT_SECTION_IDS.has(activePeriodContainerId)
+                  ? buildThematicAccountDocumentPlaceholder(
+                      currentUser,
+                      activePeriodContainerId === COMMAND_THEMATIC_ACCOUNT_SECTION_ID
+                    )
+                  : "Введите название"}
                 type="text"
                 value={customTableTitle}
               />

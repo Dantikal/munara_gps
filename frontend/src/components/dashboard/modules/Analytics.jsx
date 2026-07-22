@@ -11,6 +11,7 @@ import {
   OUTPOSTS_BY_MILITARY_UNIT,
   formatOutpostName,
 } from "../../../data/militaryUnits.js";
+import useDocumentHistory from "../../../hooks/useDocumentHistory.js";
 import SubmissionForwardDialog from "./SubmissionForwardDialog.jsx";
 import SubmissionEditPermissionButton from "./SubmissionEditPermissionButton.jsx";
 
@@ -1278,6 +1279,43 @@ export default function Analytics({ data, user }) {
     setIsCommanderSignatureDialogOpen(false);
   };
 
+  const analysisDocumentHistory = useDocumentHistory({
+    resetKey: [
+      selectedSectionId,
+      activeMonthlyAnalysisDocumentId,
+      selectedAnalysisSubmission?.id,
+    ].filter(Boolean).join(":") || "analysis-no-document",
+    value: {
+      addressee: monthlyAnalysisAddressee,
+      title: monthlyAnalysisTitle,
+      body: monthlyAnalysisBody,
+      extraPages: monthlyAnalysisExtraPages,
+      commanderTitle: monthlyAnalysisCommanderTitle,
+      commanderRank: monthlyAnalysisCommanderRank,
+      commanderName: monthlyAnalysisCommanderName,
+    },
+    onChange: (snapshot) => {
+      const nextDocument = {
+        addressee: snapshot.addressee || "",
+        title: snapshot.title || "",
+        body: snapshot.body || "",
+        extraPages: snapshot.extraPages || [],
+        commanderTitle: snapshot.commanderTitle || "",
+        commanderRank: snapshot.commanderRank || "",
+        commanderName: snapshot.commanderName || "",
+      };
+      setMonthlyAnalysisAddressee(nextDocument.addressee);
+      setMonthlyAnalysisTitle(nextDocument.title);
+      setMonthlyAnalysisBody(nextDocument.body);
+      setMonthlyAnalysisExtraPages(nextDocument.extraPages);
+      setMonthlyAnalysisCommanderTitle(nextDocument.commanderTitle);
+      setMonthlyAnalysisCommanderRank(nextDocument.commanderRank);
+      setMonthlyAnalysisCommanderName(nextDocument.commanderName);
+      updateActiveMonthlyAnalysisDocument(nextDocument);
+      persistMonthlyAnalysisDraft(nextDocument);
+    },
+  });
+
   const signatureBlock = (
     <div
       className="monthly-analysis-signature-block"
@@ -1402,6 +1440,26 @@ export default function Analytics({ data, user }) {
           Артка
         </button>
         <div className="module-actions">
+          {!selectedAnalysisSubmission && canEditAnalysis ? (
+            <button
+              className="module-action-button"
+              disabled={isMonthlyAnalysisSent || !analysisDocumentHistory.canUndo}
+              onClick={analysisDocumentHistory.undo}
+              type="button"
+            >
+              ↶ Назад
+            </button>
+          ) : null}
+          {!selectedAnalysisSubmission && canEditAnalysis ? (
+            <button
+              className="module-action-button"
+              disabled={isMonthlyAnalysisSent || !analysisDocumentHistory.canRedo}
+              onClick={analysisDocumentHistory.redo}
+              type="button"
+            >
+              ↷ Вперёд
+            </button>
+          ) : null}
           {!selectedAnalysisSubmission && canEditAnalysis ? (
             <button className="module-action-button" onClick={handleSaveCurrentMonthlyAnalysisDocument} type="button">
               Сактоо
