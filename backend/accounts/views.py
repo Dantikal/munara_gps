@@ -74,6 +74,7 @@ class UserRequestDetailView(generics.RetrieveAPIView):
 class AdminUsersView(generics.ListCreateAPIView):
     serializer_class = AdminUserSerializer
     permission_classes = [IsAdminRole]
+    parser_classes = [MultiPartParser, FormParser, JSONParser]
 
     def get_queryset(self):
         return User.objects.all().order_by("-date_joined")
@@ -82,6 +83,7 @@ class AdminUsersView(generics.ListCreateAPIView):
 class AdminUserDetailView(generics.RetrieveUpdateDestroyAPIView):
     serializer_class = AdminUserSerializer
     permission_classes = [IsAdminRole]
+    parser_classes = [MultiPartParser, FormParser, JSONParser]
 
     def get_queryset(self):
         return User.objects.all()
@@ -181,14 +183,13 @@ class AdminChatMessageView(generics.ListCreateAPIView):
         user = self.request.user
         qs = AdminChatMessage.objects.select_related("sender", "recipient").order_by("created_at", "id")
 
-        if user.role == User.Role.ADMIN:
-            partner_id = self.request.query_params.get("user_id")
-            if partner_id:
-                qs = qs.filter(Q(sender_id=partner_id, recipient=user) | Q(sender=user, recipient_id=partner_id))
-            else:
-                qs = qs.filter(Q(sender__role=User.Role.ADMIN) | Q(recipient__role=User.Role.ADMIN))
-        else:
-            qs = qs.filter(Q(sender=user, recipient__role=User.Role.ADMIN) | Q(sender__role=User.Role.ADMIN, recipient=user))
+        partner_id = self.request.query_params.get("user_id")
+        qs = qs.filter(Q(sender=user) | Q(recipient=user))
+        if partner_id:
+            qs = qs.filter(
+                Q(sender_id=partner_id, recipient=user)
+                | Q(sender=user, recipient_id=partner_id)
+            )
 
         return qs.exclude(
             Q(sender=user, deleted_by_sender=True)
@@ -200,25 +201,48 @@ class AdminChatMessageView(generics.ListCreateAPIView):
 
     def list(self, request, *args, **kwargs):
         queryset = self.get_queryset()
-        response = Response(self.get_serializer(queryset, many=True).data)
-
         user = request.user
-        if user.role == User.Role.ADMIN:
-            partner_id = request.query_params.get("user_id")
-            if partner_id:
-                AdminChatMessage.objects.filter(
-                    sender_id=partner_id,
-                    recipient=user,
-                    is_read=False,
-                ).update(is_read=True)
-        else:
+        partner_id = request.query_params.get("user_id")
+        if partner_id:
             AdminChatMessage.objects.filter(
-                sender__role=User.Role.ADMIN,
+                sender_id=partner_id,
                 recipient=user,
                 is_read=False,
             ).update(is_read=True)
 
-        return response
+        return Response(self.get_serializer(queryset, many=True).data)
+
+
+class ChatPartnerListView(generics.ListAPIView):
+    serializer_class = UserPublicSerializer
+    permission_classes = [IsActiveUser]
+
+    def get_queryset(self):
+        user = self.request.user
+        users = User.objects.filter(status=User.Status.ACTIVE).exclude(pk=user.pk)
+        if user.role == User.Role.ADMIN:
+            return users.exclude(role=User.Role.ADMIN).order_by("region", "outpost_name", "full_name")
+        if user.role == User.Role.REGIONAL:
+            return users.filter(
+                Q(role=User.Role.OUTPOST, region=user.region) | Q(role=User.Role.ADMIN)
+            ).order_by("role", "outpost_name", "full_name")
+        if user.role == User.Role.OUTPOST:
+            return users.filter(
+                Q(role=User.Role.ADMIN)
+                | Q(role=User.Role.REGIONAL, region=user.region)
+            ).order_by("role", "full_name")
+        return users.none()
+
+
+class ChatUnreadCountView(APIView):
+    permission_classes = [IsActiveUser]
+
+    def get(self, request):
+        unread_count = AdminChatMessage.objects.filter(
+            recipient=request.user,
+            is_read=False,
+        ).count()
+        return Response({"unreadCount": unread_count})
 
 
 class AdminChatMessageDeleteView(APIView):

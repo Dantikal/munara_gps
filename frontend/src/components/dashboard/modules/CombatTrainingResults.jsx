@@ -1,5 +1,19 @@
 import React, { useState, useEffect, useRef } from "react";
 
+import {
+  createThematicAccountSubmission,
+  deleteThematicAccountSubmission,
+  forwardThematicAccountSubmission,
+  getThematicAccountSubmissions,
+} from "../../../api/dashboard.js";
+import { getApiErrorMessage } from "../../../api/errors.js";
+import {
+  OUTPOSTS_BY_MILITARY_UNIT,
+  formatOutpostName,
+} from "../../../data/militaryUnits.js";
+import SubmissionForwardDialog from "./SubmissionForwardDialog.jsx";
+import SubmissionEditPermissionButton from "./SubmissionEditPermissionButton.jsx";
+
 const EMPTY_ARRAY = [];
 const STORAGE_KEY = "combat-training-results-custom-periods";
 const HIDDEN_DEFAULT_PERIOD_TITLES = new Set(["1-ай", "1 ай"]);
@@ -15,6 +29,8 @@ const SHOOTING_TRAINING_DOCUMENT_TITLE =
   "20___ аскер бөлүгүнүн ______  чек ара заставасынын (топ, бөлүкчө, взвод, рота)\nОк атуу даярдыгы боюнча көзөмөл сабагынын\nВЕДОМОСТУ";
 const LINE_TRAINING_DOCUMENT_TITLE =
   "20___ аскер бөлүгүнүн ______  чек ара заставасынын (топ, бөлүкчө, взвод, рота)\nСаптык даярдоо боюнча көзөмөл сабагынын\nВЕДОМОСТУ";
+const KOJ_DOCUMENT_TITLE =
+  '20__аскер бөлүгүнүн достук чек ара заставасынын күжүрмөн ок атуусунун жыйынтыгы 20__ ж. "20" март';
 const DEFAULT_TABLE_FOOTER = `Жалпы тапшыргандар: __ адам __ %
 Анын ичинен:
       -   "эң жакшы"                  __ адам __ %;
@@ -81,13 +97,45 @@ const createCustomTable = (title, rows = createEmptyCustomRows()) => ({
   rows,
 });
 
+const kojBaseColumns = [
+  { key: "number", label: "№", width: 58 },
+  { key: "personalNumber", label: "Өздүк номуру", width: 150 },
+  { key: "tacticalAction", label: "Тактикалык кыймыл аракетине", width: 170 },
+  { key: "shooting", label: "Ок атуусуна", width: 130 },
+  { key: "totalGrade", label: "Жалпы баа", width: 110 },
+  { key: "note", label: "Эскертүү", width: 140 },
+];
+
+const createEmptyKojRow = (number, columns = kojBaseColumns) =>
+  columns.reduce(
+    (row, column) => ({
+      ...row,
+      [column.key]: column.key === "number" ? number : "",
+    }),
+    {}
+  );
+
+const createKojTable = (title) => ({
+  type: "kojResults",
+  templateVersion: 3,
+  title,
+  columns: kojBaseColumns,
+  headerRows: [],
+  sectionColSpan: 2,
+  rows: Array.from({ length: 10 }, (_, index) => createEmptyKojRow(index + 1)),
+});
+
 const inspectionSummaryColumns = [
   { key: "number", label: "к №", width: 50, readOnly: true },
   { key: "personalNumber", label: "Өздүк номери", width: 150 },
-  { key: "physicalTraining", label: "ДТД", width: 105 },
-  { key: "shootingTraining", label: "ОД", width: 105 },
-  { key: "borderTactics", label: "ЧТ", width: 105 },
-  { key: "combatTraining", label: "КМД", width: 105 },
+  { key: "tpv", label: "ТПВ", width: 85 },
+  { key: "stp", label: "СТП", width: 85 },
+  { key: "ogp", label: "ОГП", width: 85 },
+  { key: "fp", label: "ФП", width: 85 },
+  { key: "spec", label: "СПЕЦ", width: 85 },
+  { key: "tp", label: "ТП", width: 85 },
+  { key: "op", label: "ОП", width: 85 },
+  { key: "stovu", label: "ОВУ", width: 90 },
   { key: "totalGrade", label: "Жалпы\nбаа", width: 90 },
   { key: "note", label: "Эскертме", width: 115 },
 ];
@@ -95,10 +143,14 @@ const inspectionSummaryColumns = [
 const createEmptyInspectionSummaryRow = (number) => ({
   number,
   personalNumber: "",
-  physicalTraining: "",
-  shootingTraining: "",
-  borderTactics: "",
-  combatTraining: "",
+  tpv: "",
+  stp: "",
+  ogp: "",
+  fp: "",
+  spec: "",
+  tp: "",
+  op: "",
+  stovu: "",
   totalGrade: "",
   note: "",
 });
@@ -120,16 +172,21 @@ const createInspectionSummaryRows = () => [
 
 const createInspectionSummaryTable = (title, rows = createInspectionSummaryRows()) => ({
   type: "inspectionSummary",
+  templateVersion: 3,
   title,
   columns: inspectionSummaryColumns,
   headerRows: [
     [
       { key: "number", label: "к №" },
       { key: "personalNumber", label: "Өздүк номери" },
-      { key: "physicalTraining", label: "ДТД" },
-      { key: "shootingTraining", label: "ОД" },
-      { key: "borderTactics", label: "ЧТ" },
-      { key: "combatTraining", label: "КМД" },
+      { key: "tpv", label: "ТПВ" },
+      { key: "stp", label: "СТП" },
+      { key: "ogp", label: "ОГП" },
+      { key: "fp", label: "ФП" },
+      { key: "spec", label: "СПЕЦ" },
+      { key: "tp", label: "ТП" },
+      { key: "op", label: "ОП" },
+      { key: "stovu", label: "ОВУ" },
       { key: "totalGrade", label: "Жалпы\nбаа" },
       { key: "note", label: "Эскертме" },
     ],
@@ -372,7 +429,7 @@ const createBpFirstSummaryTable = (title, rows = createBpFirstSummaryRows()) => 
   rows,
 });
 
-const INSPECTION_BP_FIFTH_FOOTER = `(Кызмат орду, аты, жөнү, аскердик наам, кол тамга жана датасы)`;
+const INSPECTION_BP_FIFTH_FOOTER = `(Кызмат орду, аты, жөнү, аскердик наам жана датасы)`;
 
 const createBpFifthSummaryRows = () => [
   createEmptyBpFirstSummaryRow("1.", "Башкар-лык"),
@@ -671,10 +728,109 @@ const getNestedSections = (section) => section?.sections || section?.subsections
 const hasSectionContent = (section) =>
   Boolean(section?.table || section?.periods?.length > 0 || getNestedSections(section).length > 0);
 
+const SubmittedObservationTable = ({ subject, onBack }) => {
+  const table = subject?.table || {};
+  const columns = table.columns || [];
+  const headerRows = table.headerRows || [];
+  const rows = table.rows || [];
+  const compactSummaryTypes = new Set([
+    "inspectionSummary",
+    "inspectionSecondSummary",
+    "inspectionBpFirstSummary",
+    "inspectionBpSecondSummary",
+    "inspectionBpFifthSummary",
+  ]);
+  const isCompactSummary = compactSummaryTypes.has(table.type);
+  const tableWidth = columns.reduce(
+    (total, column) => total + (Number(column.width) || 80),
+    0
+  );
+
+  return (
+    <div className="module-table-view module-table-view--word">
+      <button className="module-back-button" onClick={onBack} type="button">Артка</button>
+      <h2 className="module-table-title">{table.title || subject?.periodTitle || subject?.subjectTitle}</h2>
+      <div className="table-wrap submitted-result-table-wrap">
+        <table
+          className={`training-table submitted-result-table${isCompactSummary ? " submitted-result-table--compact" : ""}`}
+          style={{ minWidth: `${tableWidth}px`, width: `max(100%, ${tableWidth}px)` }}
+        >
+          <colgroup>
+            {columns.map((column) => (
+              <col
+                key={column.key}
+                style={{ width: `${Number(column.width) || 80}px` }}
+              />
+            ))}
+          </colgroup>
+          <thead>
+            {headerRows.length > 0 ? headerRows.map((headerRow, rowIndex) => (
+              <tr key={`submitted-header-${rowIndex}`}>
+                {headerRow.map((cell, cellIndex) => (
+                  <th
+                    colSpan={cell.colSpan || undefined}
+                    key={cell.key || cellIndex}
+                    rowSpan={cell.rowSpan || undefined}
+                  >
+                    <span>{cell.label}</span>
+                  </th>
+                ))}
+              </tr>
+            )) : (
+              <tr>
+                {columns.map((column) => <th key={column.key}>{column.label}</th>)}
+              </tr>
+            )}
+          </thead>
+          <tbody>
+            {rows.map((row, rowIndex) => {
+              if (row.__isSection || row.__isCenteredSection) {
+                return (
+                  <tr key={`submitted-row-${rowIndex}`}>
+                    <td colSpan={columns.length}>{row.sectionTitle}</td>
+                  </tr>
+                );
+              }
+              const shouldMergeSummaryLabel =
+                (isCompactSummary && row.number === "" && Boolean(row.subdivision)) ||
+                row.__isSummary ||
+                row.subdivision === "Баары:";
+              return (
+                <tr key={`submitted-row-${rowIndex}`}>
+                  {columns.map((column, columnIndex) => {
+                    if (shouldMergeSummaryLabel && columnIndex === 0) {
+                      return <td colSpan={2} key={column.key}>{row.subdivision || ""}</td>;
+                    }
+                    if (shouldMergeSummaryLabel && columnIndex === 1) {
+                      return null;
+                    }
+                    return (
+                      <td key={column.key}>
+                        {Array.isArray(row[column.key])
+                          ? row[column.key].join(" ")
+                          : String(row[column.key] ?? "")}
+                      </td>
+                    );
+                  })}
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+      {table.footer && <pre className="submitted-result-footer">{table.footer}</pre>}
+    </div>
+  );
+};
+
 export default function CombatTrainingResults({ data, user }) {
   const signatureCanvasRef = useRef(null);
   const isDrawingSignatureRef = useRef(false);
   const [selectedSectionId, setSelectedSectionId] = useState(null);
+  const [selectedObservationGroupId, setSelectedObservationGroupId] = useState(null);
+  const [selectedInspectionGroupId, setSelectedInspectionGroupId] = useState(null);
+  const [selectedAdminUnitNumber, setSelectedAdminUnitNumber] = useState(null);
+  const [selectedAdminOutpostName, setSelectedAdminOutpostName] = useState(null);
   const [selectedSubsectionId, setSelectedSubsectionId] = useState(null);
   const [selectedPeriodId, setSelectedPeriodId] = useState(null);
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
@@ -705,6 +861,19 @@ export default function CombatTrainingResults({ data, user }) {
   const [signatureImages, setSignatureImages] = useState({});
   const [isSignatureDialogOpen, setIsSignatureDialogOpen] = useState(false);
   const [activeSignatureSlot, setActiveSignatureSlot] = useState(SIGNATURE_SLOTS[0].id);
+  const [resultSubmissions, setResultSubmissions] = useState([]);
+  const [selectedResultSubmission, setSelectedResultSubmission] = useState(null);
+  const [selectedSubmittedSubjectId, setSelectedSubmittedSubjectId] = useState(null);
+  const [isResultSendDialogOpen, setIsResultSendDialogOpen] = useState(false);
+  const [resultSubmissionTitle, setResultSubmissionTitle] = useState("");
+  const [resultSubmissionError, setResultSubmissionError] = useState("");
+  const [isSendingResult, setIsSendingResult] = useState(false);
+  const [deletingResultSubmissionId, setDeletingResultSubmissionId] = useState(null);
+  const [resultSubmissionListError, setResultSubmissionListError] = useState("");
+  const [forwardingSubmission, setForwardingSubmission] = useState(null);
+  const resultsTableScrollRef = useRef(null);
+  const resultsTopScrollRef = useRef(null);
+  const [resultsTableScrollWidth, setResultsTableScrollWidth] = useState(1200);
 
   // Массив разделов, где можно создавать документы
   const sectionsWithCreate = [
@@ -715,7 +884,8 @@ export default function CombatTrainingResults({ data, user }) {
     "observation-tp",
     "observation-op",
     "observation-stp",
-    "observation-ovu"
+    "observation-ovu",
+    "observation-koj"
   ];
 
   useEffect(() => {
@@ -727,6 +897,37 @@ export default function CombatTrainingResults({ data, user }) {
       }
     }
   }, [customPeriods]);
+
+  useEffect(() => {
+    if (!["outpost", "regional", "admin"].includes(user?.role)) {
+      setResultSubmissions([]);
+      return undefined;
+    }
+
+    let isActive = true;
+    getThematicAccountSubmissions()
+      .then((items) => {
+        if (isActive) {
+          setResultSubmissions(
+            (Array.isArray(items) ? items : []).filter((item) =>
+              [
+                "combat-training-results-observation",
+                "combat-training-results-inspection",
+              ].includes(item.sectionId)
+            )
+          );
+        }
+      })
+      .catch(() => {
+        if (isActive) {
+          setResultSubmissions([]);
+        }
+      });
+
+    return () => {
+      isActive = false;
+    };
+  }, [selectedSectionId, user?.id, user?.role]);
 
   useEffect(() => {
     if (selectedPeriodId && typeof window !== "undefined") {
@@ -886,6 +1087,23 @@ export default function CombatTrainingResults({ data, user }) {
     );
   };
 
+  const handleAddKojResultColumn = () => {
+    setEditableRows((currentRows) =>
+      [
+        ...currentRows,
+        {
+          __isSection: true,
+          __isResultColumn: true,
+          sectionTitle: "бөлүкчөнүн жыйынтыгы",
+          tacticalAction: "",
+          shooting: "",
+          totalGrade: "",
+          note: "",
+        },
+      ]
+    );
+  };
+
   const handleSaveTable = () => {
     if (selectedPeriod && typeof window !== "undefined") {
       const tableStorageKey = `${STORAGE_KEY}-${selectedPeriod.id}`;
@@ -911,6 +1129,116 @@ export default function CombatTrainingResults({ data, user }) {
       } catch {
         // Silent fail if localStorage is unavailable
       }
+    }
+  };
+
+  const handleOpenResultSendDialog = () => {
+    const canRegionalSend =
+      user?.role === "regional" &&
+      (
+        (selectedSectionId === "observation" && selectedObservationGroupId === "regional-unit") ||
+        (selectedSectionId === "inspection" && selectedInspectionGroupId === "regional-unit")
+      );
+    if (
+      (user?.role !== "outpost" && !canRegionalSend) ||
+      !["observation", "inspection"].includes(selectedSectionId) ||
+      !selectedPeriod
+    ) {
+      return;
+    }
+    setResultSubmissionTitle("");
+    setResultSubmissionError("");
+    setIsResultSendDialogOpen(true);
+  };
+
+  const handleSendResult = async () => {
+    const title = resultSubmissionTitle.trim();
+    if (!title) {
+      setResultSubmissionError("Иш кагаздардын аталышын жазыңыз.");
+      return;
+    }
+
+    handleSaveTable();
+    setIsSendingResult(true);
+    setResultSubmissionError("");
+    try {
+      const isInspectionSubmission = selectedSectionId === "inspection";
+      const submission = await createThematicAccountSubmission({
+        documentTitle: title,
+        sectionId: isInspectionSubmission
+          ? "combat-training-results-inspection"
+          : "combat-training-results-observation",
+        periodId: "",
+        table: isInspectionSubmission ? {
+          subsectionId: selectedSubsectionId,
+          subsectionTitle: selectedSubsection?.title || selectedSubsectionId,
+          periodId: selectedPeriod.id,
+          periodTitle: selectedPeriod.title,
+          table: {
+            ...selectedTable,
+            title: editableTitle || selectedTable?.title || selectedPeriod.title,
+            columns: editableColumns,
+            headerRows: editableHeaderRows,
+            rows: editableRows,
+            footer: editableFooter,
+            signatureImages,
+          },
+        } : {
+          subjectId: selectedSubsectionId,
+          subjectTitle: selectedSubsection?.title || selectedSubsectionId,
+          periodId: selectedPeriod.id,
+          periodTitle: selectedPeriod.title,
+          table: {
+            ...selectedTable,
+            title: editableTitle || selectedTable?.title || selectedPeriod.title,
+            columns: editableColumns,
+            headerRows: editableHeaderRows,
+            rows: editableRows,
+            footer: editableFooter,
+            signatureImages,
+          },
+        },
+      });
+      setResultSubmissions((items) => [
+        submission,
+        ...items.filter((item) => item.id !== submission.id),
+      ]);
+      setIsResultSendDialogOpen(false);
+      setResultSubmissionTitle("");
+    } catch (error) {
+      setResultSubmissionError(
+        getApiErrorMessage(error, "Документти жөнөтүү мүмкүн болгон жок.")
+      );
+    } finally {
+      setIsSendingResult(false);
+    }
+  };
+
+  const handleDeleteResultSubmission = async (submission, subjectId = "") => {
+    if (!window.confirm(`"${submission.documentTitle}" өчүрүлсүнбү?`)) {
+      return;
+    }
+
+    setDeletingResultSubmissionId(submission.id);
+    setResultSubmissionListError("");
+    try {
+      const updatedSubmission = await deleteThematicAccountSubmission(
+        submission.id,
+        subjectId
+      );
+      setResultSubmissions((items) => updatedSubmission
+        ? items.map((item) => item.id === submission.id ? updatedSubmission : item)
+        : items.filter((item) => item.id !== submission.id)
+      );
+      if (selectedResultSubmission?.id === submission.id) {
+        setSelectedResultSubmission(null);
+      }
+    } catch (error) {
+      setResultSubmissionListError(
+        getApiErrorMessage(error, "Документти өчүрүү мүмкүн болгон жок.")
+      );
+    } finally {
+      setDeletingResultSubmissionId(null);
     }
   };
 
@@ -1005,7 +1333,11 @@ export default function CombatTrainingResults({ data, user }) {
   };
 
   const handleInsertSection = () => {
-    const summaryIndex = editableRows.findIndex((row) => row.__isSummary);
+    const summaryIndex = editableRows.findIndex(
+      (row) =>
+        row.__isSummary ||
+        row.__isResultColumn
+    );
     const maxPosition = (selectedTable?.type === "inspectionSecondSummary" || selectedTable?.type === "inspectionBpFirstSummary" || selectedTable?.type === "inspectionBpSecondSummary" || selectedTable?.type === "inspectionBpFifthSummary") && summaryIndex >= 0
       ? summaryIndex
       : editableRows.length;
@@ -1089,6 +1421,11 @@ export default function CombatTrainingResults({ data, user }) {
               ? createEmptyInspectionSecondSummaryRow(`${nextNumber}.`)
               : selectedTable?.type === "inspectionBpFifthSummary"
                 ? createEmptyBpFirstSummaryRow(`${nextNumber}.`)
+              : selectedTable?.type === "kojResults"
+                ? createEmptyKojRow(
+                    nextNumber,
+                    editableColumns.length > 0 ? editableColumns : selectedTable.columns
+                  )
       : {
           number: nextNumber,
           personalNumber: "",
@@ -1281,6 +1618,11 @@ export default function CombatTrainingResults({ data, user }) {
             },
           ],
         },
+        {
+          id: "observation-koj",
+          title: "КОЖ",
+          periods: [],
+        },
       ],
     },
     {
@@ -1289,18 +1631,18 @@ export default function CombatTrainingResults({ data, user }) {
       sections: [
         {
           id: "inspection-summary-1",
-          title: "Сводная ведомость за 1 учебный период",
+          title: "Сводная ведомость за учебный год",
           periods: [
             {
               id: "inspection-summary-1-period-1",
               title: "1-ай",
-              table: createInspectionSummaryTable("Сводная ведомость за 1 учебный период"),
+              table: createInspectionSummaryTable("Сводная ведомость за учебный год"),
             },
           ],
         },
         {
           id: "inspection-summary-2",
-          title: "Сводная ведомость за 2 учебный период",
+          title: "Итоги БП за учебный год",
           periods: [
             {
               id: "inspection-summary-2-period-1",
@@ -1311,7 +1653,7 @@ export default function CombatTrainingResults({ data, user }) {
         },
         {
           id: "inspection-bp-1",
-          title: "Итоги БП за 1 учебный период",
+          title: "Милдеттемелердин аткарылышы",
           periods: [
             {
               id: "inspection-bp-1-period-1",
@@ -1322,7 +1664,7 @@ export default function CombatTrainingResults({ data, user }) {
         },
         {
           id: "inspection-bp-2",
-          title: "Итоги БП за 2 учебный период",
+          title: "Аскер бөлүктүн күжүрмөн даярдоону жыйынтыгы",
           periods: [
             {
               id: "inspection-bp-2-period-1",
@@ -1333,7 +1675,7 @@ export default function CombatTrainingResults({ data, user }) {
         },
         {
           id: "inspection-obligations-summary",
-          title: "Итоги выполнения обязательств подразделений",
+          title: "Аскер бөлүктүн Милдеттемелердин аткарылышы",
           periods: [
             {
               id: "inspection-obligations-summary-period-1",
@@ -1347,7 +1689,20 @@ export default function CombatTrainingResults({ data, user }) {
   ];
 
   const selectedSection = sections.find((section) => section.id === selectedSectionId);
-  const selectedSubsections = getNestedSections(selectedSection);
+  const allSelectedSubsections = getNestedSections(selectedSection);
+  const selectedSubsections = selectedSectionId === "inspection"
+    ? user?.role === "regional"
+      ? selectedInspectionGroupId === "regional-unit"
+        ? allSelectedSubsections.filter((section) =>
+            ["inspection-bp-2", "inspection-obligations-summary"].includes(section.id)
+          )
+        : allSelectedSubsections.filter((section) =>
+            ["inspection-summary-1", "inspection-summary-2", "inspection-bp-1"].includes(section.id)
+          )
+      : allSelectedSubsections.filter((section) =>
+          ["inspection-summary-1", "inspection-summary-2", "inspection-bp-1"].includes(section.id)
+        )
+    : allSelectedSubsections;
   const selectedSubsection = selectedSubsections.find((section) => section.id === selectedSubsectionId);
   const shouldHideDefaultPeriods = sectionsWithCreate.includes(selectedSubsectionId);
   const basePeriods = (selectedSubsection?.periods || []).filter(
@@ -1361,6 +1716,7 @@ export default function CombatTrainingResults({ data, user }) {
   const selectedTable = selectedPeriod?.table || selectedSubsection?.table || selectedSection?.table;
   const tableColumns = editableColumns.length > 0 ? editableColumns : selectedTable?.columns || [];
   const tableHeaderRows = editableHeaderRows.length > 0 ? editableHeaderRows : selectedTable?.headerRows || [];
+  const isInspectionSummary = selectedTable?.type === "inspectionSummary";
   const isInspectionSecondSummary = selectedTable?.type === "inspectionSecondSummary";
   const isInspectionBpFirstSummary = selectedTable?.type === "inspectionBpFirstSummary";
   const isInspectionBpSecondSummary = selectedTable?.type === "inspectionBpSecondSummary";
@@ -1369,8 +1725,58 @@ export default function CombatTrainingResults({ data, user }) {
   const isInspectionBpPlainSummary = isInspectionBpSecondSummary || isInspectionBpFifthSummary;
   const isCompactSummaryTable = isInspectionSecondSummary || isInspectionBpFirstSummary || isInspectionBpSecondSummary || isInspectionBpFifthSummary;
 
+  useEffect(() => {
+    if (!isInspectionSummary) {
+      return undefined;
+    }
+
+    const updateScrollWidth = () => {
+      const scrollContainer = resultsTableScrollRef.current;
+      const table = scrollContainer?.querySelector("table");
+      const measuredWidth = Math.max(
+        scrollContainer?.scrollWidth || 0,
+        table?.scrollWidth || 0,
+        table?.getBoundingClientRect().width || 0
+      );
+      const columnsWidth = tableColumns.reduce(
+        (total, column) => total + (column.width || 100),
+        0
+      );
+      setResultsTableScrollWidth(Math.ceil(Math.max(measuredWidth, columnsWidth)));
+    };
+
+    updateScrollWidth();
+    window.requestAnimationFrame(updateScrollWidth);
+    window.addEventListener("resize", updateScrollWidth);
+    const resizeObserver = typeof ResizeObserver === "undefined"
+      ? null
+      : new ResizeObserver(updateScrollWidth);
+    if (resultsTableScrollRef.current) {
+      resizeObserver?.observe(resultsTableScrollRef.current);
+      const table = resultsTableScrollRef.current.querySelector("table");
+      if (table) {
+        resizeObserver?.observe(table);
+      }
+    }
+
+    return () => {
+      window.removeEventListener("resize", updateScrollWidth);
+      resizeObserver?.disconnect();
+    };
+  }, [editableRows.length, isInspectionSummary, selectedPeriodId, tableColumns]);
+
+  const syncResultsTableScroll = (source, targetRef) => {
+    if (targetRef.current && targetRef.current.scrollLeft !== source.scrollLeft) {
+      targetRef.current.scrollLeft = source.scrollLeft;
+    }
+  };
+
   const handleSectionClick = (sectionId) => {
     setSelectedSectionId(sectionId);
+    setSelectedAdminUnitNumber(null);
+    setSelectedAdminOutpostName(null);
+    setSelectedObservationGroupId(null);
+    setSelectedInspectionGroupId(null);
     setSelectedSubsectionId(null);
     setSelectedPeriodId(null);
   };
@@ -1393,7 +1799,11 @@ export default function CombatTrainingResults({ data, user }) {
   };
 
   const handleBack = () => {
-    if (selectedPeriodId) {
+    if (selectedAdminOutpostName) {
+      setSelectedAdminOutpostName(null);
+    } else if (selectedAdminUnitNumber) {
+      setSelectedAdminUnitNumber(null);
+    } else if (selectedPeriodId) {
       if (selectedSubsectionId === "inspection-summary-1" || selectedSubsectionId === "inspection-summary-2" || selectedSubsectionId === "inspection-bp-1" || selectedSubsectionId === "inspection-bp-2" || selectedSubsectionId === "inspection-obligations-summary") {
         setSelectedPeriodId(null);
         setSelectedSubsectionId(null);
@@ -1402,6 +1812,10 @@ export default function CombatTrainingResults({ data, user }) {
       }
     } else if (selectedSubsectionId) {
       setSelectedSubsectionId(null);
+    } else if (selectedObservationGroupId) {
+      setSelectedObservationGroupId(null);
+    } else if (selectedInspectionGroupId) {
+      setSelectedInspectionGroupId(null);
     } else if (selectedSectionId) {
       setSelectedSectionId(null);
     }
@@ -1415,6 +1829,8 @@ export default function CombatTrainingResults({ data, user }) {
           ? SHOOTING_TRAINING_DOCUMENT_TITLE
           : selectedSubsectionId === "observation-stp"
             ? LINE_TRAINING_DOCUMENT_TITLE
+            : selectedSubsectionId === "observation-koj"
+              ? KOJ_DOCUMENT_TITLE
         : DEFAULT_DOCUMENT_TITLE
     );
     setIsCreateDialogOpen(true);
@@ -1441,6 +1857,8 @@ export default function CombatTrainingResults({ data, user }) {
           ? createShootingTrainingTable(finalTitle)
           : selectedSubsectionId === "observation-stp"
             ? createLineTrainingTable(finalTitle)
+          : selectedSubsectionId === "observation-koj"
+            ? createKojTable(finalTitle)
         : createCustomTable(finalTitle),
     };
     setCustomPeriods([...customPeriods, newPeriod]);
@@ -1955,6 +2373,163 @@ export default function CombatTrainingResults({ data, user }) {
       ? { ...wordTableStyles.footerTextarea, minHeight: '130px', fontSize: '11pt', lineHeight: '1.5', marginTop: '28px', overflow: 'visible' }
     : wordTableStyles.footerTextarea;
 
+  const observationSection = sections.find((section) => section.id === "observation");
+  const observationSubjects = getNestedSections(observationSection);
+  const observationSubmissions = resultSubmissions.filter(
+    (submission) => submission.sectionId === "combat-training-results-observation"
+  );
+  const inspectionSubmissions = resultSubmissions.filter(
+    (submission) => submission.sectionId === "combat-training-results-inspection"
+  );
+  const observationIncomingSubmissions = observationSubmissions.filter(
+    (submission) => submission.senderRole === "outpost"
+  );
+  const observationOutgoingSubmissions = observationSubmissions.filter(
+    (submission) => submission.senderRole === "regional"
+  );
+  const inspectionIncomingSubmissions = inspectionSubmissions.filter(
+    (submission) => submission.senderRole === "outpost"
+  );
+  const inspectionOutgoingSubmissions = inspectionSubmissions.filter(
+    (submission) => submission.senderRole === "regional"
+  );
+  const observationDisplayedIncoming = user?.role === "admin"
+    ? observationOutgoingSubmissions
+    : observationIncomingSubmissions;
+  const inspectionDisplayedIncoming = user?.role === "admin"
+    ? inspectionOutgoingSubmissions
+    : inspectionIncomingSubmissions;
+  const selectedAdminSectionSubmissions = selectedSectionId === "observation"
+    ? observationSubmissions
+    : selectedSectionId === "inspection"
+      ? inspectionSubmissions
+      : EMPTY_ARRAY;
+  const adminUnitNumbers = Array.from(new Set([
+    ...(data?.unitNumbers || EMPTY_ARRAY),
+    ...selectedAdminSectionSubmissions.map((submission) => submission.unitNumber),
+  ].map((unitNumber) => String(unitNumber || "").trim()).filter(Boolean)));
+  const selectedAdminUnitSubmissions = selectedAdminSectionSubmissions.filter(
+    (submission) => String(submission.unitNumber) === String(selectedAdminUnitNumber)
+  );
+  const adminMilitaryUnitSubmissions = selectedAdminUnitSubmissions.filter(
+    (submission) => submission.senderRole === "regional"
+  );
+  const adminOutpostSubmissions = selectedAdminUnitSubmissions.filter(
+    (submission) => submission.senderRole === "outpost"
+  );
+  const adminOutpostNames = Array.from(new Set([
+    ...(OUTPOSTS_BY_MILITARY_UNIT[selectedAdminUnitNumber] || []).map(([, name]) =>
+      formatOutpostName(name)
+    ),
+    ...adminOutpostSubmissions.map((submission) => formatOutpostName(submission.outpostName)),
+  ].filter(Boolean)));
+  const selectedAdminOutpostSubmissions = selectedAdminOutpostName
+    ? adminOutpostSubmissions.filter(
+        (submission) => formatOutpostName(submission.outpostName) === selectedAdminOutpostName
+      )
+    : EMPTY_ARRAY;
+  const selectedObservationSubmissions = observationSubmissions.filter(
+    (submission) => Boolean(submission.table?.subjects?.[selectedSubsectionId])
+  );
+  const submittedSubjects = selectedResultSubmission?.table?.subjects || {};
+  const selectedSubmittedSubject = selectedSubmittedSubjectId
+    ? submittedSubjects[selectedSubmittedSubjectId]
+    : null;
+
+  const renderAdminSubmissionRow = (submission) => (
+    <div className="module-period-row" key={`admin-result-${submission.id}`}>
+      <button
+        className="module-period-card module-period-card--document"
+        onClick={() => setSelectedResultSubmission(submission)}
+        type="button"
+      >
+        <span aria-hidden="true" className="module-document-icon" />
+        <span className="module-submission-card__content">
+          <strong>{submission.documentTitle}</strong>
+          <small>
+            {submission.senderRole === "outpost"
+              ? `Застава: ${submission.outpostName || submission.senderName}`
+              : `Аскер бөлүгү: ${submission.unitNumber || submission.senderName}`}
+            {submission.table?.subsectionTitle ? ` · ${submission.table.subsectionTitle}` : ""}
+          </small>
+        </span>
+      </button>
+      <div className="module-period-actions">
+        <button
+          disabled={deletingResultSubmissionId === submission.id}
+          onClick={() => handleDeleteResultSubmission(submission)}
+          type="button"
+        >
+          {deletingResultSubmissionId === submission.id ? "Өчүрүү..." : "Өчүрүү"}
+        </button>
+      </div>
+    </div>
+  );
+
+  if (selectedSubmittedSubject) {
+    return (
+      <SubmittedObservationTable
+        onBack={() => setSelectedSubmittedSubjectId(null)}
+        subject={selectedSubmittedSubject}
+      />
+    );
+  }
+
+  if (selectedResultSubmission?.sectionId === "combat-training-results-inspection") {
+    return (
+      <SubmittedObservationTable
+        onBack={() => setSelectedResultSubmission(null)}
+        subject={selectedResultSubmission.table}
+      />
+    );
+  }
+
+  if (selectedResultSubmission) {
+    const sentSubjectTitles = observationSubjects
+      .filter((subject) => submittedSubjects[subject.id])
+      .map((subject) => subject.title);
+    const submissionSenderLabel = selectedResultSubmission.senderRole === "regional"
+      ? "Аскер бөлүгү жөнөткөн предметтер"
+      : "Застава жөнөткөн предметтер";
+    return (
+      <section className="module-panel">
+        <button
+          className="module-back-button"
+          onClick={() => setSelectedResultSubmission(null)}
+          type="button"
+        >
+          Артка
+        </button>
+        <header>
+          <h1>{selectedResultSubmission.documentTitle}</h1>
+        </header>
+        <p className="result-submission-notice">
+          {submissionSenderLabel}: {sentSubjectTitles.join(", ") || "жок"}
+        </p>
+        <div className="module-document-list">
+          {observationSubjects.map((subject) => {
+            const isSent = Boolean(submittedSubjects[subject.id]);
+            return (
+              <button
+                className="module-document-card result-submission-subject"
+                disabled={!isSent}
+                key={subject.id}
+                onClick={() => setSelectedSubmittedSubjectId(subject.id)}
+                type="button"
+              >
+                <span aria-hidden="true" className="module-document-icon" />
+                <span>
+                  {isSent ? <strong>{subject.title}</strong> : <span>{subject.title}</span>}
+                  <small>{isSent ? "Жөнөтүлдү" : "Жөнөтүлгөн жок"}</small>
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      </section>
+    );
+  }
+
   if (!sections || sections.length === 0) {
     return (
       <div className="combat-training-results">
@@ -1987,6 +2562,231 @@ export default function CombatTrainingResults({ data, user }) {
             </button>
           ))}
         </div>
+      ) : user?.role === "admin" && ["observation", "inspection"].includes(selectedSectionId) ? (
+        <div className="module-table-view">
+          <button className="module-back-button" onClick={handleBack} type="button" style={wordTableStyles.backButton}>
+            Артка
+          </button>
+          {!selectedAdminUnitNumber ? (
+            <div className="module-document-list">
+              {adminUnitNumbers.map((unitNumber) => (
+                <button
+                  className="module-document-card"
+                  key={unitNumber}
+                  onClick={() => {
+                    setSelectedAdminUnitNumber(unitNumber);
+                    setSelectedAdminOutpostName(null);
+                  }}
+                  type="button"
+                >
+                  <span aria-hidden="true" className="module-document-icon" />
+                  <strong>{unitNumber} аскер бөлүгү</strong>
+                </button>
+              ))}
+            </div>
+          ) : selectedAdminOutpostName ? (
+            <div className="module-submission-list">
+              <h2>{selectedAdminOutpostName}</h2>
+              <h3>Заставадан жөнөтүлгөн документтер</h3>
+              {selectedAdminOutpostSubmissions.length > 0 ? (
+                selectedAdminOutpostSubmissions.map(renderAdminSubmissionRow)
+              ) : (
+                <p className="dashboard-state">
+                  Бул заставадан жөнөтүлгөн документтер азырынча жок.
+                </p>
+              )}
+              {resultSubmissionListError && (
+                <p className="dashboard-error">{resultSubmissionListError}</p>
+              )}
+            </div>
+          ) : (
+            <div className="module-submission-list">
+              <h2>{selectedAdminUnitNumber} аскер бөлүгү</h2>
+              <h3>Аскер бөлүгүнөн жөнөтүлгөн документтер</h3>
+              {adminMilitaryUnitSubmissions.length > 0 ? (
+                adminMilitaryUnitSubmissions.map(renderAdminSubmissionRow)
+              ) : (
+                <p className="dashboard-state">Аскер бөлүгүнөн жөнөтүлгөн документтер азырынча жок.</p>
+              )}
+              <h3>Заставалар</h3>
+              {adminOutpostNames.length > 0 ? (
+                <div className="module-document-list">
+                  {adminOutpostNames.map((outpostName) => (
+                    <button
+                      className="module-document-card"
+                      key={outpostName}
+                      onClick={() => setSelectedAdminOutpostName(outpostName)}
+                      type="button"
+                    >
+                      <span aria-hidden="true" className="module-document-icon" />
+                      <strong>{outpostName}</strong>
+                    </button>
+                  ))}
+                </div>
+              ) : (
+                <p className="dashboard-state">Бул аскер бөлүгүнө караштуу заставалар табылган жок.</p>
+              )}
+              {resultSubmissionListError && (
+                <p className="dashboard-error">{resultSubmissionListError}</p>
+              )}
+            </div>
+          )}
+        </div>
+      ) : user?.role === "regional" && selectedSectionId === "observation" && !selectedObservationGroupId ? (
+        <div className="module-table-view">
+          <button className="module-back-button" onClick={handleBack} type="button" style={wordTableStyles.backButton}>Артка</button>
+          <div className="module-document-list">
+            <button className="module-document-card" onClick={() => setSelectedObservationGroupId("subunits")} type="button">
+              <span aria-hidden="true" className="module-document-icon" />
+              <strong>Бөлүкчөлөрдүн көзөмөл сабактары</strong>
+            </button>
+            <button className="module-document-card" onClick={() => setSelectedObservationGroupId("regional-unit")} type="button">
+              <span aria-hidden="true" className="module-document-icon" />
+              <strong>Аскер бөлүктүн көзөмөл сабактары</strong>
+            </button>
+          </div>
+          <div className="module-submission-list">
+            <h3>Чыгыш</h3>
+            {observationOutgoingSubmissions.length > 0 ? observationOutgoingSubmissions.map((submission) => (
+              <div className="module-period-row" key={`out-${submission.id}`}>
+                <button className="module-period-card module-period-card--document" onClick={() => setSelectedResultSubmission(submission)} type="button">
+                  <span aria-hidden="true" className="module-document-icon" />
+                  <span className="module-submission-card__content"><strong>{submission.documentTitle}</strong></span>
+                </button>
+                <div className="module-period-actions"><SubmissionEditPermissionButton onUpdated={(updated) => setResultSubmissions((items) => items.map((item) => item.id === updated.id ? updated : item))} submission={submission} /></div>
+              </div>
+            )) : <p className="dashboard-state">Жөнөтүлгөн документтер азырынча жок.</p>}
+          </div>
+        </div>
+      ) : user?.role === "regional" && selectedObservationGroupId === "subunits" && selectedSectionId === "observation" ? (
+        <div className="module-table-view">
+          <button className="module-back-button" onClick={handleBack} type="button" style={wordTableStyles.backButton}>
+            Артка
+          </button>
+          <div className="module-submission-list">
+            <h3>Кириш</h3>
+            {observationDisplayedIncoming.length > 0 ? observationDisplayedIncoming.map((submission) => (
+              <div className="module-period-row" key={submission.id}>
+                <button className="module-period-card module-period-card--document" onClick={() => setSelectedResultSubmission(submission)} type="button">
+                  <span aria-hidden="true" className="module-document-icon" />
+                  <span className="module-submission-card__content"><strong>{submission.documentTitle}</strong><small>{submission.outpostName || submission.senderName}</small></span>
+                </button>
+                <div className="module-period-actions">
+                  {user?.role === "regional" ? <button onClick={() => setForwardingSubmission(submission)} type="button">Отправить</button> : null}
+                  <button disabled={deletingResultSubmissionId === submission.id} onClick={() => handleDeleteResultSubmission(submission)} type="button">
+                    {deletingResultSubmissionId === submission.id ? "Өчүрүү..." : "Өчүрүү"}
+                  </button>
+                </div>
+              </div>
+            )) : (
+              <p className="dashboard-state">Документов пока нет.</p>
+            )}
+            {user?.role === "regional" ? <h3>Чыгыш</h3> : null}
+            {user?.role === "regional" ? observationOutgoingSubmissions.map((submission) => (
+              <button className="module-period-card module-period-card--document" key={`out-${submission.id}`} onClick={() => setSelectedResultSubmission(submission)} type="button">
+                <span aria-hidden="true" className="module-document-icon" />
+                <span className="module-submission-card__content"><strong>{submission.documentTitle}</strong></span>
+              </button>
+            )) : null}
+          </div>
+        </div>
+      ) : user?.role === "admin" && selectedSectionId === "inspection" ? (
+        <div className="module-table-view">
+          <button className="module-back-button" onClick={handleBack} type="button" style={wordTableStyles.backButton}>Артка</button>
+          <div className="module-submission-list">
+            <h3>Кириш</h3>
+            {inspectionDisplayedIncoming.length > 0 ? inspectionDisplayedIncoming.map((submission) => (
+              <div className="module-period-row" key={submission.id}>
+                <button className="module-period-card module-period-card--document" onClick={() => setSelectedResultSubmission(submission)} type="button">
+                  <span aria-hidden="true" className="module-document-icon" />
+                  <span className="module-submission-card__content">
+                    <strong>{submission.documentTitle}</strong>
+                    <small>{submission.table?.subsectionTitle || submission.senderName}</small>
+                  </span>
+                </button>
+                <div className="module-period-actions">
+                  <button disabled={deletingResultSubmissionId === submission.id} onClick={() => handleDeleteResultSubmission(submission)} type="button">
+                    {deletingResultSubmissionId === submission.id ? "Өчүрүү..." : "Өчүрүү"}
+                  </button>
+                </div>
+              </div>
+            )) : <p className="dashboard-state">Документов пока нет.</p>}
+          </div>
+        </div>
+      ) : user?.role === "regional" && selectedSectionId === "inspection" && !selectedInspectionGroupId ? (
+        <div className="module-table-view">
+          <button className="module-back-button" onClick={handleBack} type="button" style={wordTableStyles.backButton}>
+            Артка
+          </button>
+          <div className="module-document-list">
+            <button
+              className="module-document-card"
+              onClick={() => setSelectedInspectionGroupId("subunits")}
+              type="button"
+            >
+              <span aria-hidden="true" className="module-document-icon" />
+              <strong>Бөлүкчөлөрдүн көзөмөл текшерүү сабактары</strong>
+            </button>
+            <button
+              className="module-document-card"
+              onClick={() => setSelectedInspectionGroupId("regional-unit")}
+              type="button"
+            >
+              <span aria-hidden="true" className="module-document-icon" />
+              <strong>Аскер бөлүктүн көзөмөл текшерүү сабактары</strong>
+            </button>
+          </div>
+          <div className="module-submission-list">
+            <h3>Чыгыш</h3>
+            {inspectionOutgoingSubmissions.length > 0 ? inspectionOutgoingSubmissions.map((submission) => (
+              <div className="module-period-row" key={`inspection-out-${submission.id}`}>
+                <button className="module-period-card module-period-card--document" onClick={() => setSelectedResultSubmission(submission)} type="button">
+                  <span aria-hidden="true" className="module-document-icon" />
+                  <span className="module-submission-card__content">
+                    <strong>{submission.documentTitle}</strong>
+                    <small>{submission.table?.subsectionTitle}</small>
+                  </span>
+                </button>
+                <div className="module-period-actions"><SubmissionEditPermissionButton onUpdated={(updated) => setResultSubmissions((items) => items.map((item) => item.id === updated.id ? updated : item))} submission={submission} /></div>
+              </div>
+            )) : <p className="dashboard-state">Жөнөтүлгөн документтер азырынча жок.</p>}
+          </div>
+        </div>
+      ) : user?.role === "regional" && selectedSectionId === "inspection" && selectedInspectionGroupId === "subunits" ? (
+        <div className="module-table-view">
+          <button className="module-back-button" onClick={handleBack} type="button" style={wordTableStyles.backButton}>
+            Артка
+          </button>
+          <div className="module-submission-list">
+            <h3>Кириш</h3>
+            {inspectionIncomingSubmissions.length > 0 ? inspectionIncomingSubmissions.map((submission) => (
+              <div className="module-period-row" key={submission.id}>
+                <button className="module-period-card module-period-card--document" onClick={() => setSelectedResultSubmission(submission)} type="button">
+                  <span aria-hidden="true" className="module-document-icon" />
+                  <span className="module-submission-card__content"><strong>{submission.documentTitle}</strong><small>{submission.table?.subsectionTitle}</small></span>
+                </button>
+                <div className="module-period-actions">
+                  <button onClick={() => setForwardingSubmission(submission)} type="button">Отправить</button>
+                  <button disabled={deletingResultSubmissionId === submission.id} onClick={() => handleDeleteResultSubmission(submission)} type="button">
+                    {deletingResultSubmissionId === submission.id ? "Өчүрүү..." : "Өчүрүү"}
+                  </button>
+                </div>
+              </div>
+            )) : (
+              <p className="dashboard-state">Документов пока нет.</p>
+            )}
+            <h3>Чыгыш</h3>
+            {inspectionOutgoingSubmissions.map((submission) => (
+              <button className="module-period-card module-period-card--document" key={`out-${submission.id}`} onClick={() => setSelectedResultSubmission(submission)} type="button">
+                <span aria-hidden="true" className="module-document-icon" />
+                <span className="module-submission-card__content">
+                  <strong>{submission.documentTitle}</strong>
+                  <small>{submission.table?.subsectionTitle}</small>
+                </span>
+              </button>
+            ))}
+          </div>
+        </div>
       ) : !selectedSubsectionId ? (
         <div className="module-table-view">
           <button className="module-back-button" onClick={handleBack} type="button" style={wordTableStyles.backButton}>
@@ -2005,6 +2805,41 @@ export default function CombatTrainingResults({ data, user }) {
               </button>
             ))}
           </div>
+          {user?.role === "outpost" && selectedSectionId === "inspection" && (
+            <div className="module-submission-list">
+              <h3>Чыгыш</h3>
+              {inspectionSubmissions.length > 0 ? inspectionSubmissions.map((submission) => (
+                <div className="module-period-row" key={submission.id}>
+                  <button
+                    className="module-period-card module-period-card--document"
+                    onClick={() => setSelectedResultSubmission(submission)}
+                    type="button"
+                  >
+                    <span aria-hidden="true" className="module-document-icon" />
+                    <span className="module-submission-card__content">
+                      <strong>{submission.documentTitle}</strong>
+                      <small>{submission.table?.subsectionTitle}</small>
+                    </span>
+                  </button>
+                  <div className="module-period-actions">
+                    <SubmissionEditPermissionButton onUpdated={(updated) => setResultSubmissions((items) => items.map((item) => item.id === updated.id ? updated : item))} submission={submission} />
+                    <button
+                      disabled={deletingResultSubmissionId === submission.id}
+                      onClick={() => handleDeleteResultSubmission(submission)}
+                      type="button"
+                    >
+                      {deletingResultSubmissionId === submission.id ? "Өчүрүү..." : "Өчүрүү"}
+                    </button>
+                  </div>
+                </div>
+              )) : (
+                <p className="dashboard-state">Жөнөтүлгөн документтер азырынча жок.</p>
+              )}
+              {resultSubmissionListError && (
+                <p className="dashboard-error">{resultSubmissionListError}</p>
+              )}
+            </div>
+          )}
         </div>
       ) : selectedPeriodId && selectedTable ? (
         <div className="table-view" style={wordTableStyles.container}>
@@ -2037,9 +2872,24 @@ export default function CombatTrainingResults({ data, user }) {
               <button style={wordTableStyles.button} onClick={handleSaveTable} type="button">
                 Сохранить
               </button>
-              <button style={{...wordTableStyles.button, ...wordTableStyles.buttonSecondary}} type="button">
-                Отправить
-              </button>
+              {(
+                user?.role === "outpost" ||
+                (
+                  user?.role === "regional" &&
+                  (
+                    (selectedSectionId === "observation" && selectedObservationGroupId === "regional-unit") ||
+                    (selectedSectionId === "inspection" && selectedInspectionGroupId === "regional-unit")
+                  )
+                )
+              ) && ["observation", "inspection"].includes(selectedSectionId) && (
+                <button
+                  onClick={handleOpenResultSendDialog}
+                  style={{...wordTableStyles.button, ...wordTableStyles.buttonSecondary}}
+                  type="button"
+                >
+                  Отправить
+                </button>
+              )}
               <button style={{...wordTableStyles.button, ...wordTableStyles.buttonSecondary}} type="button">
                 Изменить
               </button>
@@ -2069,7 +2919,25 @@ export default function CombatTrainingResults({ data, user }) {
             </div>
           </div>
 
-          <div className="table-wrap" style={{ border: '1px solid #000', overflowX: 'auto' }}>
+          {isInspectionSummary ? (
+            <div
+              className="results-table-scroll-top"
+              onScroll={(event) => syncResultsTableScroll(event.currentTarget, resultsTableScrollRef)}
+              ref={resultsTopScrollRef}
+            >
+              <div style={{ width: `${resultsTableScrollWidth}px` }} />
+            </div>
+          ) : null}
+          <div
+            className="table-wrap"
+            onScroll={
+              isInspectionSummary
+                ? (event) => syncResultsTableScroll(event.currentTarget, resultsTopScrollRef)
+                : undefined
+            }
+            ref={isInspectionSummary ? resultsTableScrollRef : undefined}
+            style={{ border: '1px solid #000', overflowX: 'auto' }}
+          >
             <table className="training-table training-table--thematic-account" style={compactTableStyle}>
               <colgroup>
                 {tableColumns.map((column) => (
@@ -2276,6 +3144,17 @@ export default function CombatTrainingResults({ data, user }) {
               </tbody>
             </table>
           </div>
+          {sectionsWithCreate.includes(selectedSubsectionId) && (
+            <div style={{ display: "flex", justifyContent: "flex-end", marginTop: "12px" }}>
+              <button
+                onClick={handleAddKojResultColumn}
+                style={wordTableStyles.button}
+                type="button"
+              >
+                + Добавить колонку
+              </button>
+            </div>
+          )}
           <div style={wordTableStyles.footerWrapper}>
             <textarea
               aria-label="Таблицанын жыйынтык бөлүгү"
@@ -2285,53 +3164,6 @@ export default function CombatTrainingResults({ data, user }) {
               style={compactFooterTextareaStyle}
               value={editableFooter}
             />
-            {selectedTable.signatureMode === "singleInline" && !signatureImages.captain ? (
-              <button
-                onClick={() => handleOpenSignatureDialog("captain")}
-                style={wordTableStyles.inlineSignatureButton}
-                type="button"
-              >
-                Добавить подпись
-              </button>
-            ) : null}
-            {selectedTable.signatureMode === "singleInline" && signatureImages.captain ? (
-              <>
-                <img
-                  alt="Подпись"
-                  src={signatureImages.captain}
-                  style={wordTableStyles.inlineSignatureImage}
-                />
-                <button
-                  onClick={() => handleDeleteSignature("captain")}
-                  style={wordTableStyles.inlineSignatureDeleteButton}
-                  type="button"
-                >
-                  Удалить
-                </button>
-              </>
-            ) : null}
-            {!isInspectionSecondSummary && !isInspectionBpPlainSummary && selectedTable.signatureMode !== "singleInline" && SIGNATURE_SLOTS.map((slot) => (
-              signatureImages[slot.id] ? null : (
-                <button
-                  key={slot.id}
-                  onClick={() => handleOpenSignatureDialog(slot.id)}
-                  style={wordTableStyles.footerSignatureButton(slot)}
-                  type="button"
-                >
-                  Добавить подпись
-                </button>
-              )
-            ))}
-            {!isInspectionSecondSummary && !isInspectionBpPlainSummary && selectedTable.signatureMode !== "singleInline" && SIGNATURE_SLOTS.map((slot) => (
-              signatureImages[slot.id] ? (
-                <img
-                  alt="Подпись"
-                  key={slot.id}
-                  src={signatureImages[slot.id]}
-                  style={wordTableStyles.signatureImage(slot)}
-                />
-              ) : null
-            ))}
           </div>
         </div>
       ) : (
@@ -2372,6 +3204,80 @@ export default function CombatTrainingResults({ data, user }) {
               </button>
             )}
           </div>
+          {user?.role === "outpost" && selectedSectionId === "observation" && (
+            <div className="module-submission-list">
+              <h3>Чыгыш</h3>
+              {selectedObservationSubmissions.length > 0 ? selectedObservationSubmissions.map((submission) => (
+                <div className="module-period-row" key={`observation-submission-${submission.id}`}>
+                  <button
+                    className="module-period-card module-period-card--document"
+                    onClick={() => setSelectedResultSubmission(submission)}
+                    type="button"
+                  >
+                    <span aria-hidden="true" className="module-document-icon" />
+                    <span className="module-submission-card__content">
+                      <strong>{submission.documentTitle}</strong>
+                      <small>
+                        {submission.table?.subjects?.[selectedSubsectionId]?.periodTitle || selectedSubsection?.title}
+                      </small>
+                    </span>
+                  </button>
+                  <div className="module-period-actions">
+                    <SubmissionEditPermissionButton onUpdated={(updated) => setResultSubmissions((items) => items.map((item) => item.id === updated.id ? updated : item))} submission={submission} />
+                    <button
+                      disabled={deletingResultSubmissionId === submission.id}
+                      onClick={() => handleDeleteResultSubmission(submission, selectedSubsectionId)}
+                      type="button"
+                    >
+                      {deletingResultSubmissionId === submission.id ? "Өчүрүү..." : "Өчүрүү"}
+                    </button>
+                  </div>
+                </div>
+              )) : (
+                <p className="dashboard-state">Жөнөтүлгөн документтер азырынча жок.</p>
+              )}
+              {resultSubmissionListError && (
+                <p className="dashboard-error">{resultSubmissionListError}</p>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
+      {isResultSendDialogOpen && (
+        <div className="lesson-period-dialog" role="dialog" aria-modal="true" aria-labelledby="result-send-dialog-title">
+          <form
+            className="lesson-period-dialog__panel"
+            onSubmit={(event) => {
+              event.preventDefault();
+              handleSendResult();
+            }}
+          >
+            <h2 id="result-send-dialog-title">Документти жөнөтүү</h2>
+            <input
+              autoFocus
+              onChange={(event) => {
+                setResultSubmissionTitle(event.target.value);
+                setResultSubmissionError("");
+              }}
+              placeholder="Иш кагаздардын аталышы"
+              type="text"
+              value={resultSubmissionTitle}
+            />
+            {resultSubmissionError && <p className="lesson-period-dialog__error">{resultSubmissionError}</p>}
+            <div className="lesson-period-dialog__actions">
+              <button
+                disabled={isSendingResult}
+                onClick={() => setIsResultSendDialogOpen(false)}
+                type="button"
+              >
+                Жокко чыгаруу
+              </button>
+              <button disabled={isSendingResult} type="submit">
+                {isSendingResult ? "Отправка..." : "Отправить"}
+              </button>
+            </div>
+          </form>
         </div>
       )}
 
@@ -2382,17 +3288,19 @@ export default function CombatTrainingResults({ data, user }) {
             handleSaveDocument();
           }}>
             <h2 id="create-dialog-title">Создать документ</h2>
-            <div className="lesson-period-dialog__field">
-              <label htmlFor="month-input">Ай:</label>
-              <input
-                id="month-input"
-                className="lesson-period-dialog__input"
-                onChange={(event) => setMonthInput(event.target.value)}
-                placeholder="март"
-                type="text"
-                value={monthInput}
-              />
-            </div>
+            {selectedSubsectionId !== "observation-koj" && (
+              <div className="lesson-period-dialog__field">
+                <label htmlFor="month-input">Ай:</label>
+                <input
+                  id="month-input"
+                  className="lesson-period-dialog__input"
+                  onChange={(event) => setMonthInput(event.target.value)}
+                  placeholder="март"
+                  type="text"
+                  value={monthInput}
+                />
+              </div>
+            )}
             <textarea
               className="lesson-period-dialog__textarea"
               onChange={(event) => setDocumentTitle(event.target.value)}
@@ -2418,17 +3326,19 @@ export default function CombatTrainingResults({ data, user }) {
             handleUpdateDocument();
           }}>
             <h2 id="edit-dialog-title">Өзгөртүү</h2>
-            <div className="lesson-period-dialog__field">
-              <label htmlFor="edit-month-input">Ай:</label>
-              <input
-                id="edit-month-input"
-                className="lesson-period-dialog__input"
-                onChange={(event) => setMonthInput(event.target.value)}
-                placeholder="март"
-                type="text"
-                value={monthInput}
-              />
-            </div>
+            {selectedSubsectionId !== "observation-koj" && (
+              <div className="lesson-period-dialog__field">
+                <label htmlFor="edit-month-input">Ай:</label>
+                <input
+                  id="edit-month-input"
+                  className="lesson-period-dialog__input"
+                  onChange={(event) => setMonthInput(event.target.value)}
+                  placeholder="март"
+                  type="text"
+                  value={monthInput}
+                />
+              </div>
+            )}
             <textarea
               className="lesson-period-dialog__textarea"
               onChange={(event) => setDocumentTitle(event.target.value)}
@@ -2447,35 +3357,15 @@ export default function CombatTrainingResults({ data, user }) {
         </div>
       )}
 
-      {isSignatureDialogOpen && (
-        <div className="lesson-period-dialog" role="dialog" aria-modal="true" aria-labelledby="signature-dialog-title">
-          <div className="lesson-period-dialog__panel">
-            <h2 id="signature-dialog-title">Подпись</h2>
-            <canvas
-              height={180}
-              onPointerDown={handleSignatureStart}
-              onPointerLeave={handleSignatureEnd}
-              onPointerMove={handleSignatureMove}
-              onPointerUp={handleSignatureEnd}
-              ref={signatureCanvasRef}
-              style={wordTableStyles.signatureCanvas}
-              width={520}
-            />
-            <div className="lesson-period-dialog__actions">
-              <button onClick={() => setIsSignatureDialogOpen(false)} type="button">
-                Жабуу
-              </button>
-              <button onClick={handleClearSignatureCanvas} type="button">
-                Очистить
-              </button>
-              <button onClick={handleSaveSignature} type="button">
-                Сактоо
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
 
+      <SubmissionForwardDialog
+        onClose={() => setForwardingSubmission(null)}
+        onForward={async (submission, title) => {
+          const forwarded = await forwardThematicAccountSubmission(submission.id, title);
+          setResultSubmissions((items) => [forwarded, ...items]);
+        }}
+        submission={forwardingSubmission}
+      />
       {isInsertSectionDialogOpen && (
         <>
           <div style={wordTableStyles.dialogOverlay} onClick={() => setIsInsertSectionDialogOpen(false)} />

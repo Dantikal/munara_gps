@@ -7,7 +7,7 @@ import { updateUser } from "../../../features/auth/authSlice.js";
 
 const roleLabels = {
   admin: "Администратор",
-  regional: "Областное управление",
+  regional: "Аскер бөлүгү",
   outpost: "Застава",
 };
 
@@ -18,7 +18,7 @@ const statusLabels = {
 };
 
 const unitLabels = {
-  regional_department: "Войсковая часть №",
+  regional_department: "Аскер бөлүгү",
   outpost: "Застава",
 };
 

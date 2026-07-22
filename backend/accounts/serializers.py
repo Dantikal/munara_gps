@@ -1,10 +1,21 @@
+from pathlib import Path
+
 from django.contrib.auth import get_user_model
 from django.core.validators import RegexValidator
 from django.utils import timezone
 from rest_framework import serializers
 from rest_framework_simplejwt.tokens import RefreshToken
 
-from .models import AdminChatMessage, CombatTrainingJournal, MethodicalManualSubject
+from .docx_preview import DocxPreviewError, extract_docx_preview
+from .models import (
+    AdminChatMessage,
+    CombatTrainingNews,
+    CombatTrainingNewsAttachment,
+    CombatTrainingJournal,
+    MethodicalManualDocument,
+    MethodicalManualSubject,
+)
+from .outposts import OUTPOSTS_BY_MILITARY_UNIT, normalize_outpost_selection
 
 User = get_user_model()
 
@@ -19,6 +30,18 @@ class UserPublicSerializer(serializers.ModelSerializer):
     avatar = serializers.ImageField(read_only=True)
     photo_face = serializers.ImageField(read_only=True)
     photo_military_id = serializers.ImageField(read_only=True)
+    unreadChatCount = serializers.SerializerMethodField()
+
+    def get_unreadChatCount(self, obj):
+        request = self.context.get("request")
+        request_user = getattr(request, "user", None) if request else None
+        if not request_user or not request_user.is_authenticated:
+            return 0
+        return AdminChatMessage.objects.filter(
+            sender=obj,
+            recipient=request_user,
+            is_read=False,
+        ).count()
 
     class Meta:
         model = User
@@ -40,12 +63,16 @@ class UserPublicSerializer(serializers.ModelSerializer):
             "photo_military_id",
             "rejection_reason",
             "reviewed_at",
+            "unreadChatCount",
             "date_joined",
         ]
         read_only_fields = fields
 
 
 class AdminUserSerializer(serializers.ModelSerializer):
+    avatar = serializers.ImageField(read_only=True)
+    photo_face = serializers.ImageField(required=False)
+    photo_military_id = serializers.ImageField(required=False)
     password = serializers.CharField(
         write_only=True, required=False, allow_blank=True, min_length=8
     )
@@ -70,6 +97,9 @@ class AdminUserSerializer(serializers.ModelSerializer):
             "outpost_name",
             "role",
             "status",
+            "avatar",
+            "photo_face",
+            "photo_military_id",
             "date_joined",
         ]
         read_only_fields = ["id", "username", "date_joined"]
@@ -103,6 +133,25 @@ class AdminUserSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError(
                 {"password": "Укажите пароль для нового пользователя."}
             )
+        if self.instance is None and not attrs.get("photo_face"):
+            raise serializers.ValidationError(
+                {"photo_face": "Загрузите фото лица."}
+            )
+        if self.instance is None and not attrs.get("photo_military_id"):
+            raise serializers.ValidationError(
+                {"photo_military_id": "Загрузите фото военного билета."}
+            )
+        unit_type = attrs.get("unit_type", getattr(self.instance, "unit_type", ""))
+        region = attrs.get("region", getattr(self.instance, "region", ""))
+        outpost_name = attrs.get("outpost_name", getattr(self.instance, "outpost_name", ""))
+        if unit_type == User.UnitType.OUTPOST:
+            normalized_outpost_name = normalize_outpost_selection(region, outpost_name)
+            if normalized_outpost_name:
+                attrs["outpost_name"] = normalized_outpost_name
+            elif self.instance is None:
+                raise serializers.ValidationError(
+                    {"outpost_name": "Тандалган застава бул аскер бөлүгүнө кирбейт."}
+                )
         return attrs
 
     def create(self, validated_data):
@@ -140,14 +189,182 @@ class MethodicalManualSubjectSerializer(serializers.ModelSerializer):
         return title
 
 
+class MethodicalManualDocumentSerializer(serializers.ModelSerializer):
+    originalName = serializers.CharField(source="original_name", read_only=True)
+    previewHtml = serializers.CharField(source="preview_html", read_only=True)
+    createdAt = serializers.DateTimeField(source="created_at", read_only=True)
+    fileUrl = serializers.SerializerMethodField()
+    kind = serializers.SerializerMethodField()
+
+    IMAGE_EXTENSIONS = {".bmp", ".gif", ".jpeg", ".jpg", ".png", ".webp"}
+    VIDEO_EXTENSIONS = {".avi", ".mkv", ".mov", ".mp4", ".m4v", ".webm"}
+    AUDIO_EXTENSIONS = {".aac", ".flac", ".m4a", ".mp3", ".ogg", ".wav"}
+    DOCUMENT_EXTENSIONS = {
+        ".csv", ".doc", ".docx", ".odp", ".ods", ".odt", ".ppt", ".pptx",
+        ".rtf", ".txt", ".xls", ".xlsx",
+    }
+    ARCHIVE_EXTENSIONS = {".7z", ".rar", ".zip"}
+    ALLOWED_EXTENSIONS = (
+        IMAGE_EXTENSIONS
+        | VIDEO_EXTENSIONS
+        | AUDIO_EXTENSIONS
+        | DOCUMENT_EXTENSIONS
+        | ARCHIVE_EXTENSIONS
+        | {".pdf"}
+    )
+    MAX_FILE_SIZE = 5 * 1024 * 1024 * 1024
+
+    class Meta:
+        model = MethodicalManualDocument
+        fields = [
+            "id",
+            "subject",
+            "title",
+            "file",
+            "fileUrl",
+            "originalName",
+            "previewHtml",
+            "content",
+            "kind",
+            "createdAt",
+        ]
+        read_only_fields = ["id", "subject"]
+        extra_kwargs = {
+            "file": {"write_only": True, "required": False, "allow_null": True},
+            "content": {"required": False, "allow_blank": True},
+        }
+
+    def validate_title(self, value):
+        title = value.strip()
+        if not title:
+            raise serializers.ValidationError("Укажите название документа.")
+        return title
+
+    def validate_file(self, value):
+        extension = Path(value.name).suffix.lower()
+        if extension not in self.ALLOWED_EXTENSIONS:
+            raise serializers.ValidationError(
+                "Этот формат не поддерживается. Загрузите документ, PDF, изображение, аудио, видео или архив."
+            )
+        if value.size > self.MAX_FILE_SIZE:
+            raise serializers.ValidationError("Размер файла не должен превышать 5 ГБ.")
+        value.preview_html = ""
+        if extension == ".docx":
+            try:
+                value.preview_html = extract_docx_preview(value)
+            except DocxPreviewError as error:
+                raise serializers.ValidationError(str(error)) from error
+        return value
+
+    def validate(self, attrs):
+        content = str(attrs.get("content") or "").strip()
+        uploaded_file = attrs.get("file")
+        if not content and not uploaded_file:
+            raise serializers.ValidationError(
+                "Введите текст материала или выберите файл."
+            )
+        attrs["content"] = content
+        return attrs
+
+    def get_fileUrl(self, document):
+        if not document.file:
+            return ""
+        request = self.context.get("request")
+        return request.build_absolute_uri(document.file.url) if request else document.file.url
+
+    def get_kind(self, document):
+        if not document.file:
+            return "text"
+        extension = Path(document.original_name or document.file.name).suffix.lower()
+        if extension == ".docx":
+            return "docx"
+        if extension == ".pdf":
+            return "pdf"
+        if extension in self.IMAGE_EXTENSIONS:
+            return "image"
+        if extension in self.VIDEO_EXTENSIONS:
+            return "video"
+        if extension in self.AUDIO_EXTENSIONS:
+            return "audio"
+        if extension in self.ARCHIVE_EXTENSIONS:
+            return "archive"
+        return "document"
+
+    def create(self, validated_data):
+        uploaded_file = validated_data.get("file")
+        if uploaded_file:
+            validated_data["original_name"] = uploaded_file.name
+            validated_data["preview_html"] = getattr(uploaded_file, "preview_html", "")
+        else:
+            validated_data["original_name"] = ""
+            validated_data["preview_html"] = ""
+        return super().create(validated_data)
+
+
+class CombatTrainingNewsAttachmentSerializer(serializers.ModelSerializer):
+    fileUrl = serializers.SerializerMethodField()
+    originalName = serializers.CharField(source="original_name")
+
+    class Meta:
+        model = CombatTrainingNewsAttachment
+        fields = ["id", "fileUrl", "originalName", "kind", "size"]
+
+    def get_fileUrl(self, attachment):
+        if not attachment.file:
+            return ""
+        request = self.context.get("request")
+        return request.build_absolute_uri(attachment.file.url) if request else attachment.file.url
+
+
+class CombatTrainingNewsSerializer(serializers.ModelSerializer):
+    attachments = CombatTrainingNewsAttachmentSerializer(many=True, read_only=True)
+    authorName = serializers.SerializerMethodField()
+    createdAt = serializers.DateTimeField(source="created_at")
+    updatedAt = serializers.DateTimeField(source="updated_at")
+    likeCount = serializers.SerializerMethodField()
+    isLiked = serializers.SerializerMethodField()
+
+    class Meta:
+        model = CombatTrainingNews
+        fields = [
+            "id",
+            "title",
+            "body",
+            "attachments",
+            "authorName",
+            "createdAt",
+            "updatedAt",
+            "likeCount",
+            "isLiked",
+        ]
+
+    def get_authorName(self, news):
+        if not news.author:
+            return "Администратор"
+        return news.author.full_name or news.author.email or "Администратор"
+
+    def get_likeCount(self, news):
+        return news.likes.count()
+
+    def get_isLiked(self, news):
+        request = self.context.get("request")
+        return bool(
+            request
+            and request.user.is_authenticated
+            and news.likes.filter(user=request.user).exists()
+        )
+
+
 class CombatTrainingJournalSerializer(serializers.ModelSerializer):
     createdAt = serializers.DateTimeField(source="created_at", required=False)
     unitName = serializers.CharField(source="unit_name", required=False, allow_blank=True)
+    ownerId = serializers.IntegerField(source="owner_id", read_only=True)
 
     class Meta:
         model = CombatTrainingJournal
         fields = [
             "id",
+            "ownerId",
             "storage_id",
             "title",
             "year",
@@ -226,15 +443,29 @@ class AdminChatMessageSerializer(serializers.ModelSerializer):
         if not body and not attachment:
             raise serializers.ValidationError({"body": "Введите текст или добавьте вложение."})
 
-        if request_user.role == User.Role.ADMIN:
-            recipient_id = attrs.get("recipientId")
-            if not recipient_id:
-                raise serializers.ValidationError({"recipientId": "Укажите получателя."})
-            recipient = User.objects.filter(pk=recipient_id).first()
+        recipient_id = attrs.get("recipientId")
+        if request_user.role in {User.Role.ADMIN, User.Role.REGIONAL} and not recipient_id:
+            raise serializers.ValidationError({"recipientId": "Укажите получателя."})
+        if recipient_id:
+            recipient = User.objects.filter(pk=recipient_id, status=User.Status.ACTIVE).first()
             if not recipient:
                 raise serializers.ValidationError({"recipientId": "Пользователь не найден."})
             if recipient.pk == request_user.pk:
                 raise serializers.ValidationError({"recipientId": "Нельзя отправить сообщение самому себе."})
+
+            is_allowed = request_user.role == User.Role.ADMIN
+            if request_user.role == User.Role.OUTPOST:
+                is_allowed = recipient.role == User.Role.ADMIN or (
+                    recipient.role == User.Role.REGIONAL
+                    and recipient.region == request_user.region
+                )
+            elif request_user.role == User.Role.REGIONAL:
+                is_allowed = recipient.role == User.Role.ADMIN or (
+                    recipient.role == User.Role.OUTPOST
+                    and recipient.region == request_user.region
+                )
+            if not is_allowed:
+                raise serializers.ValidationError({"recipientId": "Бул алуучуга билдирүү жөнөтүүгө болбойт."})
 
         attrs["body"] = body
         return attrs
@@ -246,7 +477,7 @@ class AdminChatMessageSerializer(serializers.ModelSerializer):
         validated_data.pop("senderId", None)
         attachment = validated_data.get("attachment")
 
-        if sender.role == User.Role.ADMIN:
+        if recipient_id:
             recipient = User.objects.filter(pk=recipient_id).first()
         else:
             recipient = User.objects.filter(role=User.Role.ADMIN).order_by("id").first()
@@ -287,12 +518,13 @@ class ProfileUpdateSerializer(serializers.ModelSerializer):
 
 class RegistrationSerializer(serializers.ModelSerializer):
     password = serializers.CharField(write_only=True, min_length=8)
-    phone = serializers.CharField(validators=[phone_validator])
+    phone = serializers.CharField(max_length=20)
     full_name = serializers.CharField(required=True)
     military_rank = serializers.CharField(required=True)
     position = serializers.CharField(required=True)
-    unit_type = serializers.CharField(required=True, allow_blank=False, max_length=160)
-    region = serializers.CharField(required=True)
+    unit_type = serializers.ChoiceField(choices=User.UnitType.choices, required=True)
+    region = serializers.CharField(required=False, allow_blank=True)
+    outpost_name = serializers.CharField(required=False, allow_blank=True)
     photo_face = serializers.ImageField(required=True)
     photo_military_id = serializers.ImageField(required=True)
 
@@ -321,11 +553,32 @@ class RegistrationSerializer(serializers.ModelSerializer):
         return email
 
     def validate(self, attrs):
-        attrs["unit_type"] = attrs["unit_type"].strip()
-        if not attrs["unit_type"]:
+        unit_type = attrs["unit_type"]
+        attrs["region"] = attrs.get("region", "").strip()
+        attrs["outpost_name"] = attrs.get("outpost_name", "").strip()
+
+        if unit_type in (User.UnitType.REGIONAL, User.UnitType.OUTPOST) and not attrs["region"]:
             raise serializers.ValidationError(
-                {"unit_type": "Укажите подразделение."}
+                {"region": "Аскер бөлүгүнүн номерин тандаңыз."}
             )
+        if unit_type == User.UnitType.OUTPOST and not attrs["outpost_name"]:
+            raise serializers.ValidationError(
+                {"outpost_name": "Заставанын аталышын тандаңыз."}
+            )
+        if unit_type == User.UnitType.OUTPOST:
+            available_outposts = OUTPOSTS_BY_MILITARY_UNIT.get(attrs["region"])
+            if not available_outposts:
+                raise serializers.ValidationError(
+                    {"region": "Бул аскер бөлүгү үчүн заставалардын тизмеси табылган жок."}
+                )
+            normalized_outpost_name = normalize_outpost_selection(
+                attrs["region"], attrs["outpost_name"]
+            )
+            if not normalized_outpost_name:
+                raise serializers.ValidationError(
+                    {"outpost_name": "Тандалган застава бул аскер бөлүгүнө кирбейт."}
+                )
+            attrs["outpost_name"] = normalized_outpost_name
         return attrs
 
     def create(self, validated_data):
@@ -334,7 +587,6 @@ class RegistrationSerializer(serializers.ModelSerializer):
         role = (
             User.Role.OUTPOST
             if validated_data["unit_type"] == User.UnitType.OUTPOST
-            or validated_data.get("outpost_name")
             else User.Role.REGIONAL
         )
         user = User(

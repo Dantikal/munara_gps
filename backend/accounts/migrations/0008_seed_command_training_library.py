@@ -164,7 +164,7 @@ def seed_command_training_library(apps, schema_editor):
     thematic, _ = TrainingSection.objects.update_or_create(
         slug="command-thematic-account",
         defaults={
-            "title": "Тематикалык эсеп",
+            "title": "Сабактардын тематикалык эсеби",
             "parent": command_training,
             "order": 10,
             "is_active": True,

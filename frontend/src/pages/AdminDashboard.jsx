@@ -3,8 +3,10 @@ import { useDispatch, useSelector } from "react-redux";
 
 import Sidebar from "../components/dashboard/Sidebar.jsx";
 import DashboardModuleView from "../components/dashboard/modules/DashboardModuleView.jsx";
+import CombatTrainingPlan from "../components/dashboard/modules/CombatTrainingPlan.jsx";
 import AdminRequestsPage from "../features/admin/AdminRequestsPage.jsx";
 import AdminUsersPage from "../features/admin/AdminUsersPage.jsx";
+import SubmissionEditRequestsPage from "../features/admin/SubmissionEditRequestsPage.jsx";
 import { fetchDashboard } from "../features/dashboard/dashboardSlice.js";
 
 export default function AdminDashboard() {
@@ -53,8 +55,12 @@ export default function AdminDashboard() {
       <section className="dashboard-content">
         {activeView === "requests" ? (
           <AdminRequestsPage />
+        ) : activeView === "submissionEditRequests" ? (
+          <SubmissionEditRequestsPage />
         ) : activeView === "users" ? (
           <AdminUsersPage />
+        ) : activeView === "drafts" ? (
+          <CombatTrainingPlan layout="draft" title="Черновик" user={user} />
         ) : (
           <DashboardModuleView
             activeModule={activeView}

@@ -1,5 +1,19 @@
 ﻿import React, { useEffect, useRef, useState } from "react";
 
+import {
+  createThematicAccountSubmission,
+  deleteThematicAccountSubmission,
+  forwardThematicAccountSubmission,
+  getThematicAccountSubmissions,
+} from "../../../api/dashboard.js";
+import { getApiErrorMessage } from "../../../api/errors.js";
+import {
+  OUTPOSTS_BY_MILITARY_UNIT,
+  formatOutpostName,
+} from "../../../data/militaryUnits.js";
+import SubmissionForwardDialog from "./SubmissionForwardDialog.jsx";
+import SubmissionEditPermissionButton from "./SubmissionEditPermissionButton.jsx";
+
 const kyrgyzstanCoatOfArmsUrl =
   "https://upload.wikimedia.org/wikipedia/commons/f/f1/Emblem_of_Kyrgyzstan.svg";
 const MONTHLY_ANALYSIS_REGISTRY_COUNTER_KEY = "monthly-analysis-registry-counter";
@@ -8,26 +22,47 @@ const MONTHLY_ANALYSIS_DOCUMENTS_STORAGE_KEY = "monthly-analysis-documents";
 const MONTHLY_ANALYSIS_ACTIVE_DOCUMENT_ID_KEY = "monthly-analysis-active-document-id";
 const ANALYSIS_DOCUMENTS_BY_SECTION_KEY = "analysis-documents-by-section";
 const ANALYSIS_ACTIVE_IDS_BY_SECTION_KEY = "analysis-active-document-ids-by-section";
+const ANALYTICS_SECTIONS_STORAGE_KEY = "analytics-section-titles";
+const ADMIN_ANALYSIS_WORKSPACE_ID = "admin-analysis-workspace";
 
 const getMonthlyAnalysisDraftStorageKey = (sectionId) =>
   `${MONTHLY_ANALYSIS_DRAFT_STORAGE_KEY}:${sectionId || "monthly-analysis"}`;
 
-const analyticsSections = [
+const DEFAULT_ANALYTICS_SECTIONS = [
   {
     id: "monthly-analysis",
     title: "Айдын талдоосу",
   },
   {
     id: "period-analysis",
-    title: "Окуу мезгилеринин жыйынтыгы жана талдоосу",
+    title: "2026 - окуу жылынын жарым жылдык талдоосу",
   },
   {
     id: "year-analysis",
-    title: "Окуу жылынын жыйынтыгы жана талдоосу",
+    title: "2026 - окуу жылынын жылдык талдоосу",
   },
 ];
 
-export default function Analytics() {
+const getStoredAnalyticsSections = () => {
+  if (typeof window === "undefined") return DEFAULT_ANALYTICS_SECTIONS;
+
+  try {
+    const storedTitles = JSON.parse(
+      window.localStorage.getItem(ANALYTICS_SECTIONS_STORAGE_KEY) || "{}"
+    );
+    return DEFAULT_ANALYTICS_SECTIONS.map((section) => ({
+      ...section,
+      title:
+        typeof storedTitles[section.id] === "string" && storedTitles[section.id].trim()
+          ? storedTitles[section.id].trim()
+          : section.title,
+    }));
+  } catch {
+    return DEFAULT_ANALYTICS_SECTIONS;
+  }
+};
+
+export default function Analytics({ data, user }) {
   const commanderSignatureCanvasRef = useRef(null);
   const isDrawingCommanderSignatureRef = useRef(false);
   const hasHydratedMonthlyAnalysisRef = useRef(false);
@@ -38,7 +73,13 @@ export default function Analytics() {
   const activeMonthlyAnalysisDocumentIdRef = useRef(null);
   const analysisDocumentsBySectionRef = useRef({});
   const analysisActiveIdsBySectionRef = useRef({});
+  const [analyticsSections, setAnalyticsSections] = useState(getStoredAnalyticsSections);
+  const [editingSectionId, setEditingSectionId] = useState(null);
+  const [editingSectionTitle, setEditingSectionTitle] = useState("");
+  const [selectedAnalyticsScope, setSelectedAnalyticsScope] = useState(null);
   const [selectedSectionId, setSelectedSectionId] = useState(null);
+  const [selectedAdminUnitNumber, setSelectedAdminUnitNumber] = useState(null);
+  const [selectedAdminOutpostName, setSelectedAdminOutpostName] = useState(null);
   const [monthlyAnalysisDocuments, setMonthlyAnalysisDocuments] = useState([]);
   const [activeMonthlyAnalysisDocumentId, setActiveMonthlyAnalysisDocumentId] = useState(null);
   const [analysisDocumentsBySection, setAnalysisDocumentsBySection] = useState({
@@ -73,9 +114,84 @@ export default function Analytics() {
   const [monthlyAnalysisAddressee, setMonthlyAnalysisAddressee] = useState(
     "КР Мамлекетик чек ара кызматынын күжүрмөн даярдоо башкармалыгынын башчысына"
   );
+  const [analysisSubmissions, setAnalysisSubmissions] = useState([]);
+  const [selectedAnalysisSubmission, setSelectedAnalysisSubmission] = useState(null);
+  const [isAnalysisSendDialogOpen, setIsAnalysisSendDialogOpen] = useState(false);
+  const [analysisSubmissionTitle, setAnalysisSubmissionTitle] = useState("");
+  const [analysisSubmissionError, setAnalysisSubmissionError] = useState("");
+  const [isSendingAnalysis, setIsSendingAnalysis] = useState(false);
+  const [deletingAnalysisSubmissionId, setDeletingAnalysisSubmissionId] = useState(null);
+  const [forwardingSubmission, setForwardingSubmission] = useState(null);
+  const isRegionalSubunitAnalysis =
+    user?.role === "regional" && selectedAnalyticsScope === "subunits";
+  const canEditAnalysis =
+    user?.role !== "regional" || selectedAnalyticsScope === "regional-unit";
   const selectedSection = analyticsSections.find((section) => section.id === selectedSectionId);
+  const isOwnedAnalysisDocument = (document) =>
+    document?.ownerId
+      ? String(document.ownerId) === String(user?.id)
+      : user?.role !== "regional";
   const currentAnalysisSectionDocuments = selectedSectionId
-    ? analysisDocumentsBySection[selectedSectionId] || []
+    ? (analysisDocumentsBySection[selectedSectionId] || []).filter(isOwnedAnalysisDocument)
+    : [];
+  const currentAnalysisSubmissions = selectedSectionId
+    ? analysisSubmissions.filter(
+        (submission) =>
+          submission.sectionId === (
+            user?.role === "admin"
+              ? "combat-training-analysis-regional"
+              : "combat-training-analysis"
+          ) &&
+          (user?.role === "regional"
+            ? submission.senderRole === "outpost"
+            : user?.role === "admin"
+              ? submission.senderRole === "regional"
+              : true) &&
+          submission.table?.sectionId === selectedSectionId
+      )
+    : [];
+  const currentRegionalOutgoingSubmissions = selectedSectionId && user?.role === "regional"
+    ? analysisSubmissions.filter(
+        (submission) =>
+          submission.senderRole === "regional" &&
+          submission.table?.sectionId === selectedSectionId
+      )
+    : [];
+  const displayedAnalysisSubmissions =
+    user?.role === "regional" && selectedAnalyticsScope === "regional-unit"
+      ? currentRegionalOutgoingSubmissions
+      : currentAnalysisSubmissions;
+  const currentAdminAnalysisSubmissions = selectedSectionId && user?.role === "admin"
+    ? analysisSubmissions.filter(
+        (submission) =>
+          ["combat-training-analysis", "combat-training-analysis-regional"].includes(
+            submission.sectionId
+          ) && submission.table?.sectionId === selectedSectionId
+      )
+    : [];
+  const adminUnitNumbers = Array.from(new Set([
+    ...(data?.unitNumbers || []),
+    ...currentAdminAnalysisSubmissions.map((submission) => submission.unitNumber),
+  ].map((unitNumber) => String(unitNumber || "").trim()).filter(Boolean)));
+  const selectedAdminAnalysisSubmissions = currentAdminAnalysisSubmissions.filter(
+    (submission) => String(submission.unitNumber) === String(selectedAdminUnitNumber)
+  );
+  const adminMilitaryUnitSubmissions = selectedAdminAnalysisSubmissions.filter(
+    (submission) => submission.senderRole === "regional"
+  );
+  const adminOutpostSubmissions = selectedAdminAnalysisSubmissions.filter(
+    (submission) => submission.senderRole === "outpost"
+  );
+  const adminOutpostNames = Array.from(new Set([
+    ...(OUTPOSTS_BY_MILITARY_UNIT[selectedAdminUnitNumber] || []).map(([, name]) =>
+      formatOutpostName(name)
+    ),
+    ...adminOutpostSubmissions.map((submission) => formatOutpostName(submission.outpostName)),
+  ].filter(Boolean)));
+  const selectedAdminOutpostSubmissions = selectedAdminOutpostName
+    ? adminOutpostSubmissions.filter(
+        (submission) => formatOutpostName(submission.outpostName) === selectedAdminOutpostName
+      )
     : [];
   const analysisSourceSectionId =
     selectedSectionId === "year-analysis"
@@ -88,17 +204,35 @@ export default function Analytics() {
   const periodAnalysisPlaceholder =
     "2030 аскер бөлүгүнүн Көк-Таш чек ара заставасынын 1-окуу мезгилинин жыйынтыгы жана талдоосу";
   const yearAnalysisPlaceholder = "Окуу жылынын жыйынтыгы жана талдоосу";
-  const monthlyAnalysisSourceDocuments = analysisDocumentsBySection[analysisSourceSectionId] || [];
+  const monthlyAnalysisSourceDocuments =
+    user?.role === "regional" && selectedAnalyticsScope === "regional-unit"
+      ? analysisSubmissions
+          .filter(
+            (submission) =>
+              submission.sectionId === "combat-training-analysis" &&
+              submission.table?.sectionId === selectedSectionId
+          )
+          .map((submission) => ({
+            ...(submission.table?.document || {}),
+            id: `submission-${submission.id}`,
+            sourceDocumentTitle: submission.documentTitle,
+            sourceOutpostName: submission.outpostName || submission.senderName,
+          }))
+      : (analysisDocumentsBySection[analysisSourceSectionId] || []).filter(isOwnedAnalysisDocument);
   const monthlyAnalysisSourcePlaceholder =
     analysisSourceSectionId === "period-analysis"
       ? periodAnalysisPlaceholder
       : monthlyAnalysisPlaceholder;
   const monthlyAnalysisPickerTitle =
-    selectedSectionId === "year-analysis"
+    user?.role === "regional" && selectedAnalyticsScope === "regional-unit"
+      ? "Застава жөнөткөн талдоолордон тандоо"
+      : selectedSectionId === "year-analysis"
       ? "Окуу мезгилеринин жыйынтыгы жана талдоосунан тандоо"
       : "Айдын талдоосунан тандоо";
   const monthlyAnalysisPickerEmptyText =
-    selectedSectionId === "year-analysis"
+    user?.role === "regional" && selectedAnalyticsScope === "regional-unit"
+      ? "Застава жөнөткөн документтер азырынча жок"
+      : selectedSectionId === "year-analysis"
       ? "Окуу мезгилеринин жыйынтыгында документ жок"
       : "Айдын талдоосунда документ жок";
   const currentAnalysisPlaceholder =
@@ -117,6 +251,35 @@ export default function Analytics() {
   const activeMonthlyAnalysisDocument = monthlyAnalysisDocuments.find(
     (document) => document.id === activeMonthlyAnalysisDocumentId
   );
+
+  useEffect(() => {
+    if (!["outpost", "regional", "admin"].includes(user?.role)) {
+      setAnalysisSubmissions([]);
+      return undefined;
+    }
+
+    let isActive = true;
+    getThematicAccountSubmissions()
+      .then((items) => {
+        if (isActive) {
+          setAnalysisSubmissions(
+            (Array.isArray(items) ? items : []).filter((item) =>
+              [
+                "combat-training-analysis",
+                "combat-training-analysis-regional",
+              ].includes(item.sectionId)
+            )
+          );
+        }
+      })
+      .catch(() => {
+        if (isActive) setAnalysisSubmissions([]);
+      });
+
+    return () => {
+      isActive = false;
+    };
+  }, [user?.id, user?.role]);
 
   const createMonthlyAnalysisDocumentId = () =>
     `monthly-analysis-${Date.now()}-${Math.random().toString(16).slice(2)}`;
@@ -519,6 +682,8 @@ export default function Analytics() {
 
   const handleSelectAnalyticsSection = (sectionId) => {
     setSelectedSectionId(sectionId);
+    setSelectedAdminUnitNumber(null);
+    setSelectedAdminOutpostName(null);
     setIsMonthlyDocumentOpen(false);
     setIsCreateDialogOpen(false);
     setIsMonthlyAnalysisPickerOpen(false);
@@ -655,6 +820,7 @@ export default function Analytics() {
       extraPages: [],
       isMonthlyDocumentOpen: false,
       registryNumber: null,
+      ownerId: user?.id || null,
       sectionId: selectedSectionId || "monthly-analysis",
       title: draftMonthlyAnalysisTitle,
       updatedAt: Date.now(),
@@ -710,6 +876,41 @@ export default function Analytics() {
     });
   };
 
+  const handleStartSectionEdit = (section) => {
+    setEditingSectionId(section.id);
+    setEditingSectionTitle(section.title);
+  };
+
+  const handleSaveSectionTitle = (event) => {
+    event.preventDefault();
+    const nextTitle = editingSectionTitle.trim();
+    if (!editingSectionId || !nextTitle) return;
+
+    const nextSections = analyticsSections.map((section) =>
+      section.id === editingSectionId ? { ...section, title: nextTitle } : section
+    );
+    setAnalyticsSections(nextSections);
+
+    if (typeof window !== "undefined") {
+      try {
+        window.localStorage.setItem(
+          ANALYTICS_SECTIONS_STORAGE_KEY,
+          JSON.stringify(
+            nextSections.reduce(
+              (titles, section) => ({ ...titles, [section.id]: section.title }),
+              {}
+            )
+          )
+        );
+      } catch {
+        // The changed title remains available for the current session.
+      }
+    }
+
+    setEditingSectionId(null);
+    setEditingSectionTitle("");
+  };
+
   const handleSaveCurrentMonthlyAnalysisDocument = () => {
     if (!activeMonthlyAnalysisDocumentIdRef.current) return;
 
@@ -739,14 +940,94 @@ export default function Analytics() {
   };
 
   const handleSendMonthlyAnalysis = () => {
-    if (isMonthlyAnalysisSent) return;
+    const canSend =
+      user?.role === "outpost" ||
+      (user?.role === "regional" && selectedAnalyticsScope === "regional-unit");
+    if (isMonthlyAnalysisSent || !canSend) return;
+    setAnalysisSubmissionTitle("");
+    setAnalysisSubmissionError("");
+    setIsAnalysisSendDialogOpen(true);
+  };
+
+  const handleConfirmSendMonthlyAnalysis = async () => {
+    const documentTitle = analysisSubmissionTitle.trim();
+    if (!documentTitle) {
+      setAnalysisSubmissionError("Иш кагаздардын аталышын жазыңыз.");
+      return;
+    }
 
     const currentCounter = Number(window.localStorage.getItem(MONTHLY_ANALYSIS_REGISTRY_COUNTER_KEY) || "0");
     const nextCounter = currentCounter + 1;
-    window.localStorage.setItem(MONTHLY_ANALYSIS_REGISTRY_COUNTER_KEY, String(nextCounter));
-    setMonthlyAnalysisRegistryNumber(nextCounter);
-    updateActiveMonthlyAnalysisDocument({ registryNumber: nextCounter });
-    persistMonthlyAnalysisDraft({ registryNumber: nextCounter });
+    const document = {
+      ...(activeMonthlyAnalysisDocument || {}),
+      addressee: monthlyAnalysisAddressee,
+      attachments: sanitizeMonthlyAnalysisAttachments(monthlyAnalysisAttachments),
+      body: monthlyAnalysisBody,
+      commanderName: monthlyAnalysisCommanderName,
+      commanderRank: monthlyAnalysisCommanderRank,
+      commanderSignature: monthlyAnalysisCommanderSignature,
+      commanderTitle: monthlyAnalysisCommanderTitle,
+      extraPages: monthlyAnalysisExtraPages,
+      registryNumber: nextCounter,
+      sectionId: selectedSectionId,
+      title: monthlyAnalysisTitle,
+    };
+
+    setIsSendingAnalysis(true);
+    setAnalysisSubmissionError("");
+    try {
+      const submission = await createThematicAccountSubmission({
+        documentTitle,
+        sectionId: user?.role === "regional"
+          ? "combat-training-analysis-regional"
+          : "combat-training-analysis",
+        periodId: selectedSectionId,
+        table: {
+          sectionId: selectedSectionId,
+          sectionTitle: selectedSection?.title || selectedSectionId,
+          document,
+        },
+      });
+      setAnalysisSubmissions((items) => [
+        submission,
+        ...items.filter((item) => item.id !== submission.id),
+      ]);
+      window.localStorage.setItem(MONTHLY_ANALYSIS_REGISTRY_COUNTER_KEY, String(nextCounter));
+      setMonthlyAnalysisRegistryNumber(nextCounter);
+      updateActiveMonthlyAnalysisDocument({ registryNumber: nextCounter });
+      persistMonthlyAnalysisDraft({ registryNumber: nextCounter });
+      setIsAnalysisSendDialogOpen(false);
+      setAnalysisSubmissionTitle("");
+    } catch (error) {
+      setAnalysisSubmissionError(
+        getApiErrorMessage(error, "Документти жөнөтүү мүмкүн болгон жок.")
+      );
+    } finally {
+      setIsSendingAnalysis(false);
+    }
+  };
+
+  const openAnalysisSubmission = (submission) => {
+    const document = submission?.table?.document || {};
+    setSelectedAnalysisSubmission(submission);
+    setSelectedSectionId(submission?.table?.sectionId || submission?.periodId || "monthly-analysis");
+    applyMonthlyAnalysisDocumentToState({ ...document, registryNumber: document.registryNumber || 1 });
+    setIsMonthlyDocumentOpen(true);
+    setIsCreateDialogOpen(false);
+  };
+
+  const handleDeleteAnalysisSubmission = async (submission) => {
+    if (!window.confirm(`"${submission.documentTitle}" өчүрүлсүнбү?`)) return;
+
+    setDeletingAnalysisSubmissionId(submission.id);
+    try {
+      await deleteThematicAccountSubmission(submission.id);
+      setAnalysisSubmissions((items) => items.filter((item) => item.id !== submission.id));
+    } catch (error) {
+      window.alert(getApiErrorMessage(error, "Документти өчүрүү мүмкүн болгон жок."));
+    } finally {
+      setDeletingAnalysisSubmissionId(null);
+    }
   };
 
   const handlePrintMonthlyAnalysis = () => {
@@ -1029,7 +1310,7 @@ export default function Analytics() {
         }}
         value={monthlyAnalysisCommanderTitle}
       />
-      <div style={{ alignItems: "center", display: "grid", gridTemplateColumns: "145px 190px 1fr", gap: "18px" }}>
+      <div style={{ alignItems: "center", display: "grid", gridTemplateColumns: "145px 1fr", gap: "18px" }}>
         <input
           onChange={(event) => {
             const nextValue = event.target.value;
@@ -1050,36 +1331,6 @@ export default function Analytics() {
           }}
           value={monthlyAnalysisCommanderRank}
           />
-        <button
-          onClick={openCommanderSignatureDialog}
-          style={{
-            alignItems: "center",
-            display: "flex",
-            flexDirection: "column",
-            gap: "4px",
-            minHeight: "62px",
-            position: "relative",
-            backgroundColor: "transparent",
-            border: "1px solid #999",
-            cursor: isMonthlyAnalysisSent ? "default" : "pointer",
-            justifyContent: "center",
-            width: "190px",
-          }}
-          type="button"
-        >
-          {monthlyAnalysisCommanderSignature ? (
-            <img
-              alt="Кол тамга"
-              src={monthlyAnalysisCommanderSignature}
-              style={{ maxHeight: "50px", maxWidth: "180px", objectFit: "contain" }}
-            />
-          ) : null}
-          {!monthlyAnalysisCommanderSignature ? (
-            <span style={{ color: "#9a9a9a", fontSize: "10pt" }}>
-              кол тамга
-            </span>
-          ) : null}
-        </button>
         <input
           onChange={(event) => {
             const nextValue = event.target.value;
@@ -1104,6 +1355,38 @@ export default function Analytics() {
     </div>
   );
 
+  if (user?.role === "regional" && !selectedAnalyticsScope) {
+    return (
+      <section className="module-panel">
+        <header className="module-header">
+          <h1>Күжүрмөн даярдоонун талдоолору</h1>
+        </header>
+        <div className="analysis-section-list">
+          <article className="analysis-section-card">
+            <button
+              className="analysis-section-card__open"
+              onClick={() => setSelectedAnalyticsScope("subunits")}
+              type="button"
+            >
+              <span aria-hidden="true" className="module-document-icon" />
+              <strong>Бөлүкчолордун күжүрмөн даярдоонун талдоолору</strong>
+            </button>
+          </article>
+          <article className="analysis-section-card">
+            <button
+              className="analysis-section-card__open"
+              onClick={() => setSelectedAnalyticsScope("regional-unit")}
+              type="button"
+            >
+              <span aria-hidden="true" className="module-document-icon" />
+              <strong>Аскер бөлүктүн күжүрмөн даярдоонун талдоолору</strong>
+            </button>
+          </article>
+        </div>
+      </section>
+    );
+  }
+
   if (selectedSection && isMonthlyDocumentOpen) {
     return (
       <section className="module-panel monthly-analysis-print-root">
@@ -1112,16 +1395,23 @@ export default function Analytics() {
           onClick={() => {
             setIsMonthlyDocumentOpen(false);
             setIsMonthlyAnalysisPickerOpen(false);
+            setSelectedAnalysisSubmission(null);
           }}
           type="button"
         >
           Артка
         </button>
         <div className="module-actions">
-          <button className="module-action-button" onClick={handleSaveCurrentMonthlyAnalysisDocument} type="button">
-            Сактоо
-          </button>
-          {selectedSectionId === "period-analysis" || selectedSectionId === "year-analysis" ? (
+          {!selectedAnalysisSubmission && canEditAnalysis ? (
+            <button className="module-action-button" onClick={handleSaveCurrentMonthlyAnalysisDocument} type="button">
+              Сактоо
+            </button>
+          ) : null}
+          {!selectedAnalysisSubmission && canEditAnalysis && (
+            selectedAnalyticsScope === "regional-unit" ||
+            selectedSectionId === "period-analysis" ||
+            selectedSectionId === "year-analysis"
+          ) ? (
             <button
               className="module-action-button"
               disabled={isMonthlyAnalysisSent}
@@ -1131,34 +1421,81 @@ export default function Analytics() {
               Выбрать
             </button>
           ) : null}
-          <button
-            className="module-action-button"
-            disabled={isMonthlyAnalysisSent}
-            onClick={handleSendMonthlyAnalysis}
-            type="button"
-          >
-            Отправить
-          </button>
-          <button
-            className="module-action-button"
-            disabled={isMonthlyAnalysisSent}
-            onClick={() => handleDeleteMonthlyAnalysisDocument(activeMonthlyAnalysisDocumentId)}
-            type="button"
-          >
-            Удалить
-          </button>
-          <button
-            className="module-action-button"
-            disabled={isMonthlyAnalysisSent}
-            onClick={handleAddMonthlyAnalysisPage}
-            type="button"
-          >
-            + барак кошуу
-          </button>
+          {!selectedAnalysisSubmission && (
+            user?.role === "outpost" ||
+            (user?.role === "regional" && selectedAnalyticsScope === "regional-unit")
+          ) ? (
+            <button
+              className="module-action-button"
+              disabled={isMonthlyAnalysisSent}
+              onClick={handleSendMonthlyAnalysis}
+              type="button"
+            >
+              Отправить
+            </button>
+          ) : null}
+          {!selectedAnalysisSubmission && canEditAnalysis ? (
+            <button
+              className="module-action-button"
+              disabled={isMonthlyAnalysisSent}
+              onClick={() => handleDeleteMonthlyAnalysisDocument(activeMonthlyAnalysisDocumentId)}
+              type="button"
+            >
+              Удалить
+            </button>
+          ) : null}
+          {!selectedAnalysisSubmission && canEditAnalysis ? (
+            <button
+              className="module-action-button"
+              disabled={isMonthlyAnalysisSent}
+              onClick={handleAddMonthlyAnalysisPage}
+              type="button"
+            >
+              + барак кошуу
+            </button>
+          ) : null}
           <button className="module-action-button" onClick={handlePrintMonthlyAnalysis} type="button">
             Печать
           </button>
         </div>
+        {isAnalysisSendDialogOpen ? (
+          <div className="lesson-period-dialog" role="dialog" aria-modal="true" aria-labelledby="analysis-send-title">
+            <form
+              className="lesson-period-dialog__panel"
+              onSubmit={(event) => {
+                event.preventDefault();
+                handleConfirmSendMonthlyAnalysis();
+              }}
+            >
+              <h2 id="analysis-send-title">Документти жөнөтүү</h2>
+              <input
+                autoFocus
+                className="lesson-period-dialog__input"
+                onChange={(event) => {
+                  setAnalysisSubmissionTitle(event.target.value);
+                  setAnalysisSubmissionError("");
+                }}
+                placeholder="Иш кагаздардын аталышы"
+                value={analysisSubmissionTitle}
+              />
+              {analysisSubmissionError ? (
+                <p className="lesson-period-dialog__error">{analysisSubmissionError}</p>
+              ) : null}
+              <div className="lesson-period-dialog__actions">
+                <button
+                  disabled={isSendingAnalysis}
+                  onClick={() => setIsAnalysisSendDialogOpen(false)}
+                  type="button"
+                >
+                  Жокко чыгаруу
+                </button>
+                <button disabled={isSendingAnalysis} type="submit">
+                  {isSendingAnalysis ? "Жөнөтүлүүдө..." : "Жөнөтүү"}
+                </button>
+              </div>
+            </form>
+          </div>
+        ) : null}
         <div
           className="monthly-analysis-page monthly-analysis-page--first"
           style={{
@@ -1473,51 +1810,6 @@ export default function Analytics() {
             ) : null}
           </div>
         ))}
-        {isCommanderSignatureDialogOpen ? (
-          <div
-            className="lesson-period-dialog"
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="commander-signature-title"
-          >
-            <div className="lesson-period-dialog__panel" style={{ maxWidth: "920px" }}>
-              <h2 id="commander-signature-title">Подпись</h2>
-              <canvas
-                height={300}
-                onPointerDown={handleCommanderSignatureStart}
-                onPointerLeave={handleCommanderSignatureEnd}
-                onPointerMove={handleCommanderSignatureMove}
-                onPointerUp={handleCommanderSignatureEnd}
-                ref={commanderSignatureCanvasRef}
-                style={{
-                  border: "1px solid #222",
-                  backgroundColor: "#fff",
-                  height: "300px",
-                  touchAction: "none",
-                  width: "860px",
-                }}
-                width={860}
-              />
-              <div className="lesson-period-dialog__actions">
-                <button
-                  onClick={() => {
-                    handleCommanderSignatureClear();
-                    setIsCommanderSignatureDialogOpen(false);
-                  }}
-                  type="button"
-                >
-                  Очистить
-                </button>
-                <button onClick={() => setIsCommanderSignatureDialogOpen(false)} type="button">
-                  Жокко чыгаруу
-                </button>
-                <button onClick={saveCommanderSignature} type="button">
-                  Сактоо
-                </button>
-              </div>
-            </div>
-          </div>
-        ) : null}
         {isMonthlyAnalysisPickerOpen ? (
           <div
             className="lesson-period-dialog"
@@ -1554,7 +1846,14 @@ export default function Analytics() {
                           textAlign: "left",
                         }}
                       >
-                        <strong>{document.title || monthlyAnalysisSourcePlaceholder}</strong>
+                        <strong>
+                          {document.sourceDocumentTitle || document.title || monthlyAnalysisSourcePlaceholder}
+                        </strong>
+                        {document.sourceOutpostName ? (
+                          <span style={{ color: "#53645d", fontSize: "12px" }}>
+                            {document.sourceOutpostName}
+                          </span>
+                        ) : null}
                         <span style={{ color: "#53645d", fontSize: "12px" }}>
                           {document.body ? `${document.body.slice(0, 120)}${document.body.length > 120 ? "..." : ""}` : "Текст жок"}
                         </span>
@@ -1584,12 +1883,49 @@ export default function Analytics() {
     );
   }
 
+  const renderAdminAnalysisSubmission = (submission) => (
+    <div className="module-period-row" key={`admin-analysis-${submission.id}`}>
+      <button
+        className="module-period-card module-period-card--document"
+        onClick={() => openAnalysisSubmission(submission)}
+        type="button"
+      >
+        <span aria-hidden="true" className="module-document-icon" />
+        <span className="module-submission-card__content">
+          <strong>{submission.documentTitle}</strong>
+          <small>
+            {submission.senderRole === "outpost"
+              ? `Застава: ${submission.outpostName || submission.senderName}`
+              : `Аскер бөлүгү: ${submission.unitNumber || submission.senderName}`}
+          </small>
+        </span>
+      </button>
+      <div className="module-period-actions">
+        <button
+          disabled={deletingAnalysisSubmissionId === submission.id}
+          onClick={() => handleDeleteAnalysisSubmission(submission)}
+          type="button"
+        >
+          {deletingAnalysisSubmissionId === submission.id ? "Өчүрүү..." : "Өчүрүү"}
+        </button>
+      </div>
+    </div>
+  );
+
   if (selectedSection) {
     return (
       <section className="module-panel">
         <button
           className="module-back-button"
           onClick={() => {
+            if (selectedAdminOutpostName) {
+              setSelectedAdminOutpostName(null);
+              return;
+            }
+            if (selectedAdminUnitNumber) {
+              setSelectedAdminUnitNumber(null);
+              return;
+            }
             setSelectedSectionId(null);
             setIsCreateDialogOpen(false);
             setIsMonthlyDocumentOpen(false);
@@ -1607,19 +1943,173 @@ export default function Analytics() {
         <header className="module-header">
           <h1>{selectedSection.title}</h1>
         </header>
-        {analyticsSections.some((section) => section.id === selectedSection.id) ? (
+        {user?.role === "admin" ? (
           <>
-            <div className="module-actions">
-              <button
-                className="module-action-button"
-                onClick={handleCreateMonthlyAnalysis}
-                type="button"
-              >
-                Жаратуу
-              </button>
-            </div>
-            <div className="module-document-list">
-              {currentAnalysisSectionDocuments.map((document) => (
+            {!selectedAdminUnitNumber ? (
+              <div className="module-document-list">
+                <button
+                  className="module-document-card"
+                  onClick={() => {
+                    setSelectedAdminUnitNumber(ADMIN_ANALYSIS_WORKSPACE_ID);
+                    setSelectedAdminOutpostName(null);
+                  }}
+                  type="button"
+                >
+                  <span aria-hidden="true" className="module-document-icon" />
+                  <strong>Администратордун талдоолору</strong>
+                </button>
+                {adminUnitNumbers.map((unitNumber) => (
+                  <button
+                    className="module-document-card"
+                    key={unitNumber}
+                    onClick={() => {
+                      setSelectedAdminUnitNumber(unitNumber);
+                      setSelectedAdminOutpostName(null);
+                    }}
+                    type="button"
+                  >
+                    <span aria-hidden="true" className="module-document-icon" />
+                    <strong>{unitNumber} аскер бөлүгү</strong>
+                  </button>
+                ))}
+              </div>
+            ) : selectedAdminUnitNumber === ADMIN_ANALYSIS_WORKSPACE_ID ? (
+              <>
+                <div className="module-actions">
+                  <button
+                    className="module-action-button"
+                    onClick={handleCreateMonthlyAnalysis}
+                    type="button"
+                  >
+                    Жаратуу
+                  </button>
+                </div>
+                {currentAnalysisSectionDocuments.length > 0 ? (
+                  <div className="module-document-list">
+                    {currentAnalysisSectionDocuments.map((document) => (
+                      <button
+                        className="module-document-card"
+                        key={document.id}
+                        onClick={() => openMonthlyAnalysisDocument(document.id)}
+                        style={{ width: "100%" }}
+                        type="button"
+                      >
+                        <span aria-hidden="true" className="module-document-icon" />
+                        <strong>{document.title || currentAnalysisPlaceholder}</strong>
+                        {!document.registryNumber ? (
+                          <span
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              handleDeleteMonthlyAnalysisDocument(document.id);
+                            }}
+                            role="button"
+                            style={{
+                              color: "#b42318",
+                              cursor: "pointer",
+                              fontSize: "12px",
+                              marginLeft: "auto",
+                              textDecoration: "underline",
+                            }}
+                            tabIndex={0}
+                          >
+                            Удалить
+                          </span>
+                        ) : null}
+                      </button>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="dashboard-state">Администратор түзгөн талдоолор азырынча жок.</p>
+                )}
+                {isCreateDialogOpen ? (
+                  <div className="lesson-period-dialog" role="dialog" aria-modal="true" aria-labelledby="admin-analysis-create-title">
+                    <form
+                      className="lesson-period-dialog__panel"
+                      onSubmit={(event) => {
+                        event.preventDefault();
+                        handleSaveMonthlyAnalysis();
+                      }}
+                    >
+                      <h2 id="admin-analysis-create-title">Жаратуу</h2>
+                      <textarea
+                        className="lesson-period-dialog__textarea"
+                        onChange={(event) => {
+                          const nextValue = event.target.value;
+                          setDraftMonthlyAnalysisTitle(nextValue);
+                          persistMonthlyAnalysisDraft({ draftTitle: nextValue });
+                        }}
+                        placeholder={currentAnalysisPlaceholder}
+                        rows={5}
+                        value={draftMonthlyAnalysisTitle}
+                      />
+                      <div className="lesson-period-dialog__actions">
+                        <button onClick={() => setIsCreateDialogOpen(false)} type="button">
+                          Жокко чыгаруу
+                        </button>
+                        <button type="submit">Сактоо</button>
+                      </div>
+                    </form>
+                  </div>
+                ) : null}
+              </>
+            ) : selectedAdminOutpostName ? (
+              <div className="module-submission-list">
+                <h2>{selectedAdminOutpostName}</h2>
+                <h3>Заставадан жөнөтүлгөн талдоолор</h3>
+                {selectedAdminOutpostSubmissions.length > 0 ? (
+                  selectedAdminOutpostSubmissions.map(renderAdminAnalysisSubmission)
+                ) : (
+                  <p className="dashboard-state">
+                    Бул заставадан жөнөтүлгөн талдоолор азырынча жок.
+                  </p>
+                )}
+              </div>
+            ) : (
+              <div className="module-submission-list">
+                <h2>{selectedAdminUnitNumber} аскер бөлүгү</h2>
+                <h3>Аскер бөлүгүнөн жөнөтүлгөн талдоолор</h3>
+                {adminMilitaryUnitSubmissions.length > 0 ? (
+                  adminMilitaryUnitSubmissions.map(renderAdminAnalysisSubmission)
+                ) : (
+                  <p className="dashboard-state">Аскер бөлүгүнөн жөнөтүлгөн талдоолор азырынча жок.</p>
+                )}
+                <h3>Заставалар</h3>
+                {adminOutpostNames.length > 0 ? (
+                  <div className="module-document-list">
+                    {adminOutpostNames.map((outpostName) => (
+                      <button
+                        className="module-document-card"
+                        key={outpostName}
+                        onClick={() => setSelectedAdminOutpostName(outpostName)}
+                        type="button"
+                      >
+                        <span aria-hidden="true" className="module-document-icon" />
+                        <strong>{outpostName}</strong>
+                      </button>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="dashboard-state">Бул аскер бөлүгүнө караштуу заставалар табылган жок.</p>
+                )}
+              </div>
+            )}
+          </>
+        ) : analyticsSections.some((section) => section.id === selectedSection.id) ? (
+          <>
+            {canEditAnalysis ? (
+              <div className="module-actions">
+                <button
+                  className="module-action-button"
+                  onClick={handleCreateMonthlyAnalysis}
+                  type="button"
+                >
+                  Жаратуу
+                </button>
+              </div>
+            ) : null}
+            {canEditAnalysis ? (
+              <div className="module-document-list">
+                {currentAnalysisSectionDocuments.map((document) => (
                 <button
                   className="module-document-card"
                   key={document.id}
@@ -1649,8 +2139,119 @@ export default function Analytics() {
                     </span>
                   ) : null}
                 </button>
-              ))}
-            </div>
+                ))}
+              </div>
+            ) : null}
+            {(user?.role === "outpost" || user?.role === "admin" || user?.role === "regional") ? (
+              <div className="module-submission-list">
+                <h3>{user?.role === "outpost" || selectedAnalyticsScope === "regional-unit" ? "Чыгыш" : "Кириш"}</h3>
+                {displayedAnalysisSubmissions.length > 0 ? (
+                  <div className="saved-table-list">
+                    {displayedAnalysisSubmissions.map((submission) => (
+                      <article
+                        className="saved-table-card"
+                        key={`analysis-submission-${submission.id}`}
+                        onClick={() => openAnalysisSubmission(submission)}
+                        onKeyDown={(event) => {
+                          if (event.key === "Enter" || event.key === " ") {
+                            event.preventDefault();
+                            openAnalysisSubmission(submission);
+                          }
+                        }}
+                        role="button"
+                        tabIndex={0}
+                      >
+                        <strong>{submission.documentTitle}</strong>
+                        <span>
+                          {submission.table?.document?.title || submission.table?.sectionTitle}
+                        </span>
+                        {isRegionalSubunitAnalysis ? (
+                          <span>
+                            {submission.outpostName || submission.senderName}
+                            {submission.unitNumber ? ` · ${submission.unitNumber}` : ""}
+                          </span>
+                        ) : null}
+                        <div
+                          className="saved-table-card__actions"
+                          onClick={(event) => event.stopPropagation()}
+                          onKeyDown={(event) => event.stopPropagation()}
+                        >
+                          <SubmissionEditPermissionButton
+                            onUpdated={(updated) => setAnalysisSubmissions((items) => items.map((item) => item.id === updated.id ? updated : item))}
+                            submission={submission}
+                          />
+                          <button
+                            disabled={deletingAnalysisSubmissionId === submission.id}
+                            onClick={() => handleDeleteAnalysisSubmission(submission)}
+                            type="button"
+                          >
+                            {deletingAnalysisSubmissionId === submission.id ? "Өчүрүү..." : "Өчүрүү"}
+                          </button>
+                          {isRegionalSubunitAnalysis ? (
+                            <button onClick={() => setForwardingSubmission(submission)} type="button">
+                              Отправить
+                            </button>
+                          ) : null}
+                        </div>
+                      </article>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="dashboard-state">
+                    {isRegionalSubunitAnalysis
+                      ? "Кирген документтер азырынча жок."
+                      : "Жөнөтүлгөн документтер азырынча жок."}
+                  </p>
+                )}
+                {isRegionalSubunitAnalysis ? (
+                  <>
+                    <h3>Чыгыш</h3>
+                    {currentRegionalOutgoingSubmissions.length > 0 ? (
+                      <div className="saved-table-list">
+                        {currentRegionalOutgoingSubmissions.map((submission) => (
+                          <article
+                            className="saved-table-card"
+                            key={`analysis-outgoing-${submission.id}`}
+                            onClick={() => openAnalysisSubmission(submission)}
+                            onKeyDown={(event) => {
+                              if (event.key === "Enter" || event.key === " ") {
+                                event.preventDefault();
+                                openAnalysisSubmission(submission);
+                              }
+                            }}
+                            role="button"
+                            tabIndex={0}
+                          >
+                            <strong>{submission.documentTitle}</strong>
+                            <div
+                              className="saved-table-card__actions"
+                              onClick={(event) => event.stopPropagation()}
+                              onKeyDown={(event) => event.stopPropagation()}
+                            >
+                              <SubmissionEditPermissionButton
+                                onUpdated={(updated) => setAnalysisSubmissions((items) => items.map((item) => item.id === updated.id ? updated : item))}
+                                submission={submission}
+                              />
+                              <button disabled={deletingAnalysisSubmissionId === submission.id} onClick={() => handleDeleteAnalysisSubmission(submission)} type="button">
+                                {deletingAnalysisSubmissionId === submission.id ? "Өчүрүү..." : "Өчүрүү"}
+                              </button>
+                            </div>
+                          </article>
+                        ))}
+                      </div>
+                    ) : <p className="dashboard-state">Жөнөтүлгөн документтер азырынча жок.</p>}
+                  </>
+                ) : null}
+              </div>
+            ) : null}
+            <SubmissionForwardDialog
+              onClose={() => setForwardingSubmission(null)}
+              onForward={async (submission, title) => {
+                const forwarded = await forwardThematicAccountSubmission(submission.id, title);
+                setAnalysisSubmissions((items) => [forwarded, ...items]);
+              }}
+              submission={forwardingSubmission}
+            />
             {isCreateDialogOpen ? (
               <div className="lesson-period-dialog" role="dialog" aria-modal="true" aria-labelledby="monthly-analysis-create-title">
                 <form
@@ -1693,21 +2294,72 @@ export default function Analytics() {
 
   return (
     <section className="module-panel">
+      {user?.role === "regional" && selectedAnalyticsScope ? (
+        <button
+          className="module-back-button"
+          onClick={() => {
+            setSelectedAnalyticsScope(null);
+            setSelectedSectionId(null);
+            setIsMonthlyDocumentOpen(false);
+            setSelectedAnalysisSubmission(null);
+          }}
+          type="button"
+        >
+          Артка
+        </button>
+      ) : null}
       <header className="module-header">
         <h1>Күжүрмөн даярдоонун талдоолору</h1>
       </header>
-      <div className="module-document-list module-section-list">
+      <div className="analysis-section-list">
         {analyticsSections.map((section) => (
-          <button
-            className="module-document-card module-section-card"
-            key={section.id}
-            onClick={() => handleSelectAnalyticsSection(section.id)}
-            type="button"
-          >
-            <strong>{section.title}</strong>
-          </button>
+          <article className="analysis-section-card" key={section.id}>
+            <button
+              className="analysis-section-card__open"
+              onClick={() => handleSelectAnalyticsSection(section.id)}
+              type="button"
+            >
+              <span aria-hidden="true" className="module-document-icon" />
+              <strong>{section.title}</strong>
+            </button>
+            {canEditAnalysis ? (
+              <button
+                className="analysis-section-card__edit"
+                onClick={() => handleStartSectionEdit(section)}
+                type="button"
+              >
+                Изменить
+              </button>
+            ) : null}
+          </article>
         ))}
       </div>
+      {editingSectionId && (
+        <div className="lesson-period-dialog" role="dialog" aria-modal="true" aria-labelledby="analysis-section-edit-title">
+          <form className="lesson-period-dialog__panel" onSubmit={handleSaveSectionTitle}>
+            <h2 id="analysis-section-edit-title">Изменить название</h2>
+            <input
+              autoFocus
+              className="lesson-period-dialog__input"
+              onChange={(event) => setEditingSectionTitle(event.target.value)}
+              required
+              value={editingSectionTitle}
+            />
+            <div className="lesson-period-dialog__actions">
+              <button
+                onClick={() => {
+                  setEditingSectionId(null);
+                  setEditingSectionTitle("");
+                }}
+                type="button"
+              >
+                Отмена
+              </button>
+              <button type="submit">Сохранить</button>
+            </div>
+          </form>
+        </div>
+      )}
     </section>
   );
 }

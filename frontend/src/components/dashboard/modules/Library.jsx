@@ -1,8 +1,24 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useSelector } from "react-redux";
 
-import { createLessonSchedulePeriod } from "../../../api/dashboard.js";
+import {
+  createLibraryPeriod,
+  createLessonSchedulePeriod,
+  createThematicAccountSubmission,
+  deleteLibraryPeriod,
+  deleteLessonSchedulePeriod,
+  deleteThematicAccountSubmission,
+  forwardThematicAccountSubmission,
+  getThematicAccountSubmissions,
+  updateLibraryPeriod,
+} from "../../../api/dashboard.js";
 import { getApiErrorMessage } from "../../../api/errors.js";
+import {
+  OUTPOSTS_BY_MILITARY_UNIT,
+  formatOutpostName,
+} from "../../../data/militaryUnits.js";
+import SubmissionForwardDialog from "./SubmissionForwardDialog.jsx";
+import SubmissionEditPermissionButton from "./SubmissionEditPermissionButton.jsx";
 
 const TABLE_STORAGE_PREFIX = "munara-library-table";
 const TABLE_FIELD_STORAGE_SUFFIX = "fields";
@@ -18,10 +34,31 @@ const MULTILINE_COLUMN_KEYS = new Set([
 const COMMAND_THEMATIC_ACCOUNT_SECTION_ID = "command-thematic-account";
 const THEMATIC_ACCOUNT_SECTION_IDS = new Set(["thematic-account", "command-thematic-account"]);
 const LESSON_SCHEDULE_SECTION_IDS = new Set(["lesson-schedule", "command-lesson-schedule"]);
-const REMOVED_THEMATIC_PERIOD_IDS = new Set(["period-3", "period-4"]);
+const ADMIN_GROUPED_SUBMISSION_SECTION_IDS = new Set([
+  "thematic-account",
+  "lesson-schedule",
+  "command-thematic-account",
+  "command-lesson-schedule",
+]);
+const OUTPOST_SUBMISSION_SECTION_IDS = new Set([
+  "thematic-account",
+  "lesson-schedule",
+  "command-thematic-account",
+  "command-lesson-schedule",
+  "typical-week",
+  "combat-training-personnel-journal",
+  "combat-training-command-journal",
+]);
+const COMMAND_SUBMISSION_SECTION_IDS = new Set([
+  "command-thematic-account",
+  "command-lesson-schedule",
+]);
+const REMOVED_THEMATIC_PERIOD_IDS = new Set(["period-2", "period-3", "period-4"]);
 const REMOVED_THEMATIC_PERIOD_TITLE_PARTS = [
+  "2026-окуу жылынын 2 мезгилине",
   "2026-окуу жылынын 3 мезгилине",
   "2026-окуу жылынын 4 мезгилине",
+  "20__-окуу жылынын 2 мезгилине",
   "20__-окуу жылынын 3 мезгилине",
   "20__-окуу жылынын 4 мезгилине",
 ];
@@ -45,7 +82,7 @@ const buildCommandThematicAccountTableTitle = (periodNumber = "___") =>
   `20__-окуу жылынын ${periodNumber} мезгилине_______аскер бөлүгүнүн "__________" чек ара заставынын (тобунун, взвод, ротосынын) сержант,  прапорщиктердин
 өздүк курамы  менен өтүлгүүчү командирдик даярдык боюбнча  сабактардын тематикалык эсеп сааты.`;
 
-const LESSON_SCHEDULE_MONTH_PLACEHOLDER = "ай";
+const LESSON_SCHEDULE_MONTH_PLACEHOLDER = "__________";
 const LESSON_SCHEDULE_WEEK_PLACEHOLDER = "1";
 
 const buildLessonSchedulePeriodTitle = (weekNumber, month = "__________") =>
@@ -77,9 +114,12 @@ const normalizeThematicAccountTitle = (title = "", isCommand = false, periodNumb
 };
 
 const isRemovedThematicPeriod = (period) =>
-  REMOVED_THEMATIC_PERIOD_IDS.has(period?.id) ||
-  REMOVED_THEMATIC_PERIOD_TITLE_PARTS.some((titlePart) =>
-    String(period?.title || "").includes(titlePart)
+  !String(period?.id || "").startsWith("admin-document-") &&
+  (
+    REMOVED_THEMATIC_PERIOD_IDS.has(period?.id) ||
+    REMOVED_THEMATIC_PERIOD_TITLE_PARTS.some((titlePart) =>
+      String(period?.title || "").includes(titlePart)
+    )
   );
 
 const normalizeThematicPeriod = (period, sectionId) => {
@@ -300,8 +340,43 @@ const isMultilineColumn = (column) =>
 
 const getNestedSections = (section) => section?.sections || section?.subsections || EMPTY_ARRAY;
 
+const getSubmissionSenderLabel = (submission) => {
+  if (submission?.senderRole === "outpost") {
+    const outpost = submission.outpostName || submission.senderName || "Застава көрсөтүлгөн эмес";
+    const sender = submission.senderName && submission.senderName !== outpost
+      ? ` · Жөнөтүүчү: ${submission.senderName}`
+      : "";
+    return submission.unitNumber
+      ? `Застава: ${outpost} · Аскер бөлүгү: ${submission.unitNumber}${sender}`
+      : `Застава: ${outpost}${sender}`;
+  }
+
+  const militaryUnit = submission?.unitNumber || "көрсөтүлгөн эмес";
+  const sender = submission?.senderName ? ` · Жөнөтүүчү: ${submission.senderName}` : "";
+  return `Аскер бөлүгү: ${militaryUnit}${sender}`;
+};
+
 const hasSectionContent = (section) =>
-  Boolean(section?.table || section?.periods?.length > 0 || getNestedSections(section).length > 0);
+  Boolean(
+    OUTPOST_SUBMISSION_SECTION_IDS.has(section?.id) ||
+      section?.table ||
+      section?.periods?.length > 0 ||
+      getNestedSections(section).length > 0
+  );
+
+const createTypicalWeekTable = (title) => ({
+  title,
+  variant: "typical-week",
+  columns: [
+    {key: "number", label: "№", width: 64},
+    {key: "routine", label: "Күн тартиби", type: "textarea", width: 420},
+    {key: "time", label: "Убакыт", width: 180},
+    {key: "duration", label: "Узактыгы", width: 180},
+  ],
+  rows: [
+    {number: "1", routine: "", time: "", duration: ""},
+  ],
+});
 
 const thematicAccountPeriodConfig = {
   adminOnly: true,
@@ -318,11 +393,21 @@ const lessonSchedulePeriodConfig = {
   usesServerCreate: true,
   getDefaultTitle: (weekNumber) => buildLessonSchedulePeriodTitle(weekNumber),
 };
+const typicalWeekPeriodConfig = {
+  adminOnly: true,
+  buttonLabel: "+ Создать",
+  promptLabel: "Название",
+  usesTextDialog: true,
+  createTable: createTypicalWeekTable,
+  getDefaultTitle: () => "",
+};
 const customPeriodConfigs = {
   "command-lesson-schedule": lessonSchedulePeriodConfig,
   "command-thematic-account": thematicAccountPeriodConfig,
   "lesson-schedule": lessonSchedulePeriodConfig,
   "thematic-account": thematicAccountPeriodConfig,
+  "typical-week": typicalWeekPeriodConfig,
+  "typical-week-military-unit": typicalWeekPeriodConfig,
 };
 
 const lessonScheduleDays = [
@@ -337,8 +422,8 @@ const lessonScheduleDays = [
 ];
 
 const lessonScheduleRows = [
-  "Эртең мененки машыгуу",
-  "Машыгуу маалында",
+  "Эртең мененки дене тарбия көнүгүүлөрү",
+  "Машыгуулар жана маалымдоолор",
   "1-саат",
   "2-саат",
   "3-саат",
@@ -347,19 +432,22 @@ const lessonScheduleRows = [
   "6-саат",
   "Техниканы куралды тейлөө",
   "Өздүк даярдануу",
-  "Жалпы спорттук иш-чаралар, тарбия берүү иштери",
-  "II-кезектеги (түнкү) сабактар",
+  "Жалпы спорттук иш-чаралар, тарбия иштери",
+  "Түнкү сабактар",
   "1-саат",
   "2-саат",
   "3-саат",
 ];
 
 const thematicAccountMonths = [
+  {key: "december", label: "ДЕКАБРЬ", weeks: ["1", "2", "3", "4", "5"]},
+  {key: "january", label: "ЯНВАРЬ", weeks: ["1", "2", "3", "4", "5"]},
+  {key: "february", label: "ФЕВРАЛЬ", weeks: ["1", "2", "3", "4", "5"]},
+  {key: "march", label: "МАРТ", weeks: ["1", "2", "3", "4", "5"]},
   {key: "june", label: "ИЮНЬ", weeks: ["1", "2", "3", "4", "5"]},
   {key: "july", label: "ИЮЛЬ", weeks: ["1", "2", "3", "4", "5"]},
   {key: "august", label: "АВГУСТ", weeks: ["1", "2", "3", "4", "5"]},
   {key: "september", label: "СЕНТЯБРЬ", weeks: ["1", "2", "3", "4", "5"]},
-  {key: "october", label: "ОКТЯБРЬ", weeks: ["1", "2", "3", "4", "5"]},
 ];
 
 const thematicAccountWeekColumns = thematicAccountMonths.flatMap((month) =>
@@ -420,7 +508,10 @@ const firstCommandThematicAccountMonths = [
   {key: "january", label: "ЯНВАРЬ", slots: ["", ""]},
   {key: "february", label: "ФЕВРАЛЬ", slots: ["", ""]},
   {key: "march", label: "МАРТ", slots: ["", ""]},
-  {key: "april", label: "АПРЕЛЬ", slots: ["", ""]},
+  {key: "june", label: "ИЮНЬ", slots: ["", ""]},
+  {key: "july", label: "ИЮЛЬ", slots: ["", ""]},
+  {key: "august", label: "АВГУСТ", slots: ["", ""]},
+  {key: "september", label: "СЕНТЯБРЬ", slots: ["", ""]},
 ];
 
 const secondCommandThematicAccountMonths = [
@@ -723,8 +814,14 @@ const buildLessonScheduleLikePhoto = (table) => {
     ],
   ];
 
-  const rows = lessonScheduleRows.map((label) => {
-    if (label.startsWith("II-")) {
+  const visibleRows = lessonScheduleRows.filter(
+    (label, index) =>
+      label !== "Техниканы куралды тейлөө" &&
+      !(label === "3-саат" && index === lessonScheduleRows.length - 1)
+  );
+
+  const rows = visibleRows.map((label) => {
+    if (label === "Түнкү сабактар") {
       return {activity: label, rowType: "section"};
     }
 
@@ -782,24 +879,46 @@ export default function Library({ data, onBack, onRefresh }) {
   const sections = data?.sections || [];
   const [selectedSectionId, setSelectedSectionId] = useState(null);
   const [selectedSubsectionId, setSelectedSubsectionId] = useState(null);
+  const [selectedNestedSubsectionId, setSelectedNestedSubsectionId] = useState(null);
   const [selectedPeriodId, setSelectedPeriodId] = useState(null);
+  const [selectedAdminUnitNumber, setSelectedAdminUnitNumber] = useState(null);
+  const [selectedAdminOutpostName, setSelectedAdminOutpostName] = useState(null);
   const [customPeriods, setCustomPeriods] = useState([]);
   const [editableRows, setEditableRows] = useState([]);
   const [editableHeaderValues, setEditableHeaderValues] = useState({});
   const [editableTitle, setEditableTitle] = useState("");
   const [tableStatus, setTableStatus] = useState("editing");
   const [tableNotice, setTableNotice] = useState("");
+  const [activeCellColor, setActiveCellColor] = useState("");
+  const [cellColors, setCellColors] = useState({});
   const [tableScrollWidth, setTableScrollWidth] = useState(1200);
   const [lessonPeriodDraft, setLessonPeriodDraft] = useState(null);
   const [lessonPeriodMonth, setLessonPeriodMonth] = useState("");
   const [lessonPeriodWeek, setLessonPeriodWeek] = useState("");
   const [lessonPeriodError, setLessonPeriodError] = useState("");
   const [isCreatingLessonPeriod, setIsCreatingLessonPeriod] = useState(false);
+  const [customTableDraft, setCustomTableDraft] = useState(null);
+  const [customTableTitle, setCustomTableTitle] = useState("");
+  const [customTableError, setCustomTableError] = useState("");
+  const [thematicSubmissions, setThematicSubmissions] = useState([]);
+  const [selectedSubmission, setSelectedSubmission] = useState(null);
+  const [submissionDialogOpen, setSubmissionDialogOpen] = useState(false);
+  const [submissionDocumentTitle, setSubmissionDocumentTitle] = useState("");
+  const [submissionError, setSubmissionError] = useState("");
+  const [isSubmittingThematicAccount, setIsSubmittingThematicAccount] = useState(false);
+  const [deletingSubmissionId, setDeletingSubmissionId] = useState(null);
+  const [forwardingSubmission, setForwardingSubmission] = useState(null);
+  const [submissionListError, setSubmissionListError] = useState("");
+  const [deletingLessonPeriodId, setDeletingLessonPeriodId] = useState(null);
   const directTable = data?.table;
   const selectedSection = sections.find((section) => section.id === selectedSectionId);
   const selectedSubsections = getNestedSections(selectedSection);
   const selectedSubsection = selectedSubsections.find((section) => section.id === selectedSubsectionId);
-  const activePeriodContainer = selectedSubsection || selectedSection;
+  const selectedNestedSubsections = getNestedSections(selectedSubsection);
+  const selectedNestedSubsection = selectedNestedSubsections.find(
+    (section) => section.id === selectedNestedSubsectionId
+  );
+  const activePeriodContainer = selectedNestedSubsection || selectedSubsection || selectedSection;
   const activePeriodContainerId = activePeriodContainer?.id;
   const basePeriods = activePeriodContainer?.periods || EMPTY_ARRAY;
   const isThematicAccountTable = THEMATIC_ACCOUNT_SECTION_IDS.has(activePeriodContainerId);
@@ -824,20 +943,122 @@ export default function Library({ data, onBack, onRefresh }) {
   const customPeriodsStorageKey = getCustomPeriodsStorageKey(
     data?.scope,
     selectedSection?.id,
-    selectedSubsection?.id
+    [selectedSubsection?.id, selectedNestedSubsection?.id].filter(Boolean).join(":")
   );
   const selectedPeriods = useMemo(
     () => [...visibleBasePeriods, ...visibleCustomPeriods],
     [visibleBasePeriods, visibleCustomPeriods]
   );
+  const isRegionalCommandIncomingLocation =
+    currentUser?.role === "regional" &&
+    selectedSection?.id === "command-training" &&
+    selectedSubsection?.id === "command-training-subunits";
+  const isRegionalCommandMilitaryUnitLocation =
+    currentUser?.role === "regional" &&
+    selectedSection?.id === "command-training" &&
+    selectedSubsection?.id === "command-training-military-unit";
+  const isRegionalTypicalWeekIncomingLocation =
+    currentUser?.role === "regional" &&
+    selectedSection?.id === "typical-week" &&
+    selectedSubsection?.id === "typical-week-subunits";
+  const isRegionalTypicalWeekMilitaryUnitLocation =
+    currentUser?.role === "regional" &&
+    selectedSection?.id === "typical-week" &&
+    selectedSubsection?.id === "typical-week-military-unit";
+  const submissionSectionId = data?.submissionSectionId || (
+    ["typical-week-subunits", "typical-week-military-unit"].includes(activePeriodContainerId)
+      ? "typical-week"
+      : activePeriodContainerId
+  );
+  const showsOutpostSubmissions =
+    OUTPOST_SUBMISSION_SECTION_IDS.has(submissionSectionId) &&
+    (
+      currentUser?.role !== "regional" ||
+      (
+        COMMAND_SUBMISSION_SECTION_IDS.has(submissionSectionId)
+          ? isRegionalCommandIncomingLocation
+          : submissionSectionId === "typical-week"
+            ? activePeriodContainerId === "typical-week" || isRegionalTypicalWeekIncomingLocation
+            : true
+      )
+    );
+  const isRegionalIncomingViewer =
+    isRegionalCommandIncomingLocation || isRegionalTypicalWeekIncomingLocation;
+  const displayedPeriods = isRegionalIncomingViewer ? EMPTY_ARRAY : selectedPeriods;
+  const sectionSubmissions = thematicSubmissions.filter(
+    (submission) => submission.sectionId === submissionSectionId
+  );
+  const isAdminGroupedSubmissionSection =
+    currentUser?.role === "admin" &&
+    ADMIN_GROUPED_SUBMISSION_SECTION_IDS.has(submissionSectionId);
+  const adminUnitNumbers = useMemo(
+    () => Array.from(new Set([
+      ...(data?.unitNumbers || EMPTY_ARRAY),
+      ...sectionSubmissions.map((submission) => submission.unitNumber),
+    ].map((unitNumber) => String(unitNumber || "").trim()).filter(Boolean))),
+    [data?.unitNumbers, sectionSubmissions]
+  );
+  const selectedAdminUnitSubmissions = isAdminGroupedSubmissionSection
+    ? sectionSubmissions.filter(
+        (submission) => String(submission.unitNumber) === String(selectedAdminUnitNumber)
+      )
+    : EMPTY_ARRAY;
+  const adminMilitaryUnitSubmissions = selectedAdminUnitSubmissions.filter(
+    (submission) => submission.senderRole === "regional"
+  );
+  const adminOutpostSubmissions = selectedAdminUnitSubmissions.filter(
+    (submission) => submission.senderRole === "outpost"
+  );
+  const adminOutpostNames = useMemo(
+    () => Array.from(new Set([
+      ...(OUTPOSTS_BY_MILITARY_UNIT[selectedAdminUnitNumber] || []).map(([, name]) =>
+        formatOutpostName(name)
+      ),
+      ...adminOutpostSubmissions.map((submission) => formatOutpostName(submission.outpostName)),
+    ].filter(Boolean))),
+    [adminOutpostSubmissions, selectedAdminUnitNumber]
+  );
+  const selectedAdminOutpostSubmissions = selectedAdminOutpostName
+    ? adminOutpostSubmissions.filter(
+        (submission) => formatOutpostName(submission.outpostName) === selectedAdminOutpostName
+      )
+    : EMPTY_ARRAY;
+  const visibleSubmissions = currentUser?.role === "regional"
+    ? sectionSubmissions.filter((submission) => submission.senderRole === "outpost")
+    : currentUser?.role === "admin"
+      ? ADMIN_GROUPED_SUBMISSION_SECTION_IDS.has(submissionSectionId)
+        ? sectionSubmissions
+        : sectionSubmissions.filter((submission) => submission.senderRole === "regional")
+      : sectionSubmissions;
+  const outgoingRegionalSubmissions = currentUser?.role === "regional"
+    ? sectionSubmissions.filter((submission) => submission.senderRole === "regional")
+    : EMPTY_ARRAY;
+  const showsRegionalOutgoingSubmissions =
+    currentUser?.role === "regional" &&
+    OUTPOST_SUBMISSION_SECTION_IDS.has(submissionSectionId) &&
+    (
+      showsOutpostSubmissions ||
+      isRegionalCommandMilitaryUnitLocation ||
+      isRegionalTypicalWeekMilitaryUnitLocation
+    );
   const selectedPeriod = selectedPeriods.find((period) => period.id === selectedPeriodId);
   const selectedPeriodNumber = getPeriodNumber(selectedPeriod);
-  const sourceSelectedTable = directTable || selectedPeriod?.table || selectedSubsection?.table || selectedSection?.table;
+  const sourceSelectedTable =
+    selectedSubmission?.table ||
+    directTable ||
+    selectedPeriod?.table ||
+    selectedNestedSubsection?.table ||
+    selectedSubsection?.table ||
+    selectedSection?.table;
   const shouldUseLessonSchedulePhotoLayout =
-    selectedSubsection?.id === "lesson-schedule" ||
-    selectedSubsection?.id === "command-lesson-schedule";
+    activePeriodContainerId === "lesson-schedule" ||
+    activePeriodContainerId === "command-lesson-schedule";
   const selectedTable = useMemo(
     () => {
+      if (selectedSubmission) {
+        return sourceSelectedTable;
+      }
+
       if (isThematicAccountTable) {
         return buildThematicAccountLikePhoto(
           sourceSelectedTable,
@@ -853,20 +1074,26 @@ export default function Library({ data, onBack, onRefresh }) {
     [
       isCommandThematicAccountTable,
       isThematicAccountTable,
+      selectedSubmission,
       selectedPeriod?.id,
+      activePeriodContainerId,
       shouldUseLessonSchedulePhotoLayout,
       sourceSelectedTable,
     ]
   );
   const tableColumns = selectedTable?.columns || EMPTY_ARRAY;
   const tableHeaderFields = selectedTable?.headerFields || EMPTY_ARRAY;
-  const tableOwnerId = selectedPeriod ? selectedSection?.id : selectedSubsection?.id || selectedSection?.id;
+  const tableOwnerId = [
+    selectedSection?.id,
+    selectedSubsection?.id,
+    selectedNestedSubsection?.id,
+  ].filter(Boolean).join(":");
   const baseTableStorageKey = selectedTable
     ? data?.tableStorageKey ||
       getTableStorageKey(
         data?.scope,
         directTable ? data?.id || selectedTable?.id : tableOwnerId,
-        selectedPeriod?.id
+        selectedSubmission ? `submission-${selectedSubmission.id}` : selectedPeriod?.id
       )
     : null;
   const isThematicAccountPhotoTable =
@@ -875,7 +1102,7 @@ export default function Library({ data, onBack, onRefresh }) {
   const isCommandThematicAccountPhotoTable = selectedTable?.variant === "command-thematic-account";
   const tableStorageKey =
     baseTableStorageKey && selectedTable?.variant === "lesson-schedule"
-      ? `${baseTableStorageKey}:photo-layout-v9`
+      ? `${baseTableStorageKey}:photo-layout-v10`
       : baseTableStorageKey && selectedTable?.variant === "command-thematic-account"
         ? `${baseTableStorageKey}:command-thematic-photo-v3`
       : baseTableStorageKey && isThematicAccountPhotoTable
@@ -884,32 +1111,83 @@ export default function Library({ data, onBack, onRefresh }) {
   const headerStorageKey = data?.headerStorageKey || getHeaderStorageKey(tableStorageKey);
   const titleStorageKey = getTitleStorageKey(tableStorageKey);
   const tableActionStorageKey = data?.tableActionStorageKey || getActionStorageKey(tableStorageKey);
-  const isTableEditing = tableStatus === "editing";
-  const isSubmitDisabled = data?.disableSubmit || tableStatus === "submitted";
-  const customPeriodConfig = customPeriodConfigs[selectedSubsection?.id];
+  const cellColorStorageKey = tableStorageKey ? `${tableStorageKey}:cell-colors` : null;
+  const isViewingSubmission = Boolean(selectedSubmission) || Boolean(data?.readOnly);
+  const isTableEditing = tableStatus === "editing" && !isViewingSubmission;
+  const isSubmitDisabled = data?.disableSubmit || tableStatus === "submitted" || isViewingSubmission;
+  const customPeriodConfig = customPeriodConfigs[activePeriodContainerId];
   const isAdmin = currentUser?.role === "admin";
   const canAddCustomPeriod = Boolean(
     customPeriodConfig &&
       (!customPeriodConfig.adminOnly || isAdmin) &&
-      (customPeriodConfig.usesServerCreate || selectedPeriods.some((period) => period.table)) &&
+      (isAdmin ||
+        customPeriodConfig.usesServerCreate ||
+        customPeriodConfig.createTable ||
+        selectedPeriods.some((period) => period.table)) &&
       (!customPeriodConfig.maxPeriods || selectedPeriods.length < customPeriodConfig.maxPeriods)
   );
-  const canManageCustomPeriods = Boolean(customPeriodConfig?.adminOnly && isAdmin);
+  const canManageCustomPeriods = Boolean(customPeriodConfig && isAdmin);
 
   useEffect(() => {
     setSelectedSectionId(null);
     setSelectedSubsectionId(null);
+    setSelectedNestedSubsectionId(null);
     setSelectedPeriodId(null);
+    setSelectedSubmission(null);
+    setSelectedAdminUnitNumber(null);
+    setSelectedAdminOutpostName(null);
   }, [data?.title, data?.scope]);
 
   useEffect(() => {
+    if (
+      !["outpost", "regional", "admin"].includes(currentUser?.role) ||
+      !OUTPOST_SUBMISSION_SECTION_IDS.has(submissionSectionId)
+    ) {
+      setThematicSubmissions([]);
+      return undefined;
+    }
+
+    let isActive = true;
+    getThematicAccountSubmissions()
+      .then((items) => {
+        if (isActive) {
+          setThematicSubmissions(Array.isArray(items) ? items : []);
+        }
+      })
+      .catch(() => {
+        if (isActive) {
+          setThematicSubmissions([]);
+        }
+      });
+
+    return () => {
+      isActive = false;
+    };
+  }, [currentUser?.id, currentUser?.role, submissionSectionId]);
+
+  useEffect(() => {
     setSelectedSubsectionId(null);
+    setSelectedNestedSubsectionId(null);
     setSelectedPeriodId(null);
+    setSelectedSubmission(null);
+    setSelectedAdminUnitNumber(null);
+    setSelectedAdminOutpostName(null);
   }, [selectedSectionId]);
 
   useEffect(() => {
+    setSelectedNestedSubsectionId(null);
     setSelectedPeriodId(null);
+    setSelectedSubmission(null);
+    setSelectedAdminUnitNumber(null);
+    setSelectedAdminOutpostName(null);
   }, [selectedSubsectionId]);
+
+  useEffect(() => {
+    setSelectedPeriodId(null);
+    setSelectedSubmission(null);
+    setSelectedAdminUnitNumber(null);
+    setSelectedAdminOutpostName(null);
+  }, [selectedNestedSubsectionId]);
 
   useEffect(() => {
     setLessonPeriodDraft(null);
@@ -917,7 +1195,16 @@ export default function Library({ data, onBack, onRefresh }) {
     setLessonPeriodWeek("");
     setLessonPeriodError("");
     setIsCreatingLessonPeriod(false);
-  }, [data?.scope, data?.title, selectedSectionId, selectedSubsectionId]);
+    setCustomTableDraft(null);
+    setCustomTableTitle("");
+    setCustomTableError("");
+  }, [
+    data?.scope,
+    data?.title,
+    selectedSectionId,
+    selectedSubsectionId,
+    selectedNestedSubsectionId,
+  ]);
 
   useEffect(() => {
     if (isLessonSchedulePeriodList) {
@@ -926,7 +1213,7 @@ export default function Library({ data, onBack, onRefresh }) {
 
       if (
         storedPeriods.length > 0 &&
-        selectedSubsection?.id &&
+        activePeriodContainerId &&
         !migratedLessonPeriodsRef.current.has(customPeriodsStorageKey)
       ) {
         migratedLessonPeriodsRef.current.add(customPeriodsStorageKey);
@@ -946,7 +1233,7 @@ export default function Library({ data, onBack, onRefresh }) {
             for (const period of periodsToMigrate) {
               const weekMatch = String(period.title || "").match(/(\d+)\s*жумасы/);
               await createLessonSchedulePeriod({
-                section: selectedSubsection.id,
+                section: activePeriodContainerId,
                 title: period.title,
                 weekNumber: weekMatch?.[1] || "",
               });
@@ -988,7 +1275,7 @@ export default function Library({ data, onBack, onRefresh }) {
     isLessonSchedulePeriodList,
     isThematicAccountTable,
     onRefresh,
-    selectedSubsection?.id,
+    activePeriodContainerId,
   ]);
 
   useEffect(() => {
@@ -1023,6 +1310,26 @@ export default function Library({ data, onBack, onRefresh }) {
     setTableStatus(selectedTable ? getStoredTableStatus(tableActionStorageKey) : "editing");
     setTableNotice("");
   }, [selectedTable, tableActionStorageKey]);
+
+  useEffect(() => {
+    setActiveCellColor("");
+    if (!selectedTable?.enableCellColoring || !cellColorStorageKey || typeof window === "undefined") {
+      setCellColors({});
+      return;
+    }
+
+    if (selectedTable.cellColors && typeof selectedTable.cellColors === "object") {
+      setCellColors(selectedTable.cellColors);
+      return;
+    }
+
+    try {
+      const storedColors = JSON.parse(window.localStorage.getItem(cellColorStorageKey) || "{}");
+      setCellColors(storedColors && typeof storedColors === "object" ? storedColors : {});
+    } catch {
+      setCellColors({});
+    }
+  }, [cellColorStorageKey, selectedTable?.cellColors, selectedTable?.enableCellColoring]);
 
   useEffect(() => {
     const updateScrollWidth = () => {
@@ -1090,6 +1397,35 @@ export default function Library({ data, onBack, onRefresh }) {
     setEditableRows((currentRows) =>
       currentRows.map((row, index) => (index === rowIndex ? { ...row, [columnKey]: value } : row))
     );
+  };
+
+  const handlePaintJournalCell = (rowIndex, columnKey) => {
+    if (
+      !activeCellColor ||
+      !selectedTable?.enableCellColoring ||
+      !/^attendance_\d+$/.test(columnKey)
+    ) {
+      return;
+    }
+
+    const cellKey = `${rowIndex}:${columnKey}`;
+    setCellColors((currentColors) => {
+      const nextColors = { ...currentColors };
+      if (nextColors[cellKey] === activeCellColor) {
+        delete nextColors[cellKey];
+      } else {
+        nextColors[cellKey] = activeCellColor;
+      }
+
+      if (cellColorStorageKey && typeof window !== "undefined") {
+        try {
+          window.localStorage.setItem(cellColorStorageKey, JSON.stringify(nextColors));
+        } catch {
+          // Coloring should continue to work if browser storage is unavailable.
+        }
+      }
+      return nextColors;
+    });
   };
 
   const handleCellLineChange = (rowIndex, column, lineIndex, value) => {
@@ -1213,8 +1549,31 @@ export default function Library({ data, onBack, onRefresh }) {
 
     setEditableRows((currentRows) => [
       ...currentRows,
-      createEmptyTableRow(selectedTable, currentRows.length + 1),
+      createEmptyTableRow(
+        selectedTable,
+        currentRows.filter((row) => row.rowType !== "section").length + 1
+      ),
     ]);
+  };
+
+  const handleAddTableSection = () => {
+    setEditableRows((currentRows) => [
+      ...currentRows,
+      {rowType: "section", activity: "Секция"},
+    ]);
+  };
+
+  const handleDeleteTableSection = () => {
+    setEditableRows((currentRows) => {
+      const lastSectionIndex = currentRows.reduce(
+        (foundIndex, row, index) => (row.rowType === "section" ? index : foundIndex),
+        -1
+      );
+
+      return lastSectionIndex === -1
+        ? currentRows
+        : currentRows.filter((_, index) => index !== lastSectionIndex);
+    });
   };
 
   const handleDeleteTableRow = () => {
@@ -1223,7 +1582,9 @@ export default function Library({ data, onBack, onRefresh }) {
 
   const addCustomPeriodFromTemplate = (title, templatePeriod) => {
     const periodId = `custom-${Date.now()}`;
-    const table = JSON.parse(JSON.stringify(templatePeriod.table));
+    const table = customPeriodConfig.createTable
+      ? customPeriodConfig.createTable(title)
+      : JSON.parse(JSON.stringify(templatePeriod.table));
     table.title = title;
 
     const nextCustomPeriod = {
@@ -1238,14 +1599,19 @@ export default function Library({ data, onBack, onRefresh }) {
     setSelectedPeriodId(periodId);
   };
 
-  const handleAddCustomPeriod = () => {
+  const handleAddCustomPeriod = async () => {
     if (typeof window === "undefined") {
       return;
     }
 
     const templatePeriod = basePeriods.find((period) => period.table);
 
-    if (!templatePeriod && !customPeriodConfig.usesServerCreate) {
+    if (
+      !templatePeriod &&
+      !isAdmin &&
+      !customPeriodConfig.usesServerCreate &&
+      !customPeriodConfig.createTable
+    ) {
       return;
     }
 
@@ -1256,9 +1622,16 @@ export default function Library({ data, onBack, onRefresh }) {
         templatePeriod,
         weekNumber: nextPeriodNumber,
       });
-      setLessonPeriodMonth("");
-      setLessonPeriodWeek("");
+      setLessonPeriodMonth(LESSON_SCHEDULE_MONTH_PLACEHOLDER);
+      setLessonPeriodWeek(String(nextPeriodNumber));
       setLessonPeriodError("");
+      return;
+    }
+
+    if (customPeriodConfig.usesTextDialog) {
+      setCustomTableDraft({templatePeriod});
+      setCustomTableTitle(customPeriodConfig.getDefaultTitle(nextPeriodNumber));
+      setCustomTableError("");
       return;
     }
 
@@ -1269,7 +1642,50 @@ export default function Library({ data, onBack, onRefresh }) {
       return;
     }
 
+    if (isAdmin) {
+      try {
+        await createLibraryPeriod({section: activePeriodContainerId, title});
+        if (onRefresh) await onRefresh();
+      } catch (error) {
+        setTableNotice(getApiErrorMessage(error, "Не удалось добавить документ."));
+      }
+      return;
+    }
+
     addCustomPeriodFromTemplate(title, templatePeriod);
+  };
+
+  const closeCustomTableDialog = () => {
+    setCustomTableDraft(null);
+    setCustomTableTitle("");
+    setCustomTableError("");
+  };
+
+  const handleCreateCustomTable = async () => {
+    const title = customTableTitle.trim();
+
+    if (!title) {
+      setCustomTableError("Введите название.");
+      return;
+    }
+
+    if (isAdmin) {
+      try {
+        await createLibraryPeriod({
+          section: activePeriodContainerId,
+          title,
+          table: customPeriodConfig.createTable?.(title),
+        });
+        if (onRefresh) await onRefresh();
+        closeCustomTableDialog();
+      } catch (error) {
+        setCustomTableError(getApiErrorMessage(error, "Не удалось создать документ."));
+      }
+      return;
+    }
+
+    addCustomPeriodFromTemplate(title, customTableDraft?.templatePeriod);
+    closeCustomTableDialog();
   };
 
   const closeLessonPeriodDialog = () => {
@@ -1295,11 +1711,15 @@ export default function Library({ data, onBack, onRefresh }) {
     setLessonPeriodError("");
 
     try {
-      await createLessonSchedulePeriod({
-        section: selectedSubsection?.id,
-        title,
-        weekNumber,
-      });
+      if (isAdmin) {
+        await createLibraryPeriod({section: activePeriodContainerId, title});
+      } else {
+        await createLessonSchedulePeriod({
+          section: activePeriodContainerId,
+          title,
+          weekNumber,
+        });
+      }
 
       if (onRefresh) {
         await onRefresh();
@@ -1315,7 +1735,7 @@ export default function Library({ data, onBack, onRefresh }) {
     }
   };
 
-  const handleRenameCustomPeriod = (period) => {
+  const handleRenameCustomPeriod = async (period) => {
     if (typeof window === "undefined" || !canManageCustomPeriods) {
       return;
     }
@@ -1323,6 +1743,16 @@ export default function Library({ data, onBack, onRefresh }) {
     const title = window.prompt("Таблицанын аталышы", period.title)?.trim();
 
     if (!title) {
+      return;
+    }
+
+    if (period.canEdit) {
+      try {
+        await updateLibraryPeriod(activePeriodContainerId, period.id, {title});
+        if (onRefresh) await onRefresh();
+      } catch (error) {
+        setTableNotice(getApiErrorMessage(error, "Не удалось изменить название."));
+      }
       return;
     }
 
@@ -1343,7 +1773,7 @@ export default function Library({ data, onBack, onRefresh }) {
     saveCustomPeriods(customPeriodsStorageKey, nextCustomPeriods);
   };
 
-  const handleDeleteCustomPeriod = (period) => {
+  const handleDeleteCustomPeriod = async (period) => {
     if (typeof window === "undefined" || !canManageCustomPeriods) {
       return;
     }
@@ -1351,6 +1781,20 @@ export default function Library({ data, onBack, onRefresh }) {
     const shouldDelete = window.confirm(`"${period.title}" өчүрүлсүнбү?`);
 
     if (!shouldDelete) {
+      return;
+    }
+
+    if (period.canDelete) {
+      setDeletingLessonPeriodId(period.id);
+      try {
+        await deleteLibraryPeriod(activePeriodContainerId, period.id);
+        if (selectedPeriodId === period.id) setSelectedPeriodId(null);
+        if (onRefresh) await onRefresh();
+      } catch (error) {
+        setTableNotice(getApiErrorMessage(error, "Не удалось удалить документ."));
+      } finally {
+        setDeletingLessonPeriodId(null);
+      }
       return;
     }
 
@@ -1391,7 +1835,33 @@ export default function Library({ data, onBack, onRefresh }) {
     }
   };
 
-  const handleTableSave = () => {
+  const buildCurrentSubmissionTable = () => {
+    const submittedHeaderFields = (selectedTable?.headerFields || []).map((field) => ({
+      ...field,
+      defaultValue: field.key
+        ? editableHeaderValues[field.key] ?? field.defaultValue ?? ""
+        : field.defaultValue,
+    }));
+    const submittedHeaderRows = (selectedTable?.headerRows || []).map((row) =>
+      row.map((cell) => ({
+        ...cell,
+        defaultValue: cell.editableKey
+          ? editableHeaderValues[cell.editableKey] ?? cell.defaultValue ?? cell.label ?? ""
+          : cell.defaultValue,
+      }))
+    );
+
+    return {
+      ...selectedTable,
+      title: editableTitle || selectedTable?.title || "",
+      rows: editableRows,
+      cellColors,
+      headerFields: submittedHeaderFields,
+      headerRows: submittedHeaderRows,
+    };
+  };
+
+  const handleTableSave = async () => {
     persistCurrentTable("saved");
     upsertSavedTable({
       id: tableStorageKey,
@@ -1405,12 +1875,195 @@ export default function Library({ data, onBack, onRefresh }) {
     });
     setTableStatus("saved");
     setTableNotice("Таблица сохранена.");
+
+    if (data?.autoSubmitOnSave && currentUser?.role === "outpost") {
+      setIsSubmittingThematicAccount(true);
+      try {
+        const submission = await createThematicAccountSubmission({
+          documentTitle:
+            data?.submissionDocumentTitle || editableTitle || selectedTable?.title || data?.title,
+          sectionId: submissionSectionId,
+          periodId: data?.submissionPeriodId || "",
+          table: buildCurrentSubmissionTable(),
+        });
+        setThematicSubmissions((items) => [
+          submission,
+          ...items.filter((item) => item.id !== submission.id),
+        ]);
+        setTableNotice("Заполнено. Журнал сохранён и отправлен.");
+      } catch (error) {
+        setTableNotice(
+          getApiErrorMessage(error, "Журнал сохранён локально, но отправить его не удалось.")
+        );
+      } finally {
+        setIsSubmittingThematicAccount(false);
+      }
+    }
   };
 
-  const handleTableSend = () => {
+  const markCurrentTableSubmitted = () => {
     persistCurrentTable("submitted");
     setTableStatus("submitted");
     setTableNotice("Таблица отправлена.");
+  };
+
+  const resetCurrentTableToDefaults = () => {
+    if (!selectedTable) {
+      return;
+    }
+
+    if (typeof window !== "undefined") {
+      try {
+        [
+          tableStorageKey,
+          headerStorageKey,
+          titleStorageKey,
+          tableActionStorageKey,
+          cellColorStorageKey,
+        ].forEach((key) => {
+          if (key) {
+            window.localStorage.removeItem(key);
+          }
+        });
+
+        const remainingSavedTables = getSavedTables().filter(
+          (savedTable) => savedTable.id !== tableStorageKey
+        );
+        window.localStorage.setItem(
+          SAVED_TABLES_STORAGE_KEY,
+          JSON.stringify(remainingSavedTables)
+        );
+      } catch {
+        // The in-memory reset below should still complete if storage is unavailable.
+      }
+    }
+
+    setEditableRows((selectedTable.rows || []).map((row) => ({ ...row })));
+    setEditableHeaderValues(
+      getDefaultHeaderValues(getEditableHeaderFields(selectedTable))
+    );
+    setEditableTitle(selectedTable.scheduleTitle || selectedTable.title || "");
+    setCellColors({});
+    setActiveCellColor("");
+    setTableStatus("editing");
+    setTableNotice("Таблица отправлена и очищена.");
+  };
+
+  const completeCurrentTableSubmission = () => {
+    if (selectedTable?.variant === "lesson-schedule") {
+      resetCurrentTableToDefaults();
+      return;
+    }
+
+    markCurrentTableSubmitted();
+  };
+
+  const handleTableSend = () => {
+    const canCreateSubmission = ["outpost", "regional"].includes(currentUser?.role);
+
+    if (canCreateSubmission && OUTPOST_SUBMISSION_SECTION_IDS.has(submissionSectionId) && !selectedSubmission) {
+      setSubmissionDocumentTitle("");
+      setSubmissionError("");
+      setSubmissionDialogOpen(true);
+      return;
+    }
+
+    completeCurrentTableSubmission();
+  };
+
+  const handleSubmitThematicAccount = async () => {
+    const documentTitle = submissionDocumentTitle.trim();
+    if (!documentTitle) {
+      setSubmissionError("Иш кагаздардын аталышын жазыңыз.");
+      return;
+    }
+
+    setIsSubmittingThematicAccount(true);
+    setSubmissionError("");
+    const shouldResetLessonSchedule = selectedTable?.variant === "lesson-schedule";
+    try {
+      const submission = await createThematicAccountSubmission({
+        documentTitle,
+        sectionId: submissionSectionId,
+        periodId: data?.submissionPeriodId || selectedPeriod?.id || "",
+        table: buildCurrentSubmissionTable(),
+      });
+      completeCurrentTableSubmission();
+      setThematicSubmissions((items) => [
+        submission,
+        ...items.filter((item) => item.id !== submission.id),
+      ]);
+      if (shouldResetLessonSchedule) {
+        setSelectedSubmission(null);
+        setSelectedPeriodId(null);
+      } else {
+        setSelectedSubmission(submission);
+      }
+      setSubmissionDialogOpen(false);
+      setSubmissionDocumentTitle("");
+    } catch (error) {
+      setSubmissionError(
+        getApiErrorMessage(error, "Таблицаны жөнөтүү мүмкүн болгон жок.")
+      );
+    } finally {
+      setIsSubmittingThematicAccount(false);
+    }
+  };
+
+  const handleDeleteSubmission = async (submission) => {
+    if (!window.confirm(`"${submission.documentTitle}" өчүрүлсүнбү?`)) {
+      return;
+    }
+
+    setDeletingSubmissionId(submission.id);
+    setSubmissionListError("");
+    try {
+      await deleteThematicAccountSubmission(submission.id);
+      setThematicSubmissions((items) =>
+        items.filter((item) => item.id !== submission.id)
+      );
+      if (selectedSubmission?.id === submission.id) {
+        setSelectedSubmission(null);
+      }
+    } catch (error) {
+      setSubmissionListError(
+        getApiErrorMessage(error, "Документти өчүрүү мүмкүн болгон жок.")
+      );
+    } finally {
+      setDeletingSubmissionId(null);
+    }
+  };
+
+  const handleForwardSubmission = async (submission, documentTitle) => {
+    const forwarded = await forwardThematicAccountSubmission(submission.id, documentTitle);
+    setThematicSubmissions((items) => [
+      forwarded,
+      ...items.filter((item) => item.id !== forwarded.id),
+    ]);
+  };
+
+  const handleDeleteLessonPeriod = async (period) => {
+    if (!window.confirm(`"${period.title}" өчүрүлсүнбү?`)) {
+      return;
+    }
+
+    setDeletingLessonPeriodId(period.id);
+    setSubmissionListError("");
+    try {
+      await deleteLessonSchedulePeriod(activePeriodContainerId, period.id);
+      if (selectedPeriodId === period.id) {
+        setSelectedPeriodId(null);
+      }
+      if (onRefresh) {
+        await onRefresh();
+      }
+    } catch (error) {
+      setSubmissionListError(
+        getApiErrorMessage(error, "Жуманы өчүрүү мүмкүн болгон жок.")
+      );
+    } finally {
+      setDeletingLessonPeriodId(null);
+    }
   };
 
   const handleTableEdit = () => {
@@ -1420,8 +2073,18 @@ export default function Library({ data, onBack, onRefresh }) {
   };
 
   const handleTableBack = () => {
+    if (selectedSubmission) {
+      setSelectedSubmission(null);
+      return;
+    }
+
     if (selectedPeriodId) {
       setSelectedPeriodId(null);
+      return;
+    }
+
+    if (selectedNestedSubsectionId) {
+      setSelectedNestedSubsectionId(null);
       return;
     }
 
@@ -1434,6 +2097,11 @@ export default function Library({ data, onBack, onRefresh }) {
   };
 
   const handlePeriodListBack = () => {
+    if (selectedNestedSubsectionId) {
+      setSelectedNestedSubsectionId(null);
+      return;
+    }
+
     if (selectedSubsectionId) {
       setSelectedSubsectionId(null);
       return;
@@ -1448,21 +2116,39 @@ export default function Library({ data, onBack, onRefresh }) {
         <tr key={`header-row-${rowIndex}`}>
           {headerRow.map((cell, cellIndex) => (
             <th
+              className={cell.key ? `training-table-header--${cell.key}` : undefined}
               colSpan={cell.colSpan || undefined}
               key={cell.key || `${rowIndex}-${cellIndex}`}
               rowSpan={cell.rowSpan || undefined}
             >
               {cell.editableKey ? (
-                <input
-                  aria-label={cell.label}
-                  className="training-table-header-input"
-                  disabled={!isTableEditing}
-                  onChange={(event) => handleHeaderFieldChange(cell.editableKey, event.target.value)}
-                  type="text"
-                  value={editableHeaderValues[cell.editableKey] ?? cell.defaultValue ?? cell.label ?? ""}
-                />
+                selectedTable?.variant === "lesson-schedule" && cell.editableKey.endsWith("_date") ? (
+                  <textarea
+                    aria-label={cell.label}
+                    className="training-table-header-input training-table-header-input--date"
+                    disabled={!isTableEditing}
+                    onChange={(event) => handleHeaderFieldChange(cell.editableKey, event.target.value)}
+                    rows={2}
+                    value={String(
+                      editableHeaderValues[cell.editableKey] ?? cell.defaultValue ?? cell.label ?? ""
+                    ).replace(/([^\n])(20__ж\.)/, "$1\n$2")}
+                  />
+                ) : (
+                  <input
+                    aria-label={cell.label}
+                    className="training-table-header-input"
+                    disabled={!isTableEditing}
+                    onChange={(event) => handleHeaderFieldChange(cell.editableKey, event.target.value)}
+                    type="text"
+                    value={editableHeaderValues[cell.editableKey] ?? cell.defaultValue ?? cell.label ?? ""}
+                  />
+                )
               ) : (
-                cell.label
+                cell.vertical ? (
+                  <span className="training-table-header-vertical">{cell.label}</span>
+                ) : (
+                  cell.label
+                )
               )}
             </th>
           ))}
@@ -1575,6 +2261,9 @@ export default function Library({ data, onBack, onRefresh }) {
     selectedTable?.variant === "combat-subject-journal"
       ? "training-table--combat-subject-journal"
       : "",
+    selectedTable?.variant === "combat-subject-journal" && selectedTable?.hideDate
+      ? "training-table--combat-subject-journal-no-date"
+      : "",
   ]
     .filter(Boolean)
     .join(" ");
@@ -1592,18 +2281,59 @@ export default function Library({ data, onBack, onRefresh }) {
       <button disabled={!isTableEditing} onClick={handleAddTableRow} type="button">
         + Сап кошуу
       </button>
+      {selectedTable?.variant === "typical-week" && (
+        <>
+          <button disabled={!isTableEditing} onClick={handleAddTableSection} type="button">
+            + Секцияны кошуу
+          </button>
+          <button
+            disabled={!isTableEditing || !editableRows.some((row) => row.rowType === "section")}
+            onClick={handleDeleteTableSection}
+            type="button"
+          >
+            Секцияны өчүрүү
+          </button>
+        </>
+      )}
       <button disabled={!isTableEditing || editableRows.length === 0} onClick={handleDeleteTableRow} type="button">
         - удалить строку
       </button>
-      <button disabled={!isTableEditing} onClick={handleTableSave} type="button">
+      <button disabled={!isTableEditing || isSubmittingThematicAccount} onClick={handleTableSave} type="button">
         Сохранить
       </button>
-      <button disabled={isSubmitDisabled} onClick={handleTableSend} type="button">
-        Отправить
-      </button>
+      {!data?.autoSubmitOnSave && (
+        <button disabled={isSubmitDisabled} onClick={handleTableSend} type="button">
+          Отправить
+        </button>
+      )}
       <button disabled={isTableEditing} onClick={handleTableEdit} type="button">
         Изменить
       </button>
+    </div>
+  );
+
+  const renderAdminSubmissionRow = (submission) => (
+    <div className="module-period-row" key={`admin-submission-${submission.id}`}>
+      <button
+        className="module-period-card module-period-card--document"
+        onClick={() => setSelectedSubmission(submission)}
+        type="button"
+      >
+        <span aria-hidden="true" className="module-document-icon" />
+        <span className="module-submission-card__content">
+          <strong>{submission.documentTitle}</strong>
+          <small>{getSubmissionSenderLabel(submission)}</small>
+        </span>
+      </button>
+      <div className="module-period-actions">
+        <button
+          disabled={deletingSubmissionId === submission.id}
+          onClick={() => handleDeleteSubmission(submission)}
+          type="button"
+        >
+          {deletingSubmissionId === submission.id ? "Өчүрүү..." : "Өчүрүү"}
+        </button>
+      </div>
     </div>
   );
 
@@ -1642,7 +2372,35 @@ export default function Library({ data, onBack, onRefresh }) {
               {tableHeaderFields.map((field, index) => renderHeaderField(field, index))}
             </div>
           )}
-          {renderTableActions()}
+          {!isViewingSubmission && renderTableActions()}
+          {selectedTable?.enableCellColoring && (
+            <div className="journal-cell-color-palette" aria-label="Таблицанын түсүн тандоо">
+              <label>
+                <button
+                  aria-label="ай жыйынтыгын боё"
+                  aria-pressed={activeCellColor === "green"}
+                  className={`journal-cell-color-swatch journal-cell-color-swatch--green${
+                    activeCellColor === "green" ? " is-active" : ""
+                  }`}
+                  onClick={() => setActiveCellColor("green")}
+                  type="button"
+                />
+                <span>ай жыйынтыгын боё</span>
+              </label>
+              <label>
+                <button
+                  aria-label="жыл жыйынтыгын боё"
+                  aria-pressed={activeCellColor === "red"}
+                  className={`journal-cell-color-swatch journal-cell-color-swatch--red${
+                    activeCellColor === "red" ? " is-active" : ""
+                  }`}
+                  onClick={() => setActiveCellColor("red")}
+                  type="button"
+                />
+                <span>жыл жыйынтыгын боё</span>
+              </label>
+            </div>
+          )}
           <div
             className="module-table-scroll-top"
             onScroll={(event) => syncHorizontalScroll(event.currentTarget, tableViewRef)}
@@ -1678,7 +2436,20 @@ export default function Library({ data, onBack, onRefresh }) {
                   if (row.rowType === "section") {
                     return (
                       <tr className="training-table-section-row" key={row.id || row.number || rowIndex}>
-                        <td colSpan={tableColumns.length}>{row.activity}</td>
+                        <td colSpan={tableColumns.length}>
+                          {selectedTable?.variant === "typical-week" ? (
+                            <input
+                              aria-label="Секциянын аталышы"
+                              className="training-table-input"
+                              data-table-cell={isTableEditing ? "true" : undefined}
+                              disabled={!isTableEditing}
+                              onChange={(event) => handleCellChange(rowIndex, "activity", event.target.value)}
+                              onKeyDown={handleEditableCellKeyDown}
+                              type="text"
+                              value={row.activity || ""}
+                            />
+                          ) : row.activity}
+                        </td>
                       </tr>
                     );
                   }
@@ -1689,15 +2460,29 @@ export default function Library({ data, onBack, onRefresh }) {
                       key={row.id || row.number || rowIndex}
                     >
                       {tableColumns.map((column) => {
+                        const paintCellKey = `${rowIndex}:${column.key}`;
+                        const paintedColor = cellColors[paintCellKey];
                         const cellClassName = [
                           `training-table-cell--${column.key}`,
                           column.type === "line-list" ? "training-table-cell--line-list" : "",
+                          paintedColor ? "training-table-cell--painted" : "",
                         ]
                           .filter(Boolean)
                           .join(" ");
 
                         return (
-                          <td className={cellClassName} key={column.key}>
+                          <td
+                            className={cellClassName}
+                            key={column.key}
+                            onClick={() => handlePaintJournalCell(rowIndex, column.key)}
+                            style={
+                              paintedColor === "green"
+                                ? { backgroundColor: "#55b86a" }
+                                : paintedColor === "red"
+                                  ? { backgroundColor: "#e25b56" }
+                                  : undefined
+                            }
+                          >
                           {(column.key === "number" && !column.editable) || column.readOnly ? (
                             row[column.key]
                           ) : column.type === "line-list" ? (
@@ -1790,23 +2575,39 @@ export default function Library({ data, onBack, onRefresh }) {
               </tbody>
             </table>
           </div>
-          <div className="module-table-actions">
+          {!isViewingSubmission && <div className="module-table-actions">
             <button disabled={!isTableEditing} onClick={handleAddTableRow} type="button">
               + Сап кошуу
             </button>
+            {selectedTable?.variant === "typical-week" && (
+              <>
+                <button disabled={!isTableEditing} onClick={handleAddTableSection} type="button">
+                  + Секцияны кошуу
+                </button>
+                <button
+                  disabled={!isTableEditing || !editableRows.some((row) => row.rowType === "section")}
+                  onClick={handleDeleteTableSection}
+                  type="button"
+                >
+                  Секцияны өчүрүү
+                </button>
+              </>
+            )}
             <button disabled={!isTableEditing || editableRows.length === 0} onClick={handleDeleteTableRow} type="button">
               - удалить строку
             </button>
-            <button disabled={!isTableEditing} onClick={handleTableSave} type="button">
+            <button disabled={!isTableEditing || isSubmittingThematicAccount} onClick={handleTableSave} type="button">
               Сохранить
             </button>
-            <button disabled={isSubmitDisabled} onClick={handleTableSend} type="button">
-              Отправить
-            </button>
+            {!data?.autoSubmitOnSave && (
+              <button disabled={isSubmitDisabled} onClick={handleTableSend} type="button">
+                Отправить
+              </button>
+            )}
             <button disabled={isTableEditing} onClick={handleTableEdit} type="button">
               Изменить
             </button>
-          </div>
+          </div>}
           {tableNotice && <p className="module-table-status">{tableNotice}</p>}
         </div>
       ) : selectedSubsections.length > 0 && !selectedSubsectionId ? (
@@ -1839,15 +2640,132 @@ export default function Library({ data, onBack, onRefresh }) {
             ))}
           </div>
         </div>
-      ) : selectedPeriods.length > 0 || canAddCustomPeriod ? (
+      ) : selectedNestedSubsections.length > 0 && !selectedNestedSubsectionId ? (
+        <div className="module-table-view">
+          <button className="module-back-button" onClick={() => setSelectedSubsectionId(null)} type="button">
+            Артка
+          </button>
+          <div className="module-document-list">
+            {selectedNestedSubsections.map((section) => (
+              <button
+                className="module-document-card"
+                key={section.id || section.title}
+                onClick={() => setSelectedNestedSubsectionId(section.id)}
+                type="button"
+              >
+                <span aria-hidden="true" className="module-document-icon" />
+                <strong>{section.title}</strong>
+              </button>
+            ))}
+          </div>
+        </div>
+      ) : isAdminGroupedSubmissionSection ? (
+        <div className="module-table-view">
+          <button
+            className="module-back-button"
+            onClick={() => {
+              if (selectedAdminOutpostName) {
+                setSelectedAdminOutpostName(null);
+              } else if (selectedAdminUnitNumber) {
+                setSelectedAdminUnitNumber(null);
+              } else {
+                handlePeriodListBack();
+              }
+            }}
+            type="button"
+          >
+            Артка
+          </button>
+          {selectedAdminOutpostName ? (
+            <div className="module-period-list">
+              <h2>{selectedAdminOutpostName}</h2>
+              <div className="module-submission-list">
+                <h3>Заставадан жөнөтүлгөн документтер</h3>
+                {selectedAdminOutpostSubmissions.length > 0 ? (
+                  selectedAdminOutpostSubmissions.map(renderAdminSubmissionRow)
+                ) : (
+                  <p className="module-submission-list__empty">
+                    Бул заставадан жөнөтүлгөн документтер азырынча жок.
+                  </p>
+                )}
+                {submissionListError && (
+                  <p className="lesson-period-dialog__error">{submissionListError}</p>
+                )}
+              </div>
+            </div>
+          ) : selectedAdminUnitNumber ? (
+            <div className="module-period-list">
+              <h2>{selectedAdminUnitNumber} аскер бөлүгү</h2>
+              <div className="module-submission-list">
+                <h3>Аскер бөлүгүнөн жөнөтүлгөн документтер</h3>
+                {adminMilitaryUnitSubmissions.length > 0 ? (
+                  adminMilitaryUnitSubmissions.map(renderAdminSubmissionRow)
+                ) : (
+                  <p className="module-submission-list__empty">
+                    Аскер бөлүгүнөн жөнөтүлгөн документтер азырынча жок.
+                  </p>
+                )}
+                <h3>Заставалар</h3>
+                {adminOutpostNames.length > 0 ? (
+                  <div className="module-document-list">
+                    {adminOutpostNames.map((outpostName) => (
+                      <button
+                        className="module-document-card"
+                        key={outpostName}
+                        onClick={() => setSelectedAdminOutpostName(outpostName)}
+                        type="button"
+                      >
+                        <span aria-hidden="true" className="module-document-icon" />
+                        <strong>{outpostName}</strong>
+                      </button>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="module-submission-list__empty">
+                    Бул аскер бөлүгүнө караштуу заставалар табылган жок.
+                  </p>
+                )}
+                {submissionListError && (
+                  <p className="lesson-period-dialog__error">{submissionListError}</p>
+                )}
+              </div>
+            </div>
+          ) : (
+            <div className="module-document-list">
+              {adminUnitNumbers.length > 0 ? (
+                adminUnitNumbers.map((unitNumber) => (
+                  <button
+                    className="module-document-card"
+                    key={unitNumber}
+                    onClick={() => {
+                      setSelectedAdminUnitNumber(unitNumber);
+                      setSelectedAdminOutpostName(null);
+                    }}
+                    type="button"
+                  >
+                    <span aria-hidden="true" className="module-document-icon" />
+                    <strong>{unitNumber} аскер бөлүгү</strong>
+                  </button>
+                ))
+              ) : (
+                <p className="module-submission-list__empty">
+                  Катталган аскер бөлүктөрү азырынча жок.
+                </p>
+              )}
+            </div>
+          )}
+        </div>
+      ) : displayedPeriods.length > 0 || canAddCustomPeriod || isRegionalIncomingViewer || showsOutpostSubmissions || showsRegionalOutgoingSubmissions ? (
         <div className="module-table-view">
           <button className="module-back-button" onClick={handlePeriodListBack} type="button">
             Артка
           </button>
           <div className="module-period-list">
-            {selectedPeriods.map((period) => {
+            {displayedPeriods.map((period) => {
               const isCustomPeriod = customPeriods.some((customPeriod) => customPeriod.id === period.id);
-              const showPeriodActions = canManageCustomPeriods && isCustomPeriod;
+              const showAdminPeriodActions = canManageCustomPeriods && (period.canEdit || isCustomPeriod);
+              const showLessonPeriodDelete = !isAdmin && isLessonSchedulePeriodList && period.canDelete;
+              const showPeriodActions = showAdminPeriodActions || showLessonPeriodDelete;
 
               return (
                 <div className="module-period-row" key={period.id}>
@@ -1861,21 +2779,108 @@ export default function Library({ data, onBack, onRefresh }) {
                   </button>
                   {showPeriodActions && (
                     <div className="module-period-actions">
-                      <button onClick={() => handleRenameCustomPeriod(period)} type="button">
-                        Өзгөртүү
-                      </button>
-                      <button onClick={() => handleDeleteCustomPeriod(period)} type="button">
-                        Өчүрүү
+                      {showAdminPeriodActions && (
+                        <button onClick={() => handleRenameCustomPeriod(period)} type="button">
+                          Өзгөртүү
+                        </button>
+                      )}
+                      <button
+                        disabled={deletingLessonPeriodId === period.id}
+                        onClick={() =>
+                          showLessonPeriodDelete
+                            ? handleDeleteLessonPeriod(period)
+                            : handleDeleteCustomPeriod(period)
+                        }
+                        type="button"
+                      >
+                        {deletingLessonPeriodId === period.id ? "Өчүрүү..." : "Өчүрүү"}
                       </button>
                     </div>
                   )}
                 </div>
               );
             })}
-            {canAddCustomPeriod && (
+            {canAddCustomPeriod && !isRegionalIncomingViewer && (
               <button className="module-period-add-button" onClick={handleAddCustomPeriod} type="button">
                 {customPeriodConfig.buttonLabel}
               </button>
+            )}
+            {(showsOutpostSubmissions || showsRegionalOutgoingSubmissions) && (
+              <div className="module-submission-list">
+                {showsOutpostSubmissions ? (
+                  <><h3>{currentUser?.role === "outpost" ? "Чыгыш" : "Кириш"}</h3>
+                {visibleSubmissions.length > 0 ? (
+                  visibleSubmissions.map((submission) => (
+                    <div className="module-period-row" key={`submission-${submission.id}`}>
+                      <button
+                        className="module-period-card module-period-card--document"
+                        onClick={() => setSelectedSubmission(submission)}
+                        type="button"
+                      >
+                        <span aria-hidden="true" className="module-document-icon" />
+                        <span className="module-submission-card__content">
+                          <strong>{submission.documentTitle}</strong>
+                          <small>{getSubmissionSenderLabel(submission)}</small>
+                        </span>
+                      </button>
+                      <div className="module-period-actions">
+                          <SubmissionEditPermissionButton
+                            onUpdated={(updated) => setThematicSubmissions((items) => items.map((item) => item.id === updated.id ? updated : item))}
+                            submission={submission}
+                          />
+                          {currentUser?.role === "regional" && submission.senderRole === "outpost" ? (
+                            <button onClick={() => setForwardingSubmission(submission)} type="button">
+                              Отправить
+                            </button>
+                          ) : null}
+                          <button
+                            disabled={deletingSubmissionId === submission.id}
+                            onClick={() => handleDeleteSubmission(submission)}
+                            type="button"
+                          >
+                            {deletingSubmissionId === submission.id ? "Өчүрүү..." : "Өчүрүү"}
+                          </button>
+                      </div>
+                    </div>
+                  ))
+                ) : (
+                  <p className="module-submission-list__empty">Отправленных документов пока нет.</p>
+                )}</>
+                ) : null}
+                {submissionListError && (
+                  <p className="lesson-period-dialog__error">{submissionListError}</p>
+                )}
+                {showsRegionalOutgoingSubmissions ? (
+                  <>
+                    <h3>Чыгыш</h3>
+                    {outgoingRegionalSubmissions.length > 0 ? (
+                      outgoingRegionalSubmissions.map((submission) => (
+                        <div className="module-period-row" key={`outgoing-${submission.id}`}>
+                          <button
+                            className="module-period-card module-period-card--document"
+                            onClick={() => setSelectedSubmission(submission)}
+                            type="button"
+                          >
+                            <span aria-hidden="true" className="module-document-icon" />
+                            <strong>{submission.documentTitle}</strong>
+                          </button>
+                          <div className="module-period-actions">
+                            <SubmissionEditPermissionButton
+                              onUpdated={(updated) => setThematicSubmissions((items) => items.map((item) => item.id === updated.id ? updated : item))}
+                              submission={submission}
+                            />
+                            <button disabled={deletingSubmissionId === submission.id} onClick={() => handleDeleteSubmission(submission)} type="button">
+                              {deletingSubmissionId === submission.id ? "Өчүрүү..." : "Өчүрүү"}
+                            </button>
+                          </div>
+                        </div>
+                      ))
+                    ) : (
+                      <p className="module-submission-list__empty">Жөнөтүлгөн документтер азырынча жок.</p>
+                    )}
+                  </>
+                ) : null}
+              </div>
             )}
           </div>
         </div>
@@ -1918,6 +2923,82 @@ export default function Library({ data, onBack, onRefresh }) {
               ))}
             </tbody>
           </table>
+        </div>
+      )}
+      <SubmissionForwardDialog
+        onClose={() => setForwardingSubmission(null)}
+        onForward={handleForwardSubmission}
+        submission={forwardingSubmission}
+      />
+      {submissionDialogOpen && (
+        <div className="lesson-period-dialog" role="dialog" aria-modal="true" aria-labelledby="submission-dialog-title">
+          <form
+            className="lesson-period-dialog__panel"
+            onSubmit={(event) => {
+              event.preventDefault();
+              handleSubmitThematicAccount();
+            }}
+          >
+            <h2 id="submission-dialog-title">Таблицаны жөнөтүү</h2>
+            <label className="module-inline-field">
+              <span>Иш кагаздардын аталышы</span>
+              <input
+                autoFocus
+                onChange={(event) => {
+                  setSubmissionDocumentTitle(event.target.value);
+                  setSubmissionError("");
+                }}
+                placeholder="Иш кагаздардын аталышы"
+                type="text"
+                value={submissionDocumentTitle}
+              />
+            </label>
+            {submissionError && <p className="lesson-period-dialog__error">{submissionError}</p>}
+            <div className="lesson-period-dialog__actions">
+              <button
+                disabled={isSubmittingThematicAccount}
+                onClick={() => setSubmissionDialogOpen(false)}
+                type="button"
+              >
+                Отмена
+              </button>
+              <button disabled={isSubmittingThematicAccount} type="submit">
+                {isSubmittingThematicAccount ? "Отправка..." : "Отправить"}
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
+      {customTableDraft && (
+        <div className="lesson-period-dialog" role="dialog" aria-modal="true" aria-labelledby="custom-table-dialog-title">
+          <form className="lesson-period-dialog__panel" onSubmit={(event) => {
+            event.preventDefault();
+            handleCreateCustomTable();
+          }}>
+            <h2 id="custom-table-dialog-title">{customPeriodConfig?.promptLabel || "Название"}</h2>
+            <label className="module-inline-field">
+              <span>Название</span>
+              <input
+                autoFocus
+                onChange={(event) => {
+                  setCustomTableTitle(event.target.value);
+                  setCustomTableError("");
+                }}
+                placeholder="Введите название"
+                type="text"
+                value={customTableTitle}
+              />
+            </label>
+            {customTableError && <p className="lesson-period-dialog__error">{customTableError}</p>}
+            <div className="lesson-period-dialog__actions">
+              <button onClick={closeCustomTableDialog} type="button">
+                Отмена
+              </button>
+              <button type="submit">
+                Создать
+              </button>
+            </div>
+          </form>
         </div>
       )}
       {lessonPeriodDraft && (

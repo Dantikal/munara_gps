@@ -6,6 +6,9 @@ const normalizeApiMessage = (value) => {
   }
 
   if (typeof value === "string") {
+    if (/<!doctype\s+html|<html[\s>]/i.test(value)) {
+      return "";
+    }
     return value;
   }
 
@@ -29,5 +32,9 @@ const normalizeApiMessage = (value) => {
 };
 
 export const getApiErrorMessage = (error, fallback = fallbackMessage) => {
-  return normalizeApiMessage(error.response?.data) || error.message || fallback;
+  const responseMessage = normalizeApiMessage(error.response?.data);
+  if (responseMessage) {
+    return responseMessage;
+  }
+  return error.response ? fallback : error.message || fallback;
 };

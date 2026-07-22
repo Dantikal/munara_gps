@@ -5,7 +5,7 @@ import { api } from "../../api/client.js";
 import { getApiErrorMessage } from "../../api/errors.js";
 
 const unitLabels = {
-  regional_department: "Войсковая часть №",
+  regional_department: "Аскер бөлүгү",
   outpost: "Застава",
 };
 

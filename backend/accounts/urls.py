@@ -6,6 +6,8 @@ from .views import (
     AdminUsersView,
     AdminChatMessageView,
     AdminChatMessageDeleteView,
+    ChatPartnerListView,
+    ChatUnreadCountView,
     LoginView,
     MeView,
     ModerateRequestView,
@@ -27,5 +29,7 @@ urlpatterns = [
     path("admin/requests/<int:pk>/", UserRequestDetailView.as_view(), name="request-detail"),
     path("admin/requests/<int:pk>/moderate/", ModerateRequestView.as_view(), name="moderate-request"),
     path("chat/messages/", AdminChatMessageView.as_view(), name="admin-chat-messages"),
+    path("chat/partners/", ChatPartnerListView.as_view(), name="chat-partners"),
+    path("chat/unread-count/", ChatUnreadCountView.as_view(), name="chat-unread-count"),
     path("chat/messages/<int:pk>/", AdminChatMessageDeleteView.as_view(), name="admin-chat-message-delete"),
 ]

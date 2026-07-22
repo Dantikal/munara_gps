@@ -116,6 +116,14 @@ class TrainingPeriod(models.Model):
         on_delete=models.CASCADE,
         related_name="periods",
     )
+    created_by = models.ForeignKey(
+        User,
+        verbose_name="Создал",
+        null=True,
+        blank=True,
+        on_delete=models.CASCADE,
+        related_name="created_training_periods",
+    )
     slug = models.SlugField("ID периода", max_length=100)
     title = models.CharField("Название", max_length=255)
     order = models.PositiveIntegerField("Порядок", default=0)
@@ -237,6 +245,66 @@ class TrainingTable(models.Model):
         return self.title
 
 
+class ThematicAccountSubmission(models.Model):
+    sender = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name="thematic_account_submissions",
+    )
+    unit_number = models.CharField("Аскер бөлүгүнүн номери", max_length=120)
+    outpost_name = models.CharField("Заставанын аталышы", max_length=160, blank=True)
+    document_title = models.CharField("Иш кагаздардын аталышы", max_length=255)
+    section_slug = models.CharField("Раздел", max_length=80, default="thematic-account")
+    period_slug = models.CharField("Период", max_length=100, blank=True)
+    table_data = models.JSONField("Таблица", default=dict)
+    created_at = models.DateTimeField("Отправлено", auto_now_add=True)
+
+    class Meta:
+        ordering = ("-created_at", "-id")
+        verbose_name = "Отправленный тематический эсеп"
+        verbose_name_plural = "Отправленные тематические эсептер"
+
+    def __str__(self):
+        return self.document_title
+
+
+class SubmissionEditRequest(models.Model):
+    class Status(models.TextChoices):
+        PENDING = "pending", "На рассмотрении"
+        APPROVED = "approved", "Разрешено"
+        REJECTED = "rejected", "Отклонено"
+
+    submission = models.OneToOneField(
+        ThematicAccountSubmission,
+        on_delete=models.CASCADE,
+        related_name="edit_request",
+    )
+    requester = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name="submission_edit_requests",
+    )
+    status = models.CharField(max_length=16, choices=Status.choices, default=Status.PENDING)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    reviewed_at = models.DateTimeField(null=True, blank=True)
+    reviewed_by = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="reviewed_submission_edit_requests",
+    )
+
+    class Meta:
+        ordering = ("-updated_at", "-id")
+        verbose_name = "Запрос на исправление документа"
+        verbose_name_plural = "Запросы на исправление документов"
+
+    def __str__(self):
+        return f"{self.submission.document_title}: {self.get_status_display()}"
+
+
 class MethodicalManualSubject(models.Model):
     title = models.CharField("Название предмета", max_length=255)
     order = models.PositiveIntegerField("Порядок", default=0)
@@ -251,6 +319,145 @@ class MethodicalManualSubject(models.Model):
 
     def __str__(self):
         return self.title
+
+
+class MethodicalManualDocument(models.Model):
+    subject = models.ForeignKey(
+        MethodicalManualSubject,
+        on_delete=models.CASCADE,
+        related_name="documents",
+    )
+    title = models.CharField("Название", max_length=255)
+    file = models.FileField(
+        "Файл",
+        upload_to="methodical_manuals/%Y/%m/",
+        blank=True,
+        null=True,
+    )
+    original_name = models.CharField("Имя файла", max_length=255, blank=True)
+    content = models.TextField("Текст материала", blank=True)
+    preview_html = models.TextField("Содержимое для просмотра", blank=True)
+    uploaded_by = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        related_name="methodical_manual_documents",
+    )
+    created_at = models.DateTimeField("Создан", auto_now_add=True)
+    updated_at = models.DateTimeField("Обновлен", auto_now=True)
+
+    class Meta:
+        ordering = ("-created_at", "-id")
+        verbose_name = "Документ учебной программы"
+        verbose_name_plural = "Документы учебных программ"
+
+    def __str__(self):
+        return self.title
+
+
+class CombatTrainingNews(models.Model):
+    title = models.CharField("Заголовок", max_length=255)
+    body = models.TextField("Текст", blank=True)
+    author = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        related_name="combat_training_news",
+    )
+    created_at = models.DateTimeField("Опубликовано", auto_now_add=True)
+    updated_at = models.DateTimeField("Обновлено", auto_now=True)
+
+    class Meta:
+        ordering = ("-created_at", "-id")
+        verbose_name = "Новость о боевой подготовке"
+        verbose_name_plural = "Новости о боевой подготовке"
+
+    def __str__(self):
+        return self.title
+
+
+class CombatTrainingNewsAttachment(models.Model):
+    news = models.ForeignKey(
+        CombatTrainingNews,
+        on_delete=models.CASCADE,
+        related_name="attachments",
+    )
+    file = models.FileField("Файл", upload_to="combat_training_news/%Y/%m/")
+    original_name = models.CharField("Имя файла", max_length=255)
+    kind = models.CharField("Тип", max_length=20, default="file")
+    size = models.PositiveBigIntegerField("Размер", default=0)
+    created_at = models.DateTimeField("Загружен", auto_now_add=True)
+
+    class Meta:
+        ordering = ("id",)
+
+    def __str__(self):
+        return self.original_name
+
+
+class CombatTrainingNewsLike(models.Model):
+    news = models.ForeignKey(
+        CombatTrainingNews,
+        on_delete=models.CASCADE,
+        related_name="likes",
+    )
+    user = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name="combat_training_news_likes",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=("news", "user"),
+                name="unique_combat_training_news_like",
+            )
+        ]
+
+
+class CombatTrainingNewsRead(models.Model):
+    news = models.ForeignKey(
+        CombatTrainingNews,
+        on_delete=models.CASCADE,
+        related_name="reads",
+    )
+    user = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name="combat_training_news_reads",
+    )
+    read_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=("news", "user"),
+                name="unique_combat_training_news_read",
+            )
+        ]
+
+
+class CombatTrainingPlan(models.Model):
+    title = models.TextField("Название плана")
+    layout = models.CharField("Вид таблицы", max_length=30, default="plan", db_index=True)
+    data = models.JSONField("Данные таблицы", default=dict, blank=True)
+    created_by = models.ForeignKey(
+        User,
+        verbose_name="Создал",
+        on_delete=models.SET_NULL,
+        related_name="combat_training_plans",
+        null=True,
+        blank=True,
+    )
+    created_at = models.DateTimeField("Создано", auto_now_add=True)
+    updated_at = models.DateTimeField("Обновлено", auto_now=True)
+
+    class Meta:
+        ordering = ("created_at", "id")
+        verbose_name = "Плановое мероприятие боевой подготовки"
+        verbose_name_plural = "Плановые мероприятия боевой подготовки"
 
 
 class AdminChatMessage(models.Model):

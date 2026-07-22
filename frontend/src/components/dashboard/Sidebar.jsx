@@ -1,9 +1,11 @@
 import React from "react";
 import { useEffect, useState } from "react";
 
+import { getChatUnreadCount, getCombatTrainingNewsUnreadCount } from "../../api/dashboard.js";
+
 const roleLabels = {
   admin: "Администратор",
-  regional: "Областное управление",
+  regional: "Аскер бөлүгү",
   outpost: "Застава",
 };
 
@@ -23,8 +25,8 @@ const adminItems = [
   { id: "combatTrainingResults", label: "Күжүрмөн даярдоонун жыйынтыктары ( көзөмөл сабактары, көзөмөл текшерүү сабактары)" },
   { id: "combatTrainingAnalytics", label: "Күжүрмөн даярдоонун талдоолору (1 айдын, окуу мезгилинин, окуу жылынын)" },
   { id: "smr", label: "Күжүрмөн даярдоо боюнча усулдук колдонмолор" },
-  { id: "combatTrainingPlan", label: "Күжүрмөн даярдоонун 1 айга иш -чараларынын пландоосу" },
-  { id: "combatTrainingReport", label: "Аткарылган иш-чаралардын баяндамасы" },
+  { id: "combatTrainingPlan", label: "Күжүрмөн даярдоонун пландалган иш-чаралары" },
+  { id: "combatTrainingReport", label: "Күжүрмөн даярдоонун маалыматтары" },
   { id: "contactAdmin", label: "Администратор менен байланыш" },
 ];
 
@@ -36,6 +38,8 @@ const getAdminSections = (pendingCount) => [
     items: [
       { id: "users", label: "Пользователи" },
       { id: "requests", label: `Заявки (${pendingCount})` },
+      { id: "submissionEditRequests", label: "Запросы на разрешение" },
+      { id: "drafts", label: "Черновик" },
     ],
   },
 ];
@@ -46,8 +50,8 @@ const fieldItems = [
   { id: "combatTrainingResults", label: "Күжүрмөн даярдоонун жыйынтыктары ( көзөмөл сабактары, көзөмөл текшерүү сабактары)" },
   { id: "combatTrainingAnalytics", label: "Күжүрмөн даярдоонун талдоолору (1 айдын, окуу мезгилинин, окуу жылынын)" },
   { id: "smr", label: "Күжүрмөн даярдоо боюнча усулдук колдонмолор" },
-  { id: "combatTrainingPlan", label: "Күжүрмөн даярдоонун 1 айга иш -чараларынын пландоосу" },
-  { id: "combatTrainingReport", label: "Аткарылган иш-чаралардын баяндамасы" },
+  { id: "combatTrainingPlan", label: "Күжүрмөн даярдоонун пландалган иш-чаралары" },
+  { id: "combatTrainingReport", label: "Күжүрмөн даярдоонун маалыматтары" },
   { id: "contactAdmin", label: "Администратор менен байланыш" },
 ];
 
@@ -61,8 +65,11 @@ export default function Sidebar({
   onOpenRequests,
 }) {
   const avatarSrc = user?.avatar || user?.photo_face;
-  const isAdminChildActive = activeItem === "users" || activeItem === "requests";
+  const isAdminChildActive =
+    activeItem === "users" || activeItem === "requests" || activeItem === "submissionEditRequests" || activeItem === "drafts";
   const [adminOpen, setAdminOpen] = useState(isAdminChildActive);
+  const [newsUnreadCount, setNewsUnreadCount] = useState(0);
+  const [chatUnreadCount, setChatUnreadCount] = useState(modules?.chatUnreadCount || 0);
   const sections =
     role === "admin"
       ? getAdminSections(pendingCount)
@@ -76,6 +83,58 @@ export default function Sidebar({
       setAdminOpen(true);
     }
   }, [isAdminChildActive]);
+
+  useEffect(() => {
+    if (role === "admin") {
+      setNewsUnreadCount(0);
+      return undefined;
+    }
+
+    let isMounted = true;
+    const refreshUnreadCount = async () => {
+      try {
+        const count = await getCombatTrainingNewsUnreadCount();
+        if (isMounted) setNewsUnreadCount(count);
+      } catch {
+        // The sidebar remains usable while the notification service is unavailable.
+      }
+    };
+
+    refreshUnreadCount();
+    const intervalId = window.setInterval(refreshUnreadCount, 60000);
+    window.addEventListener("focus", refreshUnreadCount);
+    window.addEventListener("combat-training-news-read", refreshUnreadCount);
+
+    return () => {
+      isMounted = false;
+      window.clearInterval(intervalId);
+      window.removeEventListener("focus", refreshUnreadCount);
+      window.removeEventListener("combat-training-news-read", refreshUnreadCount);
+    };
+  }, [role]);
+
+  useEffect(() => {
+    let isMounted = true;
+    const refreshChatUnreadCount = async () => {
+      try {
+        const count = await getChatUnreadCount();
+        if (isMounted) setChatUnreadCount(count);
+      } catch {
+        // The sidebar remains usable while chat notifications are unavailable.
+      }
+    };
+
+    refreshChatUnreadCount();
+    const intervalId = window.setInterval(refreshChatUnreadCount, 15000);
+    window.addEventListener("focus", refreshChatUnreadCount);
+    window.addEventListener("chat-messages-read", refreshChatUnreadCount);
+    return () => {
+      isMounted = false;
+      window.clearInterval(intervalId);
+      window.removeEventListener("focus", refreshChatUnreadCount);
+      window.removeEventListener("chat-messages-read", refreshChatUnreadCount);
+    };
+  }, [role]);
 
   const handleClick = (itemId) => {
     if (itemId === "requests") {
@@ -133,8 +192,11 @@ export default function Sidebar({
                   onClick={() => handleClick(item.id)}
                 >
                   <span className="dashboard-sidebar__item-label">{item.label}</span>
-                  {item.id === "contactAdmin" && modules?.chatUnreadCount > 0 ? (
-                    <span className="dashboard-sidebar__item-badge">{modules.chatUnreadCount}</span>
+                  {item.id === "contactAdmin" && chatUnreadCount > 0 ? (
+                    <span className="dashboard-sidebar__item-badge">{chatUnreadCount}</span>
+                  ) : null}
+                  {item.id === "combatTrainingReport" && newsUnreadCount > 0 ? (
+                    <span className="dashboard-sidebar__item-badge">{newsUnreadCount}</span>
                   ) : null}
                 </button>
               ))}

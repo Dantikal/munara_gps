@@ -327,6 +327,14 @@ textarea {
   resize: vertical;
 }
 
+.form-select-placeholder {
+  color: #8a918c;
+}
+
+.form-select-placeholder option:not(:disabled) {
+  color: var(--text);
+}
+
 .admin-layout {
   display: grid;
   gap: 20px;

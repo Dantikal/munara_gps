@@ -4,7 +4,7 @@ import {
   createAdminChatMessage,
   deleteAdminChatMessage,
   getAdminChatMessages,
-  getScopedUsers,
+  getChatPartners,
 } from "../../../api/dashboard.js";
 
 const FILE_ACCEPT =
@@ -170,7 +170,7 @@ const TrashIcon = () => (
 
 export default function ContactAdmin({ user, onRefresh }) {
   const isAdmin = user?.role === "admin";
-  const isUser = !isAdmin;
+  const isOutpost = user?.role === "outpost";
   const fileInputRef = useRef(null);
   const messageInputRef = useRef(null);
   const messagesContainerRef = useRef(null);
@@ -180,6 +180,7 @@ export default function ContactAdmin({ user, onRefresh }) {
   const [messages, setMessages] = useState([]);
   const [users, setUsers] = useState([]);
   const [selectedUserId, setSelectedUserId] = useState("");
+  const [selectedAdminGroup, setSelectedAdminGroup] = useState("regional");
   const [body, setBody] = useState("");
   const [file, setFile] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -194,6 +195,12 @@ export default function ContactAdmin({ user, onRefresh }) {
   const selectedPartner = useMemo(
     () => users.find((item) => String(item.id) === String(selectedUserId)),
     [selectedUserId, users]
+  );
+  const displayedUsers = useMemo(
+    () => isAdmin
+      ? users.filter((item) => item.role === selectedAdminGroup)
+      : users,
+    [isAdmin, selectedAdminGroup, users]
   );
 
   const unreadCounts = useMemo(() => {
@@ -215,12 +222,28 @@ export default function ContactAdmin({ user, onRefresh }) {
   }, [messages, user?.id]);
 
   const totalUnreadCount = useMemo(
-    () => Object.values(unreadCounts).reduce((sum, value) => sum + value, 0),
-    [unreadCounts]
+    () => users.reduce(
+      (sum, item) => sum + Number(item.unreadChatCount || unreadCounts[String(item.id)] || 0),
+      0
+    ),
+    [unreadCounts, users]
+  );
+  const adminGroupUnreadCounts = useMemo(
+    () => users.reduce(
+      (counts, item) => {
+        const count = Number(item.unreadChatCount || unreadCounts[String(item.id)] || 0);
+        if (item.role === "regional" || item.role === "outpost") {
+          counts[item.role] += count;
+        }
+        return counts;
+      },
+      { regional: 0, outpost: 0 }
+    ),
+    [unreadCounts, users]
   );
 
   const visibleMessages = useMemo(() => {
-    if (!isAdmin || !selectedUserId) {
+    if (!selectedUserId) {
       return messages;
     }
 
@@ -229,30 +252,11 @@ export default function ContactAdmin({ user, onRefresh }) {
         String(message.sender?.id) === String(selectedUserId) ||
         String(message.recipient?.id) === String(selectedUserId)
     );
-  }, [isAdmin, messages, selectedUserId]);
+  }, [messages, selectedUserId]);
 
   const chatPartner = useMemo(() => {
-    if (isAdmin) {
-      return selectedPartner;
-    }
-
-    for (const message of messages) {
-      if (
-        message.sender?.role === "admin" &&
-        String(message.sender.id) !== String(user?.id)
-      ) {
-        return message.sender;
-      }
-      if (
-        message.recipient?.role === "admin" &&
-        String(message.recipient.id) !== String(user?.id)
-      ) {
-        return message.recipient;
-      }
-    }
-
-    return null;
-  }, [isAdmin, messages, selectedPartner, user?.id]);
+    return selectedPartner;
+  }, [selectedPartner]);
 
   useEffect(() => {
     const container = messagesContainerRef.current;
@@ -261,15 +265,24 @@ export default function ContactAdmin({ user, onRefresh }) {
   }, [selectedUserId, visibleMessages.length]);
 
   const loadUsers = async () => {
-    if (!isAdmin) {
-      return;
-    }
-
     try {
-      const data = await getScopedUsers();
-      const filtered = Array.isArray(data) ? data.filter((item) => item.role !== "admin") : [];
+      const data = await getChatPartners();
+      let filtered = Array.isArray(data) ? data : [];
+      if (isOutpost) {
+        const admin = filtered.find((item) => item.role === "admin");
+        const regional = filtered.find((item) => item.role === "regional");
+        filtered = [admin, regional].filter(Boolean);
+      }
       setUsers(filtered);
-      setSelectedUserId((current) => current || (filtered[0] ? String(filtered[0].id) : ""));
+      setSelectedUserId((current) => {
+        if (current && filtered.some((item) => String(item.id) === String(current))) {
+          return current;
+        }
+        const firstPartner = isAdmin
+          ? filtered.find((item) => item.role === selectedAdminGroup)
+          : filtered[0];
+        return firstPartner ? String(firstPartner.id) : "";
+      });
     } catch {
       setUsers([]);
     }
@@ -280,9 +293,17 @@ export default function ContactAdmin({ user, onRefresh }) {
     setError("");
 
     try {
-      const params = isAdmin && partnerId ? { user_id: partnerId } : undefined;
+      const params = partnerId ? { user_id: partnerId } : undefined;
       const data = await getAdminChatMessages(params);
       setMessages(Array.isArray(data) ? data : []);
+      if (partnerId) {
+        setUsers((items) => items.map((item) =>
+          String(item.id) === String(partnerId)
+            ? { ...item, unreadChatCount: 0 }
+            : item
+        ));
+        window.dispatchEvent(new Event("chat-messages-read"));
+      }
       onRefresh?.();
     } catch (requestError) {
       setError(requestError?.response?.data?.detail || "Не удалось загрузить сообщения.");
@@ -296,14 +317,14 @@ export default function ContactAdmin({ user, onRefresh }) {
   }, []);
 
   useEffect(() => {
-    if (isAdmin && !selectedUserId && users.length > 0) {
+    if (!selectedUserId && users.length > 0) {
       setSelectedUserId(String(users[0].id));
       return;
     }
 
     loadMessages(selectedUserId);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedUserId, isAdmin]);
+  }, [selectedUserId]);
 
   useEffect(() => {
     if (!isRecording) return undefined;
@@ -403,7 +424,7 @@ export default function ContactAdmin({ user, onRefresh }) {
       return;
     }
 
-    if (isAdmin && !selectedUserId) {
+    if (!selectedUserId) {
       setError("Выберите пользователя.");
       return;
     }
@@ -421,9 +442,7 @@ export default function ContactAdmin({ user, onRefresh }) {
         formData.append("attachment_kind", getAttachmentKind(file));
         formData.append("attachment_name", file.name);
       }
-      if (isAdmin) {
-        formData.append("recipientId", selectedUserId);
-      }
+      formData.append("recipientId", selectedUserId);
 
       await createAdminChatMessage(formData);
       setBody("");
@@ -471,9 +490,7 @@ export default function ContactAdmin({ user, onRefresh }) {
 
   const currentThreadName = chatPartner
     ? getDisplayName(chatPartner)
-    : isAdmin
-      ? "Колдонуучуну тандаңыз"
-      : "Администратор";
+    : "Колдонуучуну тандаңыз";
   const partnerAvatar = getAvatarSource(chatPartner);
 
   return (
@@ -482,27 +499,61 @@ export default function ContactAdmin({ user, onRefresh }) {
         <div className="admin-chat__page-heading">
           <span className="admin-chat__page-icon"><ChatIcon /></span>
           <div>
-          <p>{isAdmin ? "Переписка с пользователями" : "Связь с администратором"}</p>
+          <p>{isAdmin ? "Переписка с пользователями" : "Байланыш"}</p>
           <h1>Администратор менен байланыш</h1>
           <span className="admin-chat__subtitle">
             {isAdmin
               ? "Выберите пользователя слева и пишите сообщение справа."
-              : "Можно отправлять текст, фото, видео и документы."}
+              : "Адресатты тандап, текст, фото, видео жана документ жөнөтсөңүз болот."}
           </span>
           </div>
         </div>
         {totalUnreadCount > 0 ? <div className="admin-chat__counter">Новых: {totalUnreadCount}</div> : null}
       </header>
 
-      <div className={isUser ? "admin-chat__layout admin-chat__layout--user" : "admin-chat__layout"}>
-        {isAdmin && (
+      <div className="admin-chat__layout">
+        {(
           <aside className="admin-chat__sidebar">
-            <strong className="admin-chat__sidebar-title"><UsersIcon /> Пользователи</strong>
+            <strong className="admin-chat__sidebar-title">
+              <UsersIcon /> {isOutpost ? "Кимге жазуу" : "Пользователи"}
+            </strong>
+            {isAdmin ? (
+              <div className="admin-chat__recipient-sections">
+                <button
+                  className={selectedAdminGroup === "regional" ? "is-active" : ""}
+                  onClick={() => {
+                    setSelectedAdminGroup("regional");
+                    const firstRegional = users.find((item) => item.role === "regional");
+                    setSelectedUserId(firstRegional ? String(firstRegional.id) : "");
+                  }}
+                  type="button"
+                >
+                  Аскер бөлүгү
+                  {adminGroupUnreadCounts.regional > 0 ? (
+                    <em>{adminGroupUnreadCounts.regional}</em>
+                  ) : null}
+                </button>
+                <button
+                  className={selectedAdminGroup === "outpost" ? "is-active" : ""}
+                  onClick={() => {
+                    setSelectedAdminGroup("outpost");
+                    const firstOutpost = users.find((item) => item.role === "outpost");
+                    setSelectedUserId(firstOutpost ? String(firstOutpost.id) : "");
+                  }}
+                  type="button"
+                >
+                  Застава
+                  {adminGroupUnreadCounts.outpost > 0 ? (
+                    <em>{adminGroupUnreadCounts.outpost}</em>
+                  ) : null}
+                </button>
+              </div>
+            ) : null}
             <div className="admin-chat__user-list">
-              {users.length === 0 ? (
+              {displayedUsers.length === 0 ? (
                 <span className="admin-chat__empty">Нет активных пользователей.</span>
               ) : (
-                users.map((item) => (
+                displayedUsers.map((item) => (
                   <button
                     key={item.id}
                     className={String(selectedUserId) === String(item.id) ? "is-active" : ""}
@@ -518,12 +569,22 @@ export default function ContactAdmin({ user, onRefresh }) {
                     </span>
                     <span className="admin-chat__user-info">
                       <span className="admin-chat__user-title">
-                        {getDisplayName(item)}
-                        {unreadCounts[String(item.id)] ? (
-                          <em className="admin-chat__badge">{unreadCounts[String(item.id)]}</em>
+                        {isOutpost
+                          ? item.role === "admin"
+                            ? "Администратор"
+                            : "Аскер бөлүгү"
+                          : getDisplayName(item)}
+                        {(unreadCounts[String(item.id)] || item.unreadChatCount) ? (
+                          <em className="admin-chat__badge">
+                            {unreadCounts[String(item.id)] || item.unreadChatCount}
+                          </em>
                         ) : null}
                       </span>
-                      <small>{item.outpost_name || item.region || item.email}</small>
+                      <small>
+                        {isOutpost
+                          ? getDisplayName(item)
+                          : item.outpost_name || item.region || item.email}
+                      </small>
                     </span>
                   </button>
                 ))
@@ -545,11 +606,9 @@ export default function ContactAdmin({ user, onRefresh }) {
               <div>
                 <strong>{currentThreadName}</strong>
                 <span>
-                  {isAdmin
-                    ? selectedPartner
-                      ? selectedPartner.email
-                      : "Выберите человека слева"
-                    : "Ваши сообщения сохраняются"}
+                  {selectedPartner
+                    ? selectedPartner.email || selectedPartner.region
+                    : "Выберите человека слева"}
                 </span>
               </div>
             </div>

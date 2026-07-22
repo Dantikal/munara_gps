@@ -1,33 +1,75 @@
 import copy
+import json
 import re
+from pathlib import Path
 
 from django.contrib.auth import get_user_model
 from django.db import OperationalError, ProgrammingError, transaction
-from django.db.models import Max
+from django.db.models import Case, IntegerField, Max, Q, Value, When
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from rest_framework import status
-from rest_framework.exceptions import PermissionDenied
+from rest_framework.exceptions import PermissionDenied, ValidationError
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from .models import (
     AdminChatMessage,
+    CombatTrainingNews,
+    CombatTrainingNewsAttachment,
+    CombatTrainingNewsLike,
+    CombatTrainingNewsRead,
     CombatTrainingJournal,
+    CombatTrainingPlan,
+    MethodicalManualDocument,
     MethodicalManualSubject,
+    SubmissionEditRequest,
     TrainingPeriod,
     TrainingSection,
     TrainingTable,
+    ThematicAccountSubmission,
 )
 from .permissions import IsActiveUser, IsAdminRole
-from .serializers import CombatTrainingJournalSerializer, MethodicalManualSubjectSerializer
+from .serializers import (
+    CombatTrainingJournalSerializer,
+    CombatTrainingNewsSerializer,
+    MethodicalManualDocumentSerializer,
+    MethodicalManualSubjectSerializer,
+)
 
 User = get_user_model()
+
+NORMATIVE_LEGAL_ACTS_TITLE = "Нормативные правовые акты"
+
+ADMIN_MILITARY_UNIT_NUMBERS = [
+    "2021",
+    "2022",
+    "2023",
+    "2024",
+    "2025",
+    "2026",
+    "2027",
+    "2028",
+    "2029",
+    "2030",
+    "2031",
+    "2032",
+    "2055",
+    "2056",
+    "2057",
+    "2051",
+    "2053",
+    "2063",
+    "2064",
+    "2065",
+    "КЖжАККДБ",
+    "ЧАП",
+]
 
 
 ROLE_LABELS = {
     User.Role.ADMIN: "Админ",
-    User.Role.REGIONAL: "Областное управление",
+    User.Role.REGIONAL: "Аскер бөлүгү",
     User.Role.OUTPOST: "Застава",
     "": "Не назначена",
 }
@@ -41,10 +83,17 @@ STATUS_LABELS = {
 LIBRARY_EXCLUDED_SECTION_SLUGS = {"combat-training-journal"}
 THEMATIC_ACCOUNT_SECTION_SLUGS = {"thematic-account", "command-thematic-account"}
 COMMAND_THEMATIC_ACCOUNT_SECTION_SLUG = "command-thematic-account"
-REMOVED_THEMATIC_PERIOD_SLUGS = {"period-3", "period-4"}
+THEMATIC_ACCOUNT_SECTION_TITLE = "Сабактардын тематикалык эсеби"
+PERSONNEL_TRAINING_SUBMISSION_SECTION_SLUGS = {
+    "thematic-account",
+    "lesson-schedule",
+}
+REMOVED_THEMATIC_PERIOD_SLUGS = {"period-2", "period-3", "period-4"}
 REMOVED_THEMATIC_PERIOD_TITLE_PARTS = (
+    "2026-окуу жылынын 2 мезгилине",
     "2026-окуу жылынын 3 мезгилине",
     "2026-окуу жылынын 4 мезгилине",
+    "20__-окуу жылынын 2 мезгилине",
     "20__-окуу жылынын 3 мезгилине",
     "20__-окуу жылынын 4 мезгилине",
 )
@@ -109,13 +158,15 @@ def get_period_number(period):
 
 
 def is_removed_thematic_period(period):
+    if period.slug.startswith("admin-document-"):
+        return False
     return period.slug in REMOVED_THEMATIC_PERIOD_SLUGS or any(
         title_part in period.title
         for title_part in REMOVED_THEMATIC_PERIOD_TITLE_PARTS
     )
 
 
-def build_library_sections_from_db():
+def build_library_sections_from_db(user=None):
     try:
         sections = list(
             TrainingSection.objects.filter(is_active=True)
@@ -128,8 +179,16 @@ def build_library_sections_from_db():
             return []
 
         section_ids = [section.id for section in sections]
+        period_queryset = TrainingPeriod.objects.filter(
+            is_active=True,
+            section_id__in=section_ids,
+        )
+        if user and user.role != User.Role.ADMIN:
+            period_queryset = period_queryset.filter(
+                Q(created_by__isnull=True) | Q(created_by=user)
+            )
         periods = list(
-            TrainingPeriod.objects.filter(is_active=True, section_id__in=section_ids)
+            period_queryset
             .select_related("table")
             .order_by("section_id", "order", "title")
         )
@@ -145,9 +204,16 @@ def build_library_sections_from_db():
         periods_by_section.setdefault(period.section_id, []).append(period)
 
     def serialize_section(section):
-        payload = {"id": section.slug, "title": section.title}
         is_thematic_account = section.slug in THEMATIC_ACCOUNT_SECTION_SLUGS
         is_command_thematic_account = section.slug == COMMAND_THEMATIC_ACCOUNT_SECTION_SLUG
+        payload = {
+            "id": section.slug,
+            "title": (
+                THEMATIC_ACCOUNT_SECTION_TITLE
+                if is_thematic_account
+                else section.title
+            ),
+        }
 
         child_sections = [
             serialize_section(child)
@@ -175,6 +241,25 @@ def build_library_sections_from_db():
                 else period.title
             )
             period_payload = {"id": period.slug, "title": period_title}
+            if user and user.role == User.Role.ADMIN:
+                period_payload["canEdit"] = True
+                period_payload["canDelete"] = True
+            is_legacy_custom_lesson_period = (
+                period.section.slug in LESSON_SCHEDULE_SECTION_SLUGS
+                and period.created_by_id is None
+                and period.slug != "lesson-schedule-week-1"
+            )
+            if user and (
+                (
+                    period.created_by_id
+                    and (user.role == User.Role.ADMIN or period.created_by_id == user.id)
+                )
+                or (
+                    is_legacy_custom_lesson_period
+                    and user.role in {User.Role.ADMIN, User.Role.OUTPOST}
+                )
+            ):
+                period_payload["canDelete"] = True
             try:
                 table = period.table
             except TrainingTable.DoesNotExist:
@@ -201,6 +286,60 @@ def build_library_sections_from_db():
         serialize_section(section)
         for section in children_by_parent.get(None, [])
     ]
+
+
+def add_regional_command_training_groups(sections):
+    """Add the military-unit-specific command training hierarchy."""
+    command_training = next(
+        (section for section in sections if section.get("id") == "command-training"),
+        None,
+    )
+    if not command_training:
+        return sections
+
+    command_training_sections = command_training.get("sections", [])
+    command_training["sections"] = [
+        {
+            "id": "command-training-subunits",
+            "title": "Бөлүкчөлөрдүн командирдик даярдоосу",
+            "sections": copy.deepcopy(command_training_sections),
+        },
+        {
+            "id": "command-training-military-unit",
+            "title": "Аскер бөлүктүн командирдик даярдоосу",
+            "sections": copy.deepcopy(command_training_sections),
+        },
+    ]
+    return sections
+
+
+def add_regional_typical_week_groups(sections):
+    typical_week = next(
+        (section for section in sections if section.get("id") == "typical-week"),
+        None,
+    )
+    if not typical_week:
+        return sections
+
+    military_unit_content = {}
+    if typical_week.get("periods"):
+        military_unit_content["periods"] = copy.deepcopy(typical_week["periods"])
+    if typical_week.get("table"):
+        military_unit_content["table"] = copy.deepcopy(typical_week["table"])
+    typical_week.pop("periods", None)
+    typical_week.pop("table", None)
+    typical_week["sections"] = [
+        {
+            "id": "typical-week-subunits",
+            "title": "Бөлүкчөлөрдүн типовая неделясы",
+        },
+        {
+            "id": "typical-week-military-unit",
+            "title": "Аскер бөлүктүн типовая неделясы",
+            **military_unit_content,
+        },
+    ]
+    return sections
 
 
 def build_training_table_module_from_db(section_slug, scope):
@@ -240,11 +379,23 @@ def build_training_table_module_from_db(section_slug, scope):
     }
 
 
+def methodical_manual_subject_queryset():
+    return (
+        MethodicalManualSubject.objects.filter(is_active=True)
+        .annotate(
+            menu_priority=Case(
+                When(title=NORMATIVE_LEGAL_ACTS_TITLE, then=Value(0)),
+                default=Value(1),
+                output_field=IntegerField(),
+            )
+        )
+        .order_by("menu_priority", "order", "title")
+    )
+
+
 def methodical_manual_subjects_payload():
     try:
-        subjects = MethodicalManualSubject.objects.filter(is_active=True).order_by(
-            "order", "title"
-        )
+        subjects = methodical_manual_subject_queryset()
         return MethodicalManualSubjectSerializer(subjects, many=True).data
     except (OperationalError, ProgrammingError):
         return []
@@ -252,18 +403,7 @@ def methodical_manual_subjects_payload():
 
 def chat_unread_count_for_user(user):
     try:
-        if user.role == User.Role.ADMIN:
-            return AdminChatMessage.objects.filter(recipient=user, is_read=False).count()
-
-        admin = User.objects.filter(role=User.Role.ADMIN).first()
-        if not admin:
-            return 0
-
-        return AdminChatMessage.objects.filter(
-            sender=admin,
-            recipient=user,
-            is_read=False,
-        ).count()
+        return AdminChatMessage.objects.filter(recipient=user, is_read=False).count()
     except (OperationalError, ProgrammingError):
         return 0
 
@@ -274,6 +414,8 @@ def build_modules_payload(user):
         scope = user.region or "области"
     if user.role == User.Role.OUTPOST:
         scope = user.outpost_name or "заставы"
+
+    unit_numbers = list(ADMIN_MILITARY_UNIT_NUMBERS) if user.role == User.Role.ADMIN else []
 
     month_options = [
         "январь",
@@ -301,6 +443,10 @@ def build_modules_payload(user):
                 {"key": "number", "label": "№"},
                 {"key": "topic", "label": "Сабактардын аталышы"},
                 {"key": "hours", "label": "канча саат"},
+                {"key": "december", "label": "Декабрь", "type": "datetime-local"},
+                {"key": "january", "label": "Январь", "type": "datetime-local"},
+                {"key": "february", "label": "Февраль", "type": "datetime-local"},
+                {"key": "march", "label": "Март", "type": "datetime-local"},
                 {"key": "june", "label": "Июнь", "type": "datetime-local"},
                 {"key": "july", "label": "Июль", "type": "datetime-local"},
                 {"key": "august", "label": "Август", "type": "datetime-local"},
@@ -311,6 +457,10 @@ def build_modules_payload(user):
                     "number": number,
                     "topic": "",
                     "hours": "",
+                    "december": "",
+                    "january": "",
+                    "february": "",
+                    "march": "",
                     "june": "",
                     "july": "",
                     "august": "",
@@ -446,7 +596,7 @@ def build_modules_payload(user):
             ],
         }
 
-    library_sections = build_library_sections_from_db()
+    library_sections = build_library_sections_from_db(user)
     if not library_sections:
         library_sections = [
             {
@@ -455,17 +605,12 @@ def build_modules_payload(user):
                 "sections": [
                     {
                         "id": "thematic-account",
-                        "title": "Тематикалык эсеп",
+                        "title": "Сабактардын тематикалык эсеби",
                         "periods": [
                             {
                                 "id": "period-1",
                                 "title": "20__-окуу жылынын 1 мезгилине",
                                 "table": build_training_table(1),
-                            },
-                            {
-                                "id": "period-2",
-                                "title": "20__-окуу жылынын 2 мезгилине",
-                                "table": build_training_table(2),
                             },
                         ],
                     },
@@ -484,21 +629,16 @@ def build_modules_payload(user):
             },
             {
                 "id": "command-training",
-                "title": "Командирдик даярдык",
+                "title": "Командирдик даярдоо",
                 "sections": [
                     {
                         "id": "command-thematic-account",
-                        "title": "Тематикалык эсеп",
+                        "title": "Сабактардын тематикалык эсеби",
                         "periods": [
                             {
                                 "id": "period-1",
                                 "title": "20__-окуу жылынын 1 мезгилине",
                                 "table": build_training_table(1, is_command=True),
-                            },
-                            {
-                                "id": "period-2",
-                                "title": "20__-окуу жылынын 2 мезгилине",
-                                "table": build_training_table(2, is_command=True),
                             },
                         ],
                     },
@@ -515,18 +655,28 @@ def build_modules_payload(user):
                     },
                 ],
             },
+            {
+                "id": "typical-week",
+                "title": "Типовая неделя",
+            },
         ]
+
+    if user.role == User.Role.REGIONAL:
+        library_sections = add_regional_command_training_groups(library_sections)
+        library_sections = add_regional_typical_week_groups(library_sections)
 
     combat_training_journal = build_training_table_module_from_db(
         "combat-training-journal",
         scope,
     )
+    combat_training_journal["unitNumbers"] = unit_numbers
 
     return {
         "chatUnreadCount": chat_unread_count_for_user(user),
         "library": {
             "title": "Сабактардын тематикасынын эсеби жана жүгүртмөсү",
             "scope": scope,
+            "unitNumbers": unit_numbers,
             "sections": library_sections,
             "items": [
                 {"name": "Инструкция по несению службы", "type": "Приказ", "updated": "18.06.2026"},
@@ -535,6 +685,7 @@ def build_modules_payload(user):
             ],
         },
         "combatTrainingJournal": combat_training_journal,
+        "combatTrainingResults": {"unitNumbers": unit_numbers},
         "smr": {
             "title": "Күжүрмөн даярдоо боюнча усулдук колдонмолор",
             "subjects": methodical_manual_subjects_payload(),
@@ -557,6 +708,7 @@ def build_modules_payload(user):
         },
         "analytics": {
             "title": "Талдоо",
+            "unitNumbers": unit_numbers,
             "reports": [
                 {"name": "Сводка за неделю", "status": "Готово", "updated": "19.06.2026"},
                 {"name": "Динамика нарушений", "status": "Готово", "updated": "18.06.2026"},
@@ -802,9 +954,7 @@ class MethodicalManualSubjectListCreateView(APIView):
         return [IsAdminRole()]
 
     def get(self, request):
-        subjects = MethodicalManualSubject.objects.filter(is_active=True).order_by(
-            "order", "title"
-        )
+        subjects = methodical_manual_subject_queryset()
         return Response(MethodicalManualSubjectSerializer(subjects, many=True).data)
 
     def post(self, request):
@@ -840,6 +990,244 @@ class MethodicalManualSubjectDetailView(APIView):
         return Response(status=204)
 
 
+class MethodicalManualDocumentListCreateView(APIView):
+    def get_permissions(self):
+        if self.request.method == "GET":
+            return [IsActiveUser()]
+        return [IsAdminRole()]
+
+    def get_subject(self, subject_pk):
+        return get_object_or_404(MethodicalManualSubject, pk=subject_pk, is_active=True)
+
+    def get(self, request, subject_pk):
+        subject = self.get_subject(subject_pk)
+        documents = MethodicalManualDocument.objects.filter(subject=subject)
+        return Response(
+            MethodicalManualDocumentSerializer(
+                documents,
+                many=True,
+                context={"request": request},
+            ).data
+        )
+
+    def post(self, request, subject_pk):
+        subject = self.get_subject(subject_pk)
+        serializer = MethodicalManualDocumentSerializer(
+            data=request.data,
+            context={"request": request},
+        )
+        serializer.is_valid(raise_exception=True)
+        document = serializer.save(subject=subject, uploaded_by=request.user)
+        return Response(
+            MethodicalManualDocumentSerializer(
+                document,
+                context={"request": request},
+            ).data,
+            status=201,
+        )
+
+
+class MethodicalManualDocumentDetailView(APIView):
+    permission_classes = [IsAdminRole]
+
+    def delete(self, request, subject_pk, pk):
+        document = get_object_or_404(
+            MethodicalManualDocument,
+            pk=pk,
+            subject_id=subject_pk,
+        )
+        stored_file = document.file
+        document.delete()
+        if stored_file:
+            stored_file.delete(save=False)
+        return Response(status=204)
+
+
+NEWS_ALLOWED_EXTENSIONS = {
+    ".doc", ".docx", ".pdf", ".txt", ".rtf",
+    ".xls", ".xlsx", ".ppt", ".pptx",
+    ".jpg", ".jpeg", ".png", ".gif", ".webp", ".svg",
+    ".mp4", ".webm", ".mov", ".avi", ".mkv",
+    ".mp3", ".wav", ".ogg", ".m4a",
+    ".zip", ".rar", ".7z",
+}
+NEWS_MAX_FILE_SIZE = 100 * 1024 * 1024
+NEWS_MAX_FILES = 10
+
+
+def get_news_attachment_kind(uploaded_file):
+    content_type = (getattr(uploaded_file, "content_type", "") or "").lower()
+    extension = Path(uploaded_file.name).suffix.lower()
+    if content_type.startswith("image/") or extension in {".jpg", ".jpeg", ".png", ".gif", ".webp", ".svg"}:
+        return "image"
+    if content_type.startswith("video/") or extension in {".mp4", ".webm", ".mov", ".avi", ".mkv"}:
+        return "video"
+    if content_type.startswith("audio/") or extension in {".mp3", ".wav", ".ogg", ".m4a"}:
+        return "audio"
+    if extension == ".pdf":
+        return "pdf"
+    return "file"
+
+
+def validate_news_files(files):
+    if len(files) > NEWS_MAX_FILES:
+        raise ValidationError({"files": f"Можно прикрепить не более {NEWS_MAX_FILES} файлов."})
+    for uploaded_file in files:
+        extension = Path(uploaded_file.name).suffix.lower()
+        if extension not in NEWS_ALLOWED_EXTENSIONS:
+            raise ValidationError({"files": f"Формат файла {uploaded_file.name} не поддерживается."})
+        if uploaded_file.size > NEWS_MAX_FILE_SIZE:
+            raise ValidationError({"files": f"Файл {uploaded_file.name} превышает 100 МБ."})
+
+
+def create_news_attachments(news, files):
+    for uploaded_file in files:
+        CombatTrainingNewsAttachment.objects.create(
+            news=news,
+            file=uploaded_file,
+            original_name=uploaded_file.name[:255],
+            kind=get_news_attachment_kind(uploaded_file),
+            size=uploaded_file.size,
+        )
+
+
+class CombatTrainingNewsListCreateView(APIView):
+    def get_permissions(self):
+        if self.request.method == "GET":
+            return [IsActiveUser()]
+        return [IsAdminRole()]
+
+    def get(self, request):
+        news_items = CombatTrainingNews.objects.select_related("author").prefetch_related(
+            "attachments", "likes"
+        )
+        serializer = CombatTrainingNewsSerializer(
+            news_items,
+            many=True,
+            context={"request": request},
+        )
+        return Response({"results": serializer.data})
+
+    def post(self, request):
+        title = str(request.data.get("title", "")).strip()
+        body = str(request.data.get("body", "")).strip()
+        files = request.FILES.getlist("files")
+        if not title:
+            raise ValidationError({"title": "Укажите заголовок публикации."})
+        if not body and not files:
+            raise ValidationError({"body": "Добавьте текст или хотя бы один файл."})
+        validate_news_files(files)
+
+        with transaction.atomic():
+            news = CombatTrainingNews.objects.create(
+                title=title,
+                body=body,
+                author=request.user,
+            )
+            create_news_attachments(news, files)
+
+        return Response(
+            CombatTrainingNewsSerializer(news, context={"request": request}).data,
+            status=201,
+        )
+
+
+class CombatTrainingNewsDetailView(APIView):
+    permission_classes = [IsAdminRole]
+
+    def get_object(self, pk):
+        return get_object_or_404(CombatTrainingNews, pk=pk)
+
+    def patch(self, request, pk):
+        news = self.get_object(pk)
+        files = request.FILES.getlist("files")
+        validate_news_files(files)
+        title = str(request.data.get("title", news.title)).strip()
+        body = str(request.data.get("body", news.body)).strip()
+        if not title:
+            raise ValidationError({"title": "Укажите заголовок публикации."})
+
+        raw_remove_ids = request.data.get("removeAttachmentIds", "[]")
+        try:
+            remove_ids = json.loads(raw_remove_ids) if isinstance(raw_remove_ids, str) else raw_remove_ids
+            remove_ids = [int(item) for item in (remove_ids or [])]
+        except (TypeError, ValueError, json.JSONDecodeError) as error:
+            raise ValidationError({"removeAttachmentIds": "Некорректный список файлов."}) from error
+
+        remaining_attachments = news.attachments.exclude(id__in=remove_ids).exists()
+        if not body and not files and not remaining_attachments:
+            raise ValidationError({"body": "Добавьте текст или хотя бы один файл."})
+
+        news.title = title
+        news.body = body
+        news.save(update_fields=["title", "body", "updated_at"])
+
+        removed_attachments = list(news.attachments.filter(id__in=remove_ids))
+        for attachment in removed_attachments:
+            stored_file = attachment.file
+            attachment.delete()
+            if stored_file:
+                stored_file.delete(save=False)
+        create_news_attachments(news, files)
+
+        return Response(
+            CombatTrainingNewsSerializer(news, context={"request": request}).data
+        )
+
+    def delete(self, request, pk):
+        news = self.get_object(pk)
+        stored_files = [attachment.file for attachment in news.attachments.all()]
+        news.delete()
+        for stored_file in stored_files:
+            if stored_file:
+                stored_file.delete(save=False)
+        return Response(status=204)
+
+
+class CombatTrainingNewsLikeView(APIView):
+    permission_classes = [IsActiveUser]
+
+    def post(self, request, pk):
+        news = get_object_or_404(CombatTrainingNews, pk=pk)
+        like, created = CombatTrainingNewsLike.objects.get_or_create(
+            news=news,
+            user=request.user,
+        )
+        if not created:
+            like.delete()
+        return Response({
+            "isLiked": created,
+            "likeCount": news.likes.count(),
+        })
+
+
+class CombatTrainingNewsUnreadCountView(APIView):
+    permission_classes = [IsActiveUser]
+
+    def get(self, request):
+        unread_count = CombatTrainingNews.objects.filter(
+            created_at__gte=request.user.date_joined,
+        ).exclude(reads__user=request.user).count()
+        return Response({"unreadCount": unread_count})
+
+
+class CombatTrainingNewsReadAllView(APIView):
+    permission_classes = [IsActiveUser]
+
+    def post(self, request):
+        unread_ids = CombatTrainingNews.objects.filter(
+            created_at__gte=request.user.date_joined,
+        ).exclude(reads__user=request.user).values_list("id", flat=True)
+        CombatTrainingNewsRead.objects.bulk_create(
+            [
+                CombatTrainingNewsRead(news_id=news_id, user=request.user)
+                for news_id in unread_ids
+            ],
+            ignore_conflicts=True,
+        )
+        return Response({"unreadCount": 0})
+
+
 class CombatTrainingJournalListCreateView(APIView):
     permission_classes = [IsActiveUser]
 
@@ -847,7 +1235,19 @@ class CombatTrainingJournalListCreateView(APIView):
         queryset = CombatTrainingJournal.objects.all().order_by("-created_at", "-id")
         scope = request.query_params.get("scope")
         if scope:
-            queryset = queryset.filter(scope=scope)
+            if request.user.role == User.Role.ADMIN:
+                queryset = (
+                    queryset.filter(scope__endswith=":command-training")
+                    if scope.endswith(":command-training")
+                    else queryset.exclude(scope__endswith=":command-training")
+                )
+            else:
+                global_scope = (
+                    "всей системы:command-training"
+                    if scope.endswith(":command-training")
+                    else "всей системы"
+                )
+                queryset = queryset.filter(Q(scope=scope) | Q(scope=global_scope))
         return queryset
 
     def get(self, request):
@@ -883,6 +1283,8 @@ class CombatTrainingJournalDetailView(APIView):
 
     def patch(self, request, pk):
         journal = self.get_object(pk)
+        if request.user.role != User.Role.ADMIN and journal.owner_id != request.user.id:
+            raise PermissionDenied("Можно изменить только свой журнал.")
         serializer = CombatTrainingJournalSerializer(
             journal,
             data=request.data,
@@ -894,8 +1296,345 @@ class CombatTrainingJournalDetailView(APIView):
 
     def delete(self, request, pk):
         journal = self.get_object(pk)
+        if request.user.role != User.Role.ADMIN and journal.owner_id != request.user.id:
+            raise PermissionDenied("Можно удалить только свой журнал.")
         journal.delete()
         return Response(status=204)
+
+
+def combat_training_plan_payload(plan):
+    return {
+        **(plan.data or {}),
+        "id": plan.id,
+        "title": plan.title,
+        "layout": plan.layout,
+        "createdAt": plan.created_at.isoformat(),
+        "updatedAt": plan.updated_at.isoformat(),
+    }
+
+
+class CombatTrainingPlanListCreateView(APIView):
+    permission_classes = [IsActiveUser]
+
+    def get(self, request):
+        layout = str(request.query_params.get("layout") or "plan").strip()
+        plans = CombatTrainingPlan.objects.filter(layout=layout)
+        return Response([combat_training_plan_payload(plan) for plan in plans])
+
+    def post(self, request):
+        if request.user.role != User.Role.ADMIN:
+            raise PermissionDenied("Планды администратор гана түзө алат.")
+
+        title = str(request.data.get("title") or "").strip()
+        layout = str(request.data.get("layout") or "plan").strip()
+        if not title:
+            raise ValidationError({"title": "Разделдин аталышын жазыңыз."})
+        if layout not in {"plan", "draft"}:
+            raise ValidationError({"layout": "Таблицанын түрү туура эмес."})
+
+        data = dict(request.data.get("data") or {})
+        plan = CombatTrainingPlan.objects.create(
+            title=title,
+            layout=layout,
+            data=data,
+            created_by=request.user,
+        )
+        return Response(combat_training_plan_payload(plan), status=201)
+
+
+class CombatTrainingPlanDetailView(APIView):
+    permission_classes = [IsActiveUser]
+
+    def get_object(self, pk):
+        return get_object_or_404(CombatTrainingPlan, pk=pk)
+
+    def patch(self, request, pk):
+        if request.user.role != User.Role.ADMIN:
+            raise PermissionDenied("Планды администратор гана өзгөртө алат.")
+
+        plan = self.get_object(pk)
+        if "title" in request.data:
+            title = str(request.data.get("title") or "").strip()
+            if not title:
+                raise ValidationError({"title": "Разделдин аталышын жазыңыз."})
+            plan.title = title
+        if "data" in request.data:
+            data = request.data.get("data")
+            if not isinstance(data, dict):
+                raise ValidationError({"data": "Таблицанын маалыматы туура эмес."})
+            plan.data = data
+        plan.save()
+        return Response(combat_training_plan_payload(plan))
+
+    def delete(self, request, pk):
+        if request.user.role != User.Role.ADMIN:
+            raise PermissionDenied("Планды администратор гана өчүрө алат.")
+        self.get_object(pk).delete()
+        return Response(status=204)
+
+
+def thematic_submission_payload(submission):
+    try:
+        edit_request = submission.edit_request
+    except SubmissionEditRequest.DoesNotExist:
+        edit_request = None
+    return {
+        "id": submission.id,
+        "senderId": submission.sender_id,
+        "senderRole": submission.sender.role,
+        "documentTitle": submission.document_title,
+        "unitNumber": submission.unit_number,
+        "outpostName": submission.outpost_name,
+        "senderName": submission.sender.full_name,
+        "sectionId": submission.section_slug,
+        "periodId": submission.period_slug,
+        "table": submission.table_data,
+        "createdAt": submission.created_at.isoformat(),
+        "editRequestStatus": edit_request.status if edit_request else None,
+        "canEdit": bool(edit_request and edit_request.status == SubmissionEditRequest.Status.APPROVED),
+    }
+
+
+def submission_edit_request_payload(item):
+    return {
+        "id": item.id,
+        "status": item.status,
+        "createdAt": item.created_at.isoformat(),
+        "updatedAt": item.updated_at.isoformat(),
+        "requesterId": item.requester_id,
+        "requesterName": item.requester.full_name or item.requester.email,
+        "requesterRole": item.requester.role,
+        "submission": thematic_submission_payload(item.submission),
+    }
+
+
+class ThematicAccountSubmissionListCreateView(APIView):
+    permission_classes = [IsActiveUser]
+
+    def get(self, request):
+        submissions = ThematicAccountSubmission.objects.select_related("sender")
+        if request.user.role == User.Role.OUTPOST:
+            submissions = submissions.filter(sender=request.user)
+        elif request.user.role == User.Role.REGIONAL:
+            submissions = submissions.filter(unit_number=request.user.region)
+        elif request.user.role != User.Role.ADMIN:
+            raise PermissionDenied("Нет доступа к отправленным документам.")
+
+        return Response([thematic_submission_payload(item) for item in submissions])
+
+    def post(self, request):
+        document_title = str(request.data.get("documentTitle") or "").strip()
+        section_slug = str(request.data.get("sectionId") or "").strip()
+        period_slug = str(request.data.get("periodId") or "").strip()
+        table_data = request.data.get("table")
+
+        can_submit = request.user.role in {User.Role.OUTPOST, User.Role.REGIONAL}
+        if not can_submit:
+            raise PermissionDenied("Бул документти жөнөтүүгө укук жок.")
+
+        errors = {}
+        if not document_title:
+            errors["documentTitle"] = "Иш кагаздардын аталышын жазыңыз."
+        if section_slug not in {
+            "thematic-account",
+            "lesson-schedule",
+            "command-thematic-account",
+            "command-lesson-schedule",
+            "typical-week",
+            "combat-training-personnel-journal",
+            "combat-training-command-journal",
+            "combat-training-results-observation",
+            "combat-training-results-inspection",
+            "combat-training-analysis",
+            "combat-training-analysis-regional",
+        }:
+            errors["sectionId"] = "Отправляемый раздел указан неверно."
+        if not request.user.region:
+            errors["unitNumber"] = "Аскер бөлүгүнүн номери көрсөтүлгөн эмес."
+        if not isinstance(table_data, dict):
+            errors["table"] = "Таблицанын маалыматы туура эмес."
+        if errors:
+            raise ValidationError(errors)
+
+        submission_defaults = {
+            "unit_number": request.user.region,
+            "outpost_name": request.user.outpost_name,
+            "document_title": document_title,
+            "table_data": table_data,
+        }
+        if section_slug == "combat-training-results-observation":
+            subject_id = str(table_data.get("subjectId") or "").strip()
+            if not subject_id:
+                raise ValidationError({"table": "Предмет көрсөтүлгөн эмес."})
+
+            submission = ThematicAccountSubmission.objects.filter(
+                sender=request.user,
+                section_slug=section_slug,
+                document_title=document_title,
+            ).first()
+            created = submission is None
+            grouped_table_data = dict(submission.table_data or {}) if submission else {}
+            grouped_subjects = dict(grouped_table_data.get("subjects") or {})
+            grouped_subjects[subject_id] = table_data
+            grouped_table_data["subjects"] = grouped_subjects
+            submission_defaults["table_data"] = grouped_table_data
+
+            if submission:
+                for field, value in submission_defaults.items():
+                    setattr(submission, field, value)
+                submission.save(update_fields=[*submission_defaults.keys()])
+            else:
+                submission = ThematicAccountSubmission.objects.create(
+                    sender=request.user,
+                    section_slug=section_slug,
+                    period_slug="",
+                    **submission_defaults,
+                )
+        elif section_slug in {
+            "combat-training-personnel-journal",
+            "combat-training-command-journal",
+        }:
+            submission = ThematicAccountSubmission.objects.filter(
+                sender=request.user,
+                section_slug=section_slug,
+                period_slug=period_slug,
+            ).first()
+            created = submission is None
+            if submission:
+                for field, value in submission_defaults.items():
+                    setattr(submission, field, value)
+                submission.save(update_fields=[*submission_defaults.keys()])
+            else:
+                submission = ThematicAccountSubmission.objects.create(
+                    sender=request.user,
+                    section_slug=section_slug,
+                    period_slug=period_slug,
+                    **submission_defaults,
+                )
+        else:
+            submission = ThematicAccountSubmission.objects.create(
+                sender=request.user,
+                section_slug=section_slug,
+                period_slug=period_slug,
+                **submission_defaults,
+            )
+            created = True
+        return Response(
+            thematic_submission_payload(submission),
+            status=201 if created else 200,
+        )
+
+
+class ThematicAccountSubmissionDetailView(APIView):
+    permission_classes = [IsActiveUser]
+
+    def delete(self, request, pk):
+        submission = get_object_or_404(
+            ThematicAccountSubmission.objects.select_related("sender"),
+            pk=pk,
+        )
+        is_sender = (
+            request.user.role in {User.Role.OUTPOST, User.Role.REGIONAL}
+            and submission.sender_id == request.user.id
+        )
+        is_matching_regional_unit = (
+            request.user.role == User.Role.REGIONAL
+            and submission.sender.role == User.Role.OUTPOST
+            and submission.unit_number == request.user.region
+        )
+        is_admin = request.user.role == User.Role.ADMIN
+        if not (is_sender or is_matching_regional_unit or is_admin):
+            raise PermissionDenied("Нет права удалять этот отправленный документ.")
+
+        subject_id = str(request.query_params.get("subjectId") or "").strip()
+        if subject_id and submission.section_slug == "combat-training-results-observation":
+            table_data = dict(submission.table_data or {})
+            subjects = dict(table_data.get("subjects") or {})
+            subjects.pop(subject_id, None)
+            if subjects:
+                table_data["subjects"] = subjects
+                submission.table_data = table_data
+                submission.save(update_fields=["table_data"])
+                return Response(thematic_submission_payload(submission))
+
+        submission.delete()
+        return Response(status=204)
+
+
+class ThematicAccountSubmissionForwardView(APIView):
+    permission_classes = [IsActiveUser]
+
+    def post(self, request, pk):
+        if request.user.role != User.Role.REGIONAL:
+            raise PermissionDenied("Документти аскер бөлүгү гана жөнөтө алат.")
+
+        source = get_object_or_404(
+            ThematicAccountSubmission.objects.select_related("sender"),
+            pk=pk,
+        )
+        if source.sender.role != User.Role.OUTPOST or source.unit_number != request.user.region:
+            raise PermissionDenied("Бул кириш документти жөнөтүүгө укук жок.")
+
+        document_title = str(request.data.get("documentTitle") or "").strip()
+        if not document_title:
+            raise ValidationError({"documentTitle": "Иш кагаздардын аталышын жазыңыз."})
+
+        forwarded = ThematicAccountSubmission.objects.create(
+            sender=request.user,
+            unit_number=request.user.region,
+            outpost_name="",
+            document_title=document_title,
+            section_slug=source.section_slug,
+            period_slug=source.period_slug,
+            table_data=copy.deepcopy(source.table_data),
+        )
+        return Response(thematic_submission_payload(forwarded), status=status.HTTP_201_CREATED)
+
+
+class SubmissionEditRequestCreateView(APIView):
+    permission_classes = [IsActiveUser]
+
+    def post(self, request, pk):
+        submission = get_object_or_404(ThematicAccountSubmission, pk=pk)
+        if request.user.role not in {User.Role.OUTPOST, User.Role.REGIONAL} or submission.sender_id != request.user.id:
+            raise PermissionDenied("Өзүңүз жөнөткөн документке гана уруксат сурай аласыз.")
+
+        edit_request, _ = SubmissionEditRequest.objects.get_or_create(
+            submission=submission,
+            defaults={"requester": request.user},
+        )
+        edit_request.requester = request.user
+        edit_request.status = SubmissionEditRequest.Status.PENDING
+        edit_request.reviewed_at = None
+        edit_request.reviewed_by = None
+        edit_request.save()
+        return Response(submission_edit_request_payload(edit_request), status=status.HTTP_201_CREATED)
+
+
+class SubmissionEditRequestListView(APIView):
+    permission_classes = [IsActiveUser, IsAdminRole]
+
+    def get(self, request):
+        items = SubmissionEditRequest.objects.select_related("requester", "submission", "submission__sender")
+        return Response([submission_edit_request_payload(item) for item in items])
+
+
+class SubmissionEditRequestDecisionView(APIView):
+    permission_classes = [IsActiveUser, IsAdminRole]
+
+    def patch(self, request, pk):
+        item = get_object_or_404(
+            SubmissionEditRequest.objects.select_related("requester", "submission", "submission__sender"),
+            pk=pk,
+        )
+        decision = str(request.data.get("status") or "").strip()
+        if decision not in {SubmissionEditRequest.Status.APPROVED, SubmissionEditRequest.Status.REJECTED}:
+            raise ValidationError({"status": "Разрешить же Отклонить маанисин тандаңыз."})
+        item.status = decision
+        item.reviewed_by = request.user
+        item.reviewed_at = timezone.now()
+        item.save(update_fields=["status", "reviewed_by", "reviewed_at", "updated_at"])
+        return Response(submission_edit_request_payload(item))
 
 
 class LessonSchedulePeriodListCreateView(APIView):
@@ -961,6 +1700,7 @@ class LessonSchedulePeriodListCreateView(APIView):
 
             period = TrainingPeriod.objects.create(
                 section=section,
+                created_by=request.user,
                 slug=slug,
                 title=title,
                 order=next_order,
@@ -982,6 +1722,165 @@ class LessonSchedulePeriodListCreateView(APIView):
                 "id": period.slug,
                 "title": period.title,
                 "table": table.to_payload(),
+                "canDelete": True,
             },
             status=status.HTTP_201_CREATED,
         )
+
+
+class LessonSchedulePeriodDetailView(APIView):
+    permission_classes = [IsActiveUser]
+
+    def delete(self, request, section_slug, period_slug):
+        if section_slug not in LESSON_SCHEDULE_SECTION_SLUGS:
+            raise ValidationError({"section": "Укажите раздел Сабактардын жүгүртмөсү."})
+
+        period = get_object_or_404(
+            TrainingPeriod,
+            section__slug=section_slug,
+            slug=period_slug,
+        )
+        is_legacy_custom_period = (
+            period.created_by_id is None
+            and period.slug != "lesson-schedule-week-1"
+        )
+        can_delete = (
+            request.user.role == User.Role.ADMIN
+            or period.created_by_id == request.user.id
+            or (request.user.role == User.Role.OUTPOST and is_legacy_custom_period)
+        )
+        if not can_delete:
+            raise PermissionDenied("Можно удалить только добавленную вами неделю.")
+
+        period.delete()
+        return Response(status=204)
+
+
+def library_period_payload(period):
+    payload = {
+        "id": period.slug,
+        "title": period.title,
+        "canEdit": True,
+        "canDelete": True,
+    }
+    try:
+        table = period.table
+    except TrainingTable.DoesNotExist:
+        table = None
+    if table and table.is_active:
+        payload["table"] = table.to_payload()
+    return payload
+
+
+class LibraryPeriodListCreateView(APIView):
+    permission_classes = [IsAdminRole]
+
+    def post(self, request):
+        section_slug = str(request.data.get("section") or request.data.get("sectionId") or "").strip()
+        title = str(request.data.get("title") or "").strip()
+        if not title:
+            raise ValidationError({"title": "Укажите название документа."})
+
+        section = get_object_or_404(TrainingSection, slug=section_slug, is_active=True)
+        template_period = (
+            TrainingPeriod.objects.filter(section=section, is_active=True)
+            .select_related("table")
+            .order_by("order", "title")
+            .first()
+        )
+        requested_table = request.data.get("table")
+
+        with transaction.atomic():
+            max_order = (
+                TrainingPeriod.objects.filter(section=section).aggregate(max_order=Max("order"))["max_order"]
+                or 0
+            )
+            base_slug = "admin-document"
+            suffix = TrainingPeriod.objects.filter(section=section).count() + 1
+            slug = f"{base_slug}-{suffix}"
+            while TrainingPeriod.objects.filter(section=section, slug=slug).exists():
+                suffix += 1
+                slug = f"{base_slug}-{suffix}"
+
+            period = TrainingPeriod.objects.create(
+                section=section,
+                created_by=None,
+                slug=slug,
+                title=title,
+                order=max_order + 10,
+                is_active=True,
+            )
+
+            template_table = None
+            if template_period:
+                try:
+                    template_table = template_period.table
+                except TrainingTable.DoesNotExist:
+                    template_table = None
+
+            if template_table is None and section.slug in LESSON_SCHEDULE_SECTION_SLUGS:
+                template_table = (
+                    TrainingTable.objects.filter(
+                        variant=TrainingTable.Variant.LESSON_SCHEDULE,
+                        is_active=True,
+                    )
+                    .order_by("period__section__slug", "period__order")
+                    .first()
+                )
+            elif template_table is None and section.slug in THEMATIC_ACCOUNT_SECTION_SLUGS:
+                template_table = (
+                    TrainingTable.objects.filter(
+                        period__section__slug__in=THEMATIC_ACCOUNT_SECTION_SLUGS,
+                        is_active=True,
+                    )
+                    .order_by("period__section__slug", "period__order")
+                    .first()
+                )
+
+            table_data = requested_table if isinstance(requested_table, dict) else {}
+            if template_table or table_data:
+                TrainingTable.objects.create(
+                    period=period,
+                    title=title,
+                    variant=table_data.get("variant", template_table.variant if template_table else ""),
+                    columns=copy.deepcopy(table_data.get("columns", template_table.columns if template_table else [])),
+                    rows=copy.deepcopy(table_data.get("rows", template_table.rows if template_table else [])),
+                    header_fields=copy.deepcopy(
+                        table_data.get("headerFields", template_table.header_fields if template_table else [])
+                    ),
+                    header_rows=copy.deepcopy(
+                        table_data.get("headerRows", template_table.header_rows if template_table else [])
+                    ),
+                    is_active=True,
+                )
+
+        return Response(library_period_payload(period), status=status.HTTP_201_CREATED)
+
+
+class LibraryPeriodDetailView(APIView):
+    permission_classes = [IsAdminRole]
+
+    def get_object(self, section_slug, period_slug):
+        return get_object_or_404(
+            TrainingPeriod,
+            section__slug=section_slug,
+            slug=period_slug,
+        )
+
+    def patch(self, request, section_slug, period_slug):
+        period = self.get_object(section_slug, period_slug)
+        title = str(request.data.get("title") or "").strip()
+        if not title:
+            raise ValidationError({"title": "Укажите название документа."})
+
+        with transaction.atomic():
+            period.title = title
+            period.save(update_fields=("title",))
+            TrainingTable.objects.filter(period=period).update(title=title)
+        period.refresh_from_db()
+        return Response(library_period_payload(period))
+
+    def delete(self, request, section_slug, period_slug):
+        period = self.get_object(section_slug, period_slug)
+        period.delete()
+        return Response(status=204)

@@ -57,8 +57,8 @@ export default function App() {
       <div className={`auth-card auth-card--${page}`}>
         <header className="auth-brand">
           <BorderServiceLogo large />
-          <h1>АСКА</h1>
-          <p>Күжүрмөн даярдык санарип платформасы</p>
+          <h1>КУТ БИЛИМ</h1>
+          <p>Күжүрмөн даярдоо санарип платформасы</p>
         </header>
         <nav className="auth-tabs">
           <button
@@ -89,8 +89,8 @@ export default function App() {
       <header className="topbar">
         <div className="brand-lockup">
           <div>
-            <strong>АСКА</strong>
-            <span>Күжүрмөн даярдык санарип платформасы</span>
+            <strong>КУТ БИЛИМ</strong>
+            <span>Күжүрмөн даярдоо санарип платформасы</span>
           </div>
         </div>
         <div className="topbar-seal">

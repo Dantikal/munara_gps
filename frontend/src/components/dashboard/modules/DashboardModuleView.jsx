@@ -2,6 +2,7 @@ import React from "react";
 
 import Analytics from "./Analytics.jsx";
 import CombatTrainingJournal from "./CombatTrainingJournal.jsx";
+import CombatTrainingNews from "./CombatTrainingNews.jsx";
 import CombatTrainingPlan from "./CombatTrainingPlan.jsx";
 import CombatTrainingResults from "./CombatTrainingResults.jsx";
 import ContactAdmin from "./ContactAdmin.jsx";
@@ -39,6 +40,10 @@ export default function DashboardModuleView({ activeModule, modules, onRefresh, 
     return <CombatTrainingPlan user={user} />;
   }
 
+  if (activeModule === "combatTrainingReport") {
+    return <CombatTrainingNews user={user} />;
+  }
+
   if (activeModule === "savedTables") {
     return <SavedTables />;
   }
@@ -56,7 +61,7 @@ export default function DashboardModuleView({ activeModule, modules, onRefresh, 
   }
 
   if (activeModule === "analytics" || activeModule === "combatTrainingAnalytics") {
-    return <Analytics data={modules?.analytics} />;
+    return <Analytics data={modules?.analytics} user={user} />;
   }
 
   if (activeModule === "contactAdmin") {
