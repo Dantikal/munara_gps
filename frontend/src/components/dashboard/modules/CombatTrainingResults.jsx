@@ -2460,9 +2460,6 @@ export default function CombatTrainingResults({ data, user }) {
   const inspectionOutgoingSubmissions = inspectionSubmissions.filter(
     (submission) => submission.senderRole === "regional"
   );
-  const observationDisplayedIncoming = user?.role === "admin"
-    ? observationOutgoingSubmissions
-    : observationIncomingSubmissions;
   const inspectionDisplayedIncoming = user?.role === "admin"
     ? inspectionOutgoingSubmissions
     : inspectionIncomingSubmissions;
@@ -2493,6 +2490,25 @@ export default function CombatTrainingResults({ data, user }) {
   const selectedAdminOutpostSubmissions = selectedAdminOutpostName
     ? adminOutpostSubmissions.filter(
         (submission) => formatOutpostName(submission.outpostName) === selectedAdminOutpostName
+      )
+    : EMPTY_ARRAY;
+  const regionalOutpostSubmissions = selectedSectionId === "observation"
+    ? observationIncomingSubmissions
+    : selectedSectionId === "inspection"
+      ? inspectionIncomingSubmissions
+      : EMPTY_ARRAY;
+  const regionalOutpostNames = Array.from(new Set([
+    ...(OUTPOSTS_BY_MILITARY_UNIT[user?.region] || []).map(([, name]) =>
+      formatOutpostName(name)
+    ),
+    ...regionalOutpostSubmissions.map((submission) =>
+      formatOutpostName(submission.outpostName)
+    ),
+  ].filter(Boolean)));
+  const selectedRegionalOutpostSubmissions = selectedAdminOutpostName
+    ? regionalOutpostSubmissions.filter(
+        (submission) =>
+          formatOutpostName(submission.outpostName) === selectedAdminOutpostName
       )
     : EMPTY_ARRAY;
   const selectedObservationSubmissions = observationSubmissions.filter(
@@ -2530,6 +2546,107 @@ export default function CombatTrainingResults({ data, user }) {
           {deletingResultSubmissionId === submission.id ? "Өчүрүү..." : "Өчүрүү"}
         </button>
       </div>
+    </div>
+  );
+
+  const renderRegionalOutpostBrowser = () => (
+    <div className="module-table-view">
+      <button
+        className="module-back-button"
+        onClick={handleBack}
+        style={wordTableStyles.backButton}
+        type="button"
+      >
+        Артка
+      </button>
+      {selectedAdminOutpostName ? (
+        <div className="module-submission-list">
+          <h2>{selectedAdminOutpostName}</h2>
+          <h3>Заставадан жөнөтүлгөн документтер</h3>
+          {selectedRegionalOutpostSubmissions.length > 0 ? (
+            selectedRegionalOutpostSubmissions.map((submission) => (
+              <div className="module-period-row" key={`regional-outpost-${submission.id}`}>
+                <button
+                  className="module-period-card module-period-card--document"
+                  onClick={() => setSelectedResultSubmission(submission)}
+                  type="button"
+                >
+                  <span aria-hidden="true" className="module-document-icon" />
+                  <span className="module-submission-card__content">
+                    <strong>{submission.documentTitle}</strong>
+                    {submission.table?.subsectionTitle ? (
+                      <small>{submission.table.subsectionTitle}</small>
+                    ) : null}
+                  </span>
+                </button>
+                <div className="module-period-actions">
+                  <button
+                    onClick={() => setForwardingSubmission(submission)}
+                    type="button"
+                  >
+                    Отправить
+                  </button>
+                  <button
+                    disabled={deletingResultSubmissionId === submission.id}
+                    onClick={() => handleDeleteResultSubmission(submission)}
+                    type="button"
+                  >
+                    {deletingResultSubmissionId === submission.id ? "Өчүрүү..." : "Өчүрүү"}
+                  </button>
+                </div>
+              </div>
+            ))
+          ) : (
+            <p className="dashboard-state">
+              Бул заставадан жөнөтүлгөн документтер азырынча жок.
+            </p>
+          )}
+          {resultSubmissionListError && (
+            <p className="dashboard-error">{resultSubmissionListError}</p>
+          )}
+        </div>
+      ) : (
+        <div className="module-period-list">
+          <h2>{user?.region} аскер бөлүгүнүн заставалары</h2>
+          {regionalOutpostNames.length > 0 ? (
+            <div className="saved-table-list">
+              {regionalOutpostNames.map((outpostName) => {
+                const documentCount = regionalOutpostSubmissions.filter(
+                  (submission) =>
+                    formatOutpostName(submission.outpostName) === outpostName
+                ).length;
+
+                return (
+                  <button
+                    className={`saved-table-card${
+                      documentCount > 0
+                        ? " saved-table-card--with-notification"
+                        : ""
+                    }`}
+                    key={outpostName}
+                    onClick={() => setSelectedAdminOutpostName(outpostName)}
+                    type="button"
+                  >
+                    <strong>{outpostName}</strong>
+                    {documentCount > 0 ? (
+                      <span
+                        aria-label={`Документов: ${documentCount}`}
+                        className="combat-journal-notification-badge"
+                      >
+                        {documentCount}
+                      </span>
+                    ) : null}
+                  </button>
+                );
+              })}
+            </div>
+          ) : (
+            <p className="dashboard-state">
+              Бул аскер бөлүгүнө катталган заставалар азырынча жок.
+            </p>
+          )}
+        </div>
+      )}
     </div>
   );
 
@@ -2726,37 +2843,7 @@ export default function CombatTrainingResults({ data, user }) {
           </div>
         </div>
       ) : user?.role === "regional" && selectedObservationGroupId === "subunits" && selectedSectionId === "observation" ? (
-        <div className="module-table-view">
-          <button className="module-back-button" onClick={handleBack} type="button" style={wordTableStyles.backButton}>
-            Артка
-          </button>
-          <div className="module-submission-list">
-            <h3>Кириш</h3>
-            {observationDisplayedIncoming.length > 0 ? observationDisplayedIncoming.map((submission) => (
-              <div className="module-period-row" key={submission.id}>
-                <button className="module-period-card module-period-card--document" onClick={() => setSelectedResultSubmission(submission)} type="button">
-                  <span aria-hidden="true" className="module-document-icon" />
-                  <span className="module-submission-card__content"><strong>{submission.documentTitle}</strong><small>{submission.outpostName || submission.senderName}</small></span>
-                </button>
-                <div className="module-period-actions">
-                  {user?.role === "regional" ? <button onClick={() => setForwardingSubmission(submission)} type="button">Отправить</button> : null}
-                  <button disabled={deletingResultSubmissionId === submission.id} onClick={() => handleDeleteResultSubmission(submission)} type="button">
-                    {deletingResultSubmissionId === submission.id ? "Өчүрүү..." : "Өчүрүү"}
-                  </button>
-                </div>
-              </div>
-            )) : (
-              <p className="dashboard-state">Документов пока нет.</p>
-            )}
-            {user?.role === "regional" ? <h3>Чыгыш</h3> : null}
-            {user?.role === "regional" ? observationOutgoingSubmissions.map((submission) => (
-              <button className="module-period-card module-period-card--document" key={`out-${submission.id}`} onClick={() => setSelectedResultSubmission(submission)} type="button">
-                <span aria-hidden="true" className="module-document-icon" />
-                <span className="module-submission-card__content"><strong>{submission.documentTitle}</strong></span>
-              </button>
-            )) : null}
-          </div>
-        </div>
+        renderRegionalOutpostBrowser()
       ) : user?.role === "admin" && selectedSectionId === "inspection" ? (
         <div className="module-table-view">
           <button className="module-back-button" onClick={handleBack} type="button" style={wordTableStyles.backButton}>Артка</button>
@@ -2820,40 +2907,7 @@ export default function CombatTrainingResults({ data, user }) {
           </div>
         </div>
       ) : user?.role === "regional" && selectedSectionId === "inspection" && selectedInspectionGroupId === "subunits" ? (
-        <div className="module-table-view">
-          <button className="module-back-button" onClick={handleBack} type="button" style={wordTableStyles.backButton}>
-            Артка
-          </button>
-          <div className="module-submission-list">
-            <h3>Кириш</h3>
-            {inspectionIncomingSubmissions.length > 0 ? inspectionIncomingSubmissions.map((submission) => (
-              <div className="module-period-row" key={submission.id}>
-                <button className="module-period-card module-period-card--document" onClick={() => setSelectedResultSubmission(submission)} type="button">
-                  <span aria-hidden="true" className="module-document-icon" />
-                  <span className="module-submission-card__content"><strong>{submission.documentTitle}</strong><small>{submission.table?.subsectionTitle}</small></span>
-                </button>
-                <div className="module-period-actions">
-                  <button onClick={() => setForwardingSubmission(submission)} type="button">Отправить</button>
-                  <button disabled={deletingResultSubmissionId === submission.id} onClick={() => handleDeleteResultSubmission(submission)} type="button">
-                    {deletingResultSubmissionId === submission.id ? "Өчүрүү..." : "Өчүрүү"}
-                  </button>
-                </div>
-              </div>
-            )) : (
-              <p className="dashboard-state">Документов пока нет.</p>
-            )}
-            <h3>Чыгыш</h3>
-            {inspectionOutgoingSubmissions.map((submission) => (
-              <button className="module-period-card module-period-card--document" key={`out-${submission.id}`} onClick={() => setSelectedResultSubmission(submission)} type="button">
-                <span aria-hidden="true" className="module-document-icon" />
-                <span className="module-submission-card__content">
-                  <strong>{submission.documentTitle}</strong>
-                  <small>{submission.table?.subsectionTitle}</small>
-                </span>
-              </button>
-            ))}
-          </div>
-        </div>
+        renderRegionalOutpostBrowser()
       ) : !selectedSubsectionId ? (
         <div className="module-table-view">
           <button className="module-back-button" onClick={handleBack} type="button" style={wordTableStyles.backButton}>

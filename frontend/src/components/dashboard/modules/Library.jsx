@@ -33,6 +33,11 @@ const MULTILINE_COLUMN_KEYS = new Set([
   "topic_method",
 ]);
 const COMMAND_THEMATIC_ACCOUNT_SECTION_ID = "command-thematic-account";
+const WEEKLY_SCHEDULE_SECTION_IDS = new Set([
+  "lesson-schedule",
+  "command-lesson-schedule",
+]);
+const WEEKLY_SUBMISSION_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
 const THEMATIC_ACCOUNT_SECTION_IDS = new Set(["thematic-account", "command-thematic-account"]);
 const LESSON_SCHEDULE_SECTION_IDS = new Set(["lesson-schedule", "command-lesson-schedule"]);
 const ADMIN_GROUPED_SUBMISSION_SECTION_IDS = new Set([
@@ -162,6 +167,56 @@ const getCustomPeriodsStorageKey = (scope, sectionId, subsectionId) =>
         subsectionId || "default"
       }`
     : null;
+
+const getLatestSubmission = (submissions = EMPTY_ARRAY) =>
+  [...submissions].sort(
+    (left, right) =>
+      new Date(right.updatedAt || right.createdAt) -
+      new Date(left.updatedAt || left.createdAt)
+  )[0] || null;
+
+const formatWeeklyCountdown = (submission, now) => {
+  const sentAt = new Date(submission?.updatedAt || submission?.createdAt || "").getTime();
+  if (!Number.isFinite(sentAt)) return "";
+
+  const remainingSeconds = Math.max(
+    0,
+    Math.ceil((sentAt + WEEKLY_SUBMISSION_WINDOW_MS - now) / 1000)
+  );
+  const days = Math.floor(remainingSeconds / 86400);
+  const hours = Math.floor((remainingSeconds % 86400) / 3600);
+  const minutes = Math.floor((remainingSeconds % 3600) / 60);
+  const seconds = remainingSeconds % 60;
+  return `${days}д ${String(hours).padStart(2, "0")}:${String(minutes).padStart(
+    2,
+    "0"
+  )}:${String(seconds).padStart(2, "0")}`;
+};
+
+const WeeklySubmissionStatus = ({ submission, now }) => {
+  const sentAt = new Date(submission?.updatedAt || submission?.createdAt || "").getTime();
+  const isSent = Number.isFinite(sentAt) &&
+    sentAt <= now &&
+    now - sentAt < WEEKLY_SUBMISSION_WINDOW_MS;
+  const countdown = formatWeeklyCountdown(submission, now);
+
+  return (
+    <span className="library-weekly-status-group">
+      <span
+        className={`library-weekly-status library-weekly-status--${
+          isSent ? "sent" : "missing"
+        }`}
+      >
+        {isSent ? "Отправлено" : "Не отправлено"}
+      </span>
+      <span className="library-weekly-countdown">
+        {isSent && countdown
+          ? `До следующей отправки: ${countdown}`
+          : "Нужно отправить сейчас"}
+      </span>
+    </span>
+  );
+};
 
 const getStoredRows = (rows, storageKey) => {
   if (!storageKey || typeof window === "undefined") {
@@ -921,6 +976,7 @@ export default function Library({ data, onBack, onRefresh, onSubmissionCreated }
   const [forwardingSubmission, setForwardingSubmission] = useState(null);
   const [submissionListError, setSubmissionListError] = useState("");
   const [deletingLessonPeriodId, setDeletingLessonPeriodId] = useState(null);
+  const [weeklyStatusNow, setWeeklyStatusNow] = useState(() => Date.now());
   const directTable = data?.table;
   const selectedSection = sections.find((section) => section.id === selectedSectionId);
   const selectedSubsections = getNestedSections(selectedSection);
@@ -976,11 +1032,27 @@ export default function Library({ data, onBack, onRefresh, onSubmissionCreated }
     currentUser?.role === "regional" &&
     selectedSection?.id === "typical-week" &&
     selectedSubsection?.id === "typical-week-military-unit";
+  const isRegionalPersonnelOutpostLocation =
+    currentUser?.role === "regional" &&
+    selectedSection?.id === "personnel-training" &&
+    ["thematic-account", "lesson-schedule"].includes(selectedSubsection?.id);
+  const isRegionalCommandOutpostLocation =
+    isRegionalCommandIncomingLocation &&
+    ["command-thematic-account", "command-lesson-schedule"].includes(
+      selectedNestedSubsection?.id
+    );
+  const isRegionalTypicalWeekOutpostLocation =
+    isRegionalTypicalWeekIncomingLocation;
+  const isRegionalOutpostBrowserLocation =
+    isRegionalPersonnelOutpostLocation ||
+    isRegionalCommandOutpostLocation ||
+    isRegionalTypicalWeekOutpostLocation;
   const submissionSectionId = data?.submissionSectionId || (
     ["typical-week-subunits", "typical-week-military-unit"].includes(activePeriodContainerId)
       ? "typical-week"
       : activePeriodContainerId
   );
+  const isWeeklyScheduleSection = WEEKLY_SCHEDULE_SECTION_IDS.has(submissionSectionId);
   const showsOutpostSubmissions =
     OUTPOST_SUBMISSION_SECTION_IDS.has(submissionSectionId) &&
     (
@@ -999,6 +1071,33 @@ export default function Library({ data, onBack, onRefresh, onSubmissionCreated }
   const sectionSubmissions = thematicSubmissions.filter(
     (submission) => submission.sectionId === submissionSectionId
   );
+  const regionalOutpostSubmissions = isRegionalOutpostBrowserLocation
+    ? sectionSubmissions.filter((submission) => submission.senderRole === "outpost")
+    : EMPTY_ARRAY;
+  const regionalOutpostNames = useMemo(
+    () => Array.from(new Set([
+      ...(OUTPOSTS_BY_MILITARY_UNIT[currentUser?.region] || []).map(([, name]) =>
+        formatOutpostName(name)
+      ),
+      ...regionalOutpostSubmissions.map((submission) =>
+        formatOutpostName(submission.outpostName)
+      ),
+    ].filter(Boolean))),
+    [currentUser?.region, regionalOutpostSubmissions]
+  );
+  const selectedRegionalOutpostSubmissions = selectedAdminOutpostName
+    ? regionalOutpostSubmissions.filter(
+        (submission) =>
+          formatOutpostName(submission.outpostName) === selectedAdminOutpostName
+      )
+    : EMPTY_ARRAY;
+  const getRegionalOutpostWeeklySubmission = (outpostName) =>
+    getLatestSubmission(
+      regionalOutpostSubmissions.filter(
+        (submission) =>
+          formatOutpostName(submission.outpostName) === outpostName
+      )
+    );
   const isAdminGroupedSubmissionSection =
     currentUser?.role === "admin" &&
     ADMIN_GROUPED_SUBMISSION_SECTION_IDS.has(submissionSectionId);
@@ -1034,6 +1133,13 @@ export default function Library({ data, onBack, onRefresh, onSubmissionCreated }
         (submission) => formatOutpostName(submission.outpostName) === selectedAdminOutpostName
       )
     : EMPTY_ARRAY;
+  const getAdminOutpostWeeklySubmission = (outpostName) =>
+    getLatestSubmission(
+      adminOutpostSubmissions.filter(
+        (submission) =>
+          formatOutpostName(submission.outpostName) === outpostName
+      )
+    );
   const visibleSubmissions = currentUser?.role === "regional"
     ? sectionSubmissions.filter((submission) => submission.senderRole === "outpost")
     : currentUser?.role === "admin"
@@ -1044,6 +1150,14 @@ export default function Library({ data, onBack, onRefresh, onSubmissionCreated }
   const outgoingRegionalSubmissions = currentUser?.role === "regional"
     ? sectionSubmissions.filter((submission) => submission.senderRole === "regional")
     : EMPTY_ARRAY;
+  const latestOwnWeeklySubmission = getLatestSubmission(
+    sectionSubmissions.filter(
+      (submission) => String(submission.senderId) === String(currentUser?.id)
+    )
+  );
+  const latestRegionalWeeklySubmission = getLatestSubmission(
+    outgoingRegionalSubmissions
+  );
   const showsRegionalOutgoingSubmissions =
     currentUser?.role === "regional" &&
     OUTPOST_SUBMISSION_SECTION_IDS.has(submissionSectionId) &&
@@ -1171,6 +1285,14 @@ export default function Library({ data, onBack, onRefresh, onSubmissionCreated }
       )
     )
   );
+
+  useEffect(() => {
+    const intervalId = window.setInterval(
+      () => setWeeklyStatusNow(Date.now()),
+      1000
+    );
+    return () => window.clearInterval(intervalId);
+  }, []);
 
   useEffect(() => {
     setSelectedSectionId(null);
@@ -2437,6 +2559,42 @@ export default function Library({ data, onBack, onRefresh, onSubmissionCreated }
     </div>
   );
 
+  const renderRegionalOutpostSubmissionRow = (submission) => (
+    <div className="module-period-row" key={`regional-outpost-submission-${submission.id}`}>
+      <button
+        className="module-period-card module-period-card--document"
+        onClick={() => setSelectedSubmission(submission)}
+        type="button"
+      >
+        <span aria-hidden="true" className="module-document-icon" />
+        <span className="module-submission-card__content">
+          <strong>{submission.documentTitle}</strong>
+          <small>{getSubmissionSenderLabel(submission)}</small>
+        </span>
+      </button>
+      <div className="module-period-actions">
+        <SubmissionEditPermissionButton
+          onUpdated={(updated) =>
+            setThematicSubmissions((items) =>
+              items.map((item) => item.id === updated.id ? updated : item)
+            )
+          }
+          submission={submission}
+        />
+        <button onClick={() => setForwardingSubmission(submission)} type="button">
+          Отправить
+        </button>
+        <button
+          disabled={deletingSubmissionId === submission.id}
+          onClick={() => handleDeleteSubmission(submission)}
+          type="button"
+        >
+          {deletingSubmissionId === submission.id ? "Өчүрүү..." : "Өчүрүү"}
+        </button>
+      </div>
+    </div>
+  );
+
   return (
     <section className="module-panel">
       <header>
@@ -2765,6 +2923,110 @@ export default function Library({ data, onBack, onRefresh, onSubmissionCreated }
             ))}
           </div>
         </div>
+      ) : isRegionalOutpostBrowserLocation ? (
+        <div className="module-table-view">
+          <button
+            className="module-back-button"
+            onClick={() => {
+              if (selectedAdminOutpostName) {
+                setSelectedAdminOutpostName(null);
+              } else {
+                handlePeriodListBack();
+              }
+            }}
+            type="button"
+          >
+            Артка
+          </button>
+          <div className="module-period-list">
+            {selectedAdminOutpostName ? (
+              <>
+                <h2>{selectedAdminOutpostName}</h2>
+                {isWeeklyScheduleSection ? (
+                  <WeeklySubmissionStatus
+                    now={weeklyStatusNow}
+                    submission={getRegionalOutpostWeeklySubmission(
+                      selectedAdminOutpostName
+                    )}
+                  />
+                ) : null}
+                <div className="module-submission-list">
+                  <h3>Заставадан жөнөтүлгөн документтер</h3>
+                  {selectedRegionalOutpostSubmissions.length > 0 ? (
+                    selectedRegionalOutpostSubmissions.map(
+                      renderRegionalOutpostSubmissionRow
+                    )
+                  ) : (
+                    <p className="module-submission-list__empty">
+                      Бул заставадан жөнөтүлгөн документтер азырынча жок.
+                    </p>
+                  )}
+                  {submissionListError && (
+                    <p className="lesson-period-dialog__error">{submissionListError}</p>
+                  )}
+                </div>
+              </>
+            ) : (
+              <>
+                <h2>{currentUser?.region} аскер бөлүгүнүн заставалары</h2>
+                {regionalOutpostNames.length > 0 ? (
+                  <div className="saved-table-list">
+                    {regionalOutpostNames.map((outpostName) => {
+                      const documentCount = regionalOutpostSubmissions.filter(
+                        (submission) =>
+                          formatOutpostName(submission.outpostName) === outpostName
+                      ).length;
+
+                      return (
+                        <button
+                          className={`saved-table-card${
+                            documentCount > 0
+                              ? " saved-table-card--with-notification"
+                              : ""
+                          }`}
+                          key={outpostName}
+                          onClick={() => setSelectedAdminOutpostName(outpostName)}
+                          type="button"
+                        >
+                          <strong>{outpostName}</strong>
+                          {isWeeklyScheduleSection ? (
+                            <WeeklySubmissionStatus
+                              now={weeklyStatusNow}
+                              submission={getRegionalOutpostWeeklySubmission(
+                                outpostName
+                              )}
+                            />
+                          ) : null}
+                          {documentCount > 0 ? (
+                            <span
+                              aria-label={`Документов: ${documentCount}`}
+                              className="combat-journal-notification-badge"
+                            >
+                              {documentCount}
+                            </span>
+                          ) : null}
+                        </button>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <p className="dashboard-state">
+                    Бул аскер бөлүгүнө катталган заставалар азырынча жок.
+                  </p>
+                )}
+              </>
+            )}
+            {isWeeklyScheduleSection ? (
+              <div className="module-submission-list">
+                <h3>Аскер бөлүгүнөн администраторго жөнөтүү</h3>
+                <WeeklySubmissionStatus
+                  now={weeklyStatusNow}
+                  submission={latestRegionalWeeklySubmission}
+                />
+              </div>
+            ) : null}
+          </div>
+        </div>
       ) : isAdminGroupedSubmissionSection ? (
         <div className="module-table-view">
           <button
@@ -2785,6 +3047,14 @@ export default function Library({ data, onBack, onRefresh, onSubmissionCreated }
           {selectedAdminOutpostName ? (
             <div className="module-period-list">
               <h2>{selectedAdminOutpostName}</h2>
+              {isWeeklyScheduleSection ? (
+                <WeeklySubmissionStatus
+                  now={weeklyStatusNow}
+                  submission={getAdminOutpostWeeklySubmission(
+                    selectedAdminOutpostName
+                  )}
+                />
+              ) : null}
               <div className="module-submission-list">
                 <h3>Заставадан жөнөтүлгөн документтер</h3>
                 {selectedAdminOutpostSubmissions.length > 0 ? (
@@ -2802,6 +3072,12 @@ export default function Library({ data, onBack, onRefresh, onSubmissionCreated }
           ) : selectedAdminUnitNumber ? (
             <div className="module-period-list">
               <h2>{selectedAdminUnitNumber} аскер бөлүгү</h2>
+              {isWeeklyScheduleSection ? (
+                <WeeklySubmissionStatus
+                  now={weeklyStatusNow}
+                  submission={getLatestSubmission(adminMilitaryUnitSubmissions)}
+                />
+              ) : null}
               <div className="module-submission-list">
                 <h3>Аскер бөлүгүнөн жөнөтүлгөн документтер</h3>
                 {adminMilitaryUnitSubmissions.length > 0 ? (
@@ -2823,6 +3099,12 @@ export default function Library({ data, onBack, onRefresh, onSubmissionCreated }
                       >
                         <span aria-hidden="true" className="module-document-icon" />
                         <strong>{outpostName}</strong>
+                        {isWeeklyScheduleSection ? (
+                          <WeeklySubmissionStatus
+                            now={weeklyStatusNow}
+                            submission={getAdminOutpostWeeklySubmission(outpostName)}
+                          />
+                        ) : null}
                       </button>
                     ))}
                   </div>
@@ -2851,6 +3133,18 @@ export default function Library({ data, onBack, onRefresh, onSubmissionCreated }
                   >
                     <span aria-hidden="true" className="module-document-icon" />
                     <strong>{unitNumber} аскер бөлүгү</strong>
+                    {isWeeklyScheduleSection ? (
+                      <WeeklySubmissionStatus
+                        now={weeklyStatusNow}
+                        submission={getLatestSubmission(
+                          sectionSubmissions.filter(
+                            (submission) =>
+                              submission.senderRole === "regional" &&
+                              String(submission.unitNumber) === String(unitNumber)
+                          )
+                        )}
+                      />
+                    ) : null}
                   </button>
                 ))
               ) : (
@@ -2867,6 +3161,20 @@ export default function Library({ data, onBack, onRefresh, onSubmissionCreated }
             Артка
           </button>
           <div className="module-period-list">
+            {isWeeklyScheduleSection &&
+            ["outpost", "regional"].includes(currentUser?.role) ? (
+              <div className="module-submission-list">
+                <h3>
+                  {currentUser?.role === "outpost"
+                    ? "Заставадан аскер бөлүгүнө жөнөтүү"
+                    : "Аскер бөлүгүнөн администраторго жөнөтүү"}
+                </h3>
+                <WeeklySubmissionStatus
+                  now={weeklyStatusNow}
+                  submission={latestOwnWeeklySubmission}
+                />
+              </div>
+            ) : null}
             {displayedPeriods.map((period) => {
               const isCustomPeriod = customPeriods.some((customPeriod) => customPeriod.id === period.id);
               const showAdminPeriodActions = canManageCustomPeriods && (period.canEdit || isCustomPeriod);

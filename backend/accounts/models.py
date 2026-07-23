@@ -304,6 +304,54 @@ class CombatTrainingJournalRevision(models.Model):
         return f"{self.document_title} — {self.created_at:%d.%m.%Y %H:%M}"
 
 
+class CombatTrainingJournalRevisionRead(models.Model):
+    revision = models.ForeignKey(
+        CombatTrainingJournalRevision,
+        on_delete=models.CASCADE,
+        related_name="reads",
+    )
+    user = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name="combat_training_journal_revision_reads",
+    )
+    read_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=("revision", "user"),
+                name="unique_combat_training_journal_revision_read",
+            )
+        ]
+        verbose_name = "Просмотр обновления журнала боевой подготовки"
+        verbose_name_plural = "Просмотры обновлений журналов боевой подготовки"
+
+
+class CombatTrainingJournalRevisionHidden(models.Model):
+    revision = models.ForeignKey(
+        CombatTrainingJournalRevision,
+        on_delete=models.CASCADE,
+        related_name="hidden_by",
+    )
+    user = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name="hidden_combat_training_journal_revisions",
+    )
+    hidden_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=("revision", "user"),
+                name="unique_hidden_combat_training_journal_revision",
+            )
+        ]
+        verbose_name = "Скрытое обновление журнала боевой подготовки"
+        verbose_name_plural = "Скрытые обновления журналов боевой подготовки"
+
+
 class SubmissionEditRequest(models.Model):
     class Status(models.TextChoices):
         PENDING = "pending", "На рассмотрении"

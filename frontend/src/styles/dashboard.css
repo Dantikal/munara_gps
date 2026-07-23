@@ -2483,6 +2483,72 @@ button.module-section-card:focus-visible {
   font-size: 12px;
 }
 
+.saved-table-card .combat-journal-daily-status-group {
+  align-items: flex-start;
+  display: inline-flex;
+  flex-direction: column;
+  gap: 4px;
+  justify-self: start;
+}
+
+.saved-table-card .combat-journal-daily-status {
+  border-radius: 999px;
+  color: #ffffff;
+  display: inline-flex;
+  font-size: 12px;
+  font-weight: 700;
+  justify-self: start;
+  line-height: 1.2;
+  padding: 5px 10px;
+}
+
+.saved-table-card .combat-journal-daily-status--updated {
+  background: #1f8a44;
+}
+
+.saved-table-card .combat-journal-daily-status--missing {
+  background: #c43d3d;
+}
+
+.saved-table-card .combat-journal-daily-countdown {
+  color: #53645d;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+
+.library-weekly-status-group {
+  align-items: flex-start;
+  display: inline-flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.library-weekly-status {
+  border-radius: 999px;
+  color: #ffffff;
+  display: inline-flex;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.2;
+  padding: 5px 10px;
+}
+
+.library-weekly-status--sent {
+  background: #1f8a44;
+}
+
+.library-weekly-status--missing {
+  background: #c43d3d;
+}
+
+.library-weekly-countdown {
+  color: #53645d;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+
 .saved-table-card__actions {
   display: flex;
   flex-wrap: wrap;

@@ -20,7 +20,9 @@ from .models import (
     CombatTrainingNewsLike,
     CombatTrainingNewsRead,
     CombatTrainingJournal,
+    CombatTrainingJournalRevisionHidden,
     CombatTrainingJournalRevision,
+    CombatTrainingJournalRevisionRead,
     CombatTrainingJournalSubject,
     CombatTrainingPlan,
     MethodicalManualDocument,
@@ -1428,7 +1430,7 @@ class CombatTrainingPlanDetailView(APIView):
         return Response(status=204)
 
 
-def thematic_submission_payload(submission):
+def thematic_submission_payload(submission, viewing_user=None):
     try:
         edit_request = submission.edit_request
     except SubmissionEditRequest.DoesNotExist:
@@ -1459,8 +1461,19 @@ def thematic_submission_payload(submission):
                 "documentTitle": revision.document_title,
                 "table": revision.table_data,
                 "createdAt": revision.created_at.isoformat(),
+                "isRead": bool(
+                    viewing_user
+                    and any(read.user_id == viewing_user.id for read in revision.reads.all())
+                ),
             }
             for revision in submission.revisions.all()
+            if not (
+                viewing_user
+                and any(
+                    hidden.user_id == viewing_user.id
+                    for hidden in revision.hidden_by.all()
+                )
+            )
         ]
     return payload
 
@@ -1482,7 +1495,10 @@ class ThematicAccountSubmissionListCreateView(APIView):
     permission_classes = [IsActiveUser]
 
     def get(self, request):
-        submissions = ThematicAccountSubmission.objects.select_related("sender").prefetch_related("revisions")
+        submissions = ThematicAccountSubmission.objects.select_related("sender").prefetch_related(
+            "revisions__reads",
+            "revisions__hidden_by",
+        )
         if request.user.role == User.Role.OUTPOST:
             submissions = submissions.filter(sender=request.user)
         elif request.user.role == User.Role.REGIONAL:
@@ -1490,7 +1506,10 @@ class ThematicAccountSubmissionListCreateView(APIView):
         elif request.user.role != User.Role.ADMIN:
             raise PermissionDenied("Нет доступа к отправленным документам.")
 
-        return Response([thematic_submission_payload(item) for item in submissions])
+        return Response([
+            thematic_submission_payload(item, request.user)
+            for item in submissions
+        ])
 
     def post(self, request):
         document_title = str(request.data.get("documentTitle") or "").strip()
@@ -1599,7 +1618,7 @@ class ThematicAccountSubmissionListCreateView(APIView):
                 table_data=copy.deepcopy(table_data),
             )
         return Response(
-            thematic_submission_payload(submission),
+            thematic_submission_payload(submission, request.user),
             status=201 if created else 200,
         )
 
@@ -1643,6 +1662,26 @@ class ThematicAccountSubmissionDetailView(APIView):
 class CombatTrainingJournalRevisionDetailView(APIView):
     permission_classes = [IsActiveUser]
 
+    def patch(self, request, pk):
+        revision = get_object_or_404(
+            CombatTrainingJournalRevision.objects.select_related("submission__sender"),
+            pk=pk,
+        )
+        submission = revision.submission
+        is_matching_regional_unit = (
+            request.user.role == User.Role.REGIONAL
+            and submission.sender.role == User.Role.OUTPOST
+            and submission.unit_number == request.user.region
+        )
+        if not is_matching_regional_unit:
+            raise PermissionDenied("Нет права отмечать это обновление прочитанным.")
+
+        CombatTrainingJournalRevisionRead.objects.get_or_create(
+            revision=revision,
+            user=request.user,
+        )
+        return Response({"id": revision.id, "isRead": True})
+
     def delete(self, request, pk):
         revision = get_object_or_404(
             CombatTrainingJournalRevision.objects.select_related("submission__sender"),
@@ -1659,7 +1698,10 @@ class CombatTrainingJournalRevisionDetailView(APIView):
         if not (is_sender or is_matching_regional_unit or is_admin):
             raise PermissionDenied("Нет права удалять это обновление журнала.")
 
-        revision.delete()
+        CombatTrainingJournalRevisionHidden.objects.get_or_create(
+            revision=revision,
+            user=request.user,
+        )
         return Response(status=204)
 
 
@@ -1690,7 +1732,23 @@ class ThematicAccountSubmissionForwardView(APIView):
             period_slug=source.period_slug,
             table_data=copy.deepcopy(source.table_data),
         )
-        return Response(thematic_submission_payload(forwarded), status=status.HTTP_201_CREATED)
+        if source.section_slug in {
+            "combat-training-personnel-journal",
+            "combat-training-command-journal",
+        }:
+            CombatTrainingJournalRevision.objects.bulk_create([
+                CombatTrainingJournalRevision(
+                    submission=forwarded,
+                    document_title=revision.document_title,
+                    table_data=copy.deepcopy(revision.table_data),
+                )
+                for revision in source.revisions.all()
+            ])
+
+        return Response(
+            thematic_submission_payload(forwarded, request.user),
+            status=status.HTTP_201_CREATED,
+        )
 
 
 class SubmissionEditRequestCreateView(APIView):

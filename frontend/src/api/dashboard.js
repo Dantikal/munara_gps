@@ -107,6 +107,14 @@ export const deleteCombatTrainingJournalRevision = async (id) => {
   await api.delete(`/dashboard/combat-training-journal-revisions/${id}/`);
 };
 
+export const markCombatTrainingJournalRevisionRead = async (id) => {
+  const { data } = await api.patch(
+    `/dashboard/combat-training-journal-revisions/${id}/`,
+    { isRead: true }
+  );
+  return data;
+};
+
 export const forwardThematicAccountSubmission = async (id, documentTitle) => {
   const { data } = await api.post(
     `/dashboard/thematic-account-submissions/${id}/forward/`,

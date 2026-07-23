@@ -242,6 +242,7 @@ class ThematicAccountSubmissionApiTests(APITestCase):
 
         self.assertEqual(response.status_code, 201)
         self.assertEqual(response.data["sectionId"], "combat-training-personnel-journal")
+        submission_id = response.data["id"]
 
         response = self.client.post(
             self.url,
@@ -266,16 +267,41 @@ class ThematicAccountSubmissionApiTests(APITestCase):
 
         revision_id = response.data["revisions"][0]["id"]
         self.client.force_authenticate(self.regional)
+        read_response = self.client.patch(
+            reverse("combat-training-journal-revision-detail", args=[revision_id]),
+            {"isRead": True},
+            format="json",
+        )
+        self.assertEqual(read_response.status_code, 200)
+        self.assertTrue(read_response.data["isRead"])
+
+        list_response = self.client.get(self.url)
+        self.assertTrue(list_response.data[0]["revisions"][0]["isRead"])
+
         delete_response = self.client.delete(
             reverse("combat-training-journal-revision-detail", args=[revision_id])
         )
         self.assertEqual(delete_response.status_code, 204)
-        self.assertEqual(CombatTrainingJournalRevision.objects.count(), 1)
+        self.assertEqual(CombatTrainingJournalRevision.objects.count(), 2)
 
+        regional_list_response = self.client.get(self.url)
+        self.assertEqual(len(regional_list_response.data[0]["revisions"]), 1)
+
+        self.client.force_authenticate(self.outpost)
         response = self.client.get(self.url)
         self.assertEqual(len(response.data), 1)
+        self.assertEqual(len(response.data[0]["revisions"]), 2)
         self.assertEqual(response.data[0]["documentTitle"], "Июль айынын күжүрмөн даярдоо журналы")
         self.assertEqual(response.data[0]["table"]["rows"][0]["hours"], "2")
+
+        self.client.force_authenticate(self.regional)
+        forward_response = self.client.post(
+            reverse("thematic-account-submission-forward", kwargs={"pk": submission_id}),
+            {"documentTitle": "Аскер бөлүгүнөн жөнөтүлгөн журнал"},
+            format="json",
+        )
+        self.assertEqual(forward_response.status_code, 201)
+        self.assertEqual(len(forward_response.data["revisions"]), 2)
 
     def test_regional_unit_can_submit_command_training_journal_to_admin(self):
         self.client.force_authenticate(self.regional)

@@ -11,6 +11,7 @@ import {
   getCombatTrainingJournals,
   getCombatTrainingJournalSubjects,
   getThematicAccountSubmissions,
+  markCombatTrainingJournalRevisionRead,
   updateCombatTrainingJournal,
 } from "../../../api/dashboard.js";
 import {
@@ -23,6 +24,7 @@ import SubmissionEditPermissionButton from "./SubmissionEditPermissionButton.jsx
 
 const DEFAULT_YEAR = "20__";
 const BLANK_UNIT = "_________________________________";
+const DAILY_UPDATE_WINDOW_MS = 24 * 60 * 60 * 1000;
 const JOURNAL_REGISTRY_STORAGE_PREFIX = "munara-combat-training-journals";
 const SUBJECT_REGISTRY_STORAGE_PREFIX = "munara-combat-training-subjects";
 const SUBJECT_SECTION_TITLE =
@@ -334,6 +336,68 @@ const openCardWithKeyboard = (event, openCard) => {
   }
 };
 
+const getLatestRevision = (submission) =>
+  [...(submission?.revisions || [])].sort(
+    (left, right) => new Date(right.createdAt) - new Date(left.createdAt)
+  )[0] || null;
+
+const hasUnreadJournalUpdate = (submission) => {
+  const latestRevision = getLatestRevision(submission);
+  return Boolean(latestRevision && !latestRevision.isRead);
+};
+
+const isUpdatedWithin24Hours = (updatedAt, now) => {
+  const updatedTime = new Date(updatedAt || "").getTime();
+  return Number.isFinite(updatedTime) &&
+    updatedTime <= now &&
+    now - updatedTime < DAILY_UPDATE_WINDOW_MS;
+};
+
+const formatDailyUpdateCountdown = (updatedAt, now) => {
+  const updatedTime = new Date(updatedAt || "").getTime();
+  if (!Number.isFinite(updatedTime)) {
+    return "";
+  }
+
+  const remainingSeconds = Math.max(
+    0,
+    Math.ceil((updatedTime + DAILY_UPDATE_WINDOW_MS - now) / 1000)
+  );
+  const hours = Math.floor(remainingSeconds / 3600);
+  const minutes = Math.floor((remainingSeconds % 3600) / 60);
+  const seconds = remainingSeconds % 60;
+  return [hours, minutes, seconds]
+    .map((value) => String(value).padStart(2, "0"))
+    .join(":");
+};
+
+const getLatestSubmissionUpdatedAt = (submissions = []) =>
+  submissions.reduce((latest, submission) => {
+    const updatedAt = submission.updatedAt || submission.createdAt || "";
+    return new Date(updatedAt) > new Date(latest || 0) ? updatedAt : latest;
+  }, "");
+
+const JournalDailyStatus = ({ updatedAt, now }) => {
+  const isUpdated = isUpdatedWithin24Hours(updatedAt, now);
+  const countdown = formatDailyUpdateCountdown(updatedAt, now);
+  return (
+    <span className="combat-journal-daily-status-group">
+      <span
+        className={`combat-journal-daily-status combat-journal-daily-status--${
+          isUpdated ? "updated" : "missing"
+        }`}
+      >
+        {isUpdated ? "Обновлено" : "Еще не обновлено"}
+      </span>
+      <span className="combat-journal-daily-countdown">
+        {isUpdated && countdown
+          ? `До следующего обновления: ${countdown}`
+          : "Нужно обновить сейчас"}
+      </span>
+    </span>
+  );
+};
+
 export default function CombatTrainingJournal({ data, methodicalSubjects = [], user }) {
   const [year, setYear] = useState(DEFAULT_YEAR);
   const [unitName, setUnitName] = useState(getDefaultUnitName(user));
@@ -366,6 +430,7 @@ export default function CombatTrainingJournal({ data, methodicalSubjects = [], u
   const [deletingRevisionId, setDeletingRevisionId] = useState(null);
   const [deletingJournalId, setDeletingJournalId] = useState(null);
   const [forwardingSubmission, setForwardingSubmission] = useState(null);
+  const [dailyStatusNow, setDailyStatusNow] = useState(() => Date.now());
   const selectedCategory = JOURNAL_CATEGORIES.find(
     (category) => category.id === selectedJournalCategory
   );
@@ -392,7 +457,9 @@ export default function CombatTrainingJournal({ data, methodicalSubjects = [], u
       journalNotificationSubmissions
         .filter(
           (submission) =>
-            submission.sectionId === sectionId && submission.senderRole === "outpost"
+            submission.sectionId === sectionId &&
+            submission.senderRole === "outpost" &&
+            hasUnreadJournalUpdate(submission)
         )
         .map((submission) => `${submission.senderId}:${submission.periodId}`)
     ).size;
@@ -559,12 +626,11 @@ export default function CombatTrainingJournal({ data, methodicalSubjects = [], u
   const journalUpdates = journalSubmissions
     .filter(
       (submission) =>
-        submission.periodId?.startsWith(`${selectedJournalStorageId}:subject:`) &&
         (!user?.id || String(submission.senderId) === String(user.id))
     )
     .flatMap((submission) => {
       const subject = subjects.find(
-        (item) => getSubjectSubmissionPeriodId(selectedJournal, item) === submission.periodId
+        (item) => submission.periodId?.endsWith(`:subject:${item.id}`)
       );
       const subjectTitle = subject
         ? getJournalSubjectTitle(subject)
@@ -578,6 +644,65 @@ export default function CombatTrainingJournal({ data, methodicalSubjects = [], u
       }));
     })
     .sort((left, right) => new Date(right.createdAt) - new Date(left.createdAt));
+
+  const markRevisionAsRead = (submissionId, revisionId) => {
+    const sourceSubmission = [
+      ...journalSubmissions,
+      ...journalNotificationSubmissions,
+    ].find((submission) => submission.id === submissionId);
+
+    if (
+      user?.role !== "regional" ||
+      sourceSubmission?.senderRole !== "outpost" ||
+      !revisionId
+    ) {
+      return;
+    }
+
+    const markInState = (items) => items.map((submission) =>
+      submission.id === submissionId
+        ? {
+            ...submission,
+            revisions: (submission.revisions || []).map((revision) =>
+              revision.id === revisionId
+                ? { ...revision, isRead: true }
+                : revision
+            ),
+          }
+        : submission
+    );
+
+    setJournalSubmissions(markInState);
+    setJournalNotificationSubmissions(markInState);
+    markCombatTrainingJournalRevisionRead(revisionId).catch(() => {
+      loadJournalSubmissions();
+    });
+  };
+
+  useEffect(() => {
+    const intervalId = window.setInterval(
+      () => setDailyStatusNow(Date.now()),
+      1000
+    );
+    return () => window.clearInterval(intervalId);
+  }, []);
+
+  const openJournalSubmission = (submission) => {
+    const latestRevision = getLatestRevision(submission);
+    if (submission?.senderRole === "outpost" && latestRevision) {
+      markRevisionAsRead(submission.id, latestRevision.id);
+    }
+    setSelectedJournalSubmission(submission);
+  };
+
+  const openJournalRevision = (revision) => {
+    markRevisionAsRead(revision.submissionId, revision.id);
+    setSelectedJournalSubmission({
+      ...revision,
+      id: `revision-${revision.key}`,
+      documentTitle: revision.subjectTitle,
+    });
+  };
 
   const journalData = useMemo(() => {
     if (!selectedJournal || !selectedSubject || !data?.table) {
@@ -655,6 +780,7 @@ export default function CombatTrainingJournal({ data, methodicalSubjects = [], u
             submission,
             ...items.filter((item) => item.id !== submission.id),
           ]);
+          setDailyStatusNow(Date.now());
           setSelectedSubject(null);
         }}
       />
@@ -1057,6 +1183,10 @@ export default function CombatTrainingJournal({ data, methodicalSubjects = [], u
                     Последнее обновление: {formatCreatedAt(getSubjectLastUpdatedAt(subject))}
                   </span>
                 ) : null}
+                <JournalDailyStatus
+                  now={dailyStatusNow}
+                  updatedAt={getSubjectLastUpdatedAt(subject)}
+                />
                 {formatCreatedAt(subject.createdAt) && (
                   <span>{"\u0421\u043e\u0437\u0434\u0430\u043d\u043e"}: {formatCreatedAt(subject.createdAt)}</span>
                 )}
@@ -1077,18 +1207,10 @@ export default function CombatTrainingJournal({ data, methodicalSubjects = [], u
               <article
                 className="saved-table-card"
                 key={revision.key}
-                onClick={() => setSelectedJournalSubmission({
-                  ...revision,
-                  id: `revision-${revision.key}`,
-                  documentTitle: revision.subjectTitle,
-                })}
+                onClick={() => openJournalRevision(revision)}
                 onKeyDown={(event) => openCardWithKeyboard(
                   event,
-                  () => setSelectedJournalSubmission({
-                    ...revision,
-                    id: `revision-${revision.key}`,
-                    documentTitle: revision.subjectTitle,
-                  })
+                  () => openJournalRevision(revision)
                 )}
                 role="button"
                 tabIndex={0}
@@ -1139,7 +1261,7 @@ export default function CombatTrainingJournal({ data, methodicalSubjects = [], u
   };
 
   async function handleDeleteJournalRevision(revision) {
-    if (!window.confirm("Удалить это обновление из истории?")) {
+    if (!window.confirm("Удалить это обновление из своей истории?")) {
       return;
     }
 
@@ -1147,7 +1269,7 @@ export default function CombatTrainingJournal({ data, methodicalSubjects = [], u
     setJournalSubmissionError("");
     try {
       await deleteCombatTrainingJournalRevision(revision.id);
-      setJournalSubmissions((items) => items.map((submission) =>
+      const removeRevisionFromState = (items) => items.map((submission) =>
         submission.id === revision.submissionId
           ? {
               ...submission,
@@ -1156,7 +1278,9 @@ export default function CombatTrainingJournal({ data, methodicalSubjects = [], u
               ),
             }
           : submission
-      ));
+      );
+      setJournalSubmissions(removeRevisionFromState);
+      setJournalNotificationSubmissions(removeRevisionFromState);
     } catch {
       setJournalSubmissionError("Не удалось удалить обновление журнала.");
     } finally {
@@ -1173,10 +1297,10 @@ export default function CombatTrainingJournal({ data, methodicalSubjects = [], u
       <article
         className="saved-table-card"
         key={`journal-submission-${submission.id}`}
-        onClick={() => setSelectedJournalSubmission(submission)}
+        onClick={() => openJournalSubmission(submission)}
         onKeyDown={(event) => openCardWithKeyboard(
           event,
-          () => setSelectedJournalSubmission(submission),
+          () => openJournalSubmission(submission),
         )}
         role="button"
         tabIndex={0}
@@ -1184,6 +1308,10 @@ export default function CombatTrainingJournal({ data, methodicalSubjects = [], u
         <strong>{submission.documentTitle}</strong>
         <span>{getSubmissionSenderLabel(submission)}</span>
         <span>Заполнено</span>
+        <JournalDailyStatus
+          now={dailyStatusNow}
+          updatedAt={submission.updatedAt || submission.createdAt}
+        />
         <div
           className="saved-table-card__actions"
           onClick={(event) => event.stopPropagation()}
@@ -1230,11 +1358,21 @@ export default function CombatTrainingJournal({ data, methodicalSubjects = [], u
       const getUpdatedSubjectCount = (outpostName) => new Set(
         incomingSubmissions
           .filter(
-            (submission) => formatOutpostName(submission.outpostName) === outpostName
+            (submission) =>
+              formatOutpostName(submission.outpostName) === outpostName &&
+              hasUnreadJournalUpdate(submission)
           )
           .map((submission) => submission.periodId)
           .filter(Boolean)
       ).size;
+      const getOutpostLastUpdatedAt = (outpostName) => incomingSubmissions
+        .filter(
+          (submission) => formatOutpostName(submission.outpostName) === outpostName
+        )
+        .reduce((latest, submission) => {
+          const updatedAt = submission.updatedAt || submission.createdAt || "";
+          return new Date(updatedAt) > new Date(latest || 0) ? updatedAt : latest;
+        }, "");
 
       if (!selectedAdminOutpostName) {
         return (
@@ -1263,6 +1401,21 @@ export default function CombatTrainingJournal({ data, methodicalSubjects = [], u
                 >
                   <strong>Предметтер</strong>
                   <span>Аскер бөлүгүнүн журналдары жана жаңыртуулары</span>
+                  <JournalDailyStatus
+                    now={dailyStatusNow}
+                    updatedAt={journalSubmissions
+                      .filter(
+                        (submission) =>
+                          submission.senderRole === "regional" &&
+                          String(submission.senderId) === String(user?.id)
+                      )
+                      .reduce((latest, submission) => {
+                        const updatedAt = submission.updatedAt || submission.createdAt || "";
+                        return new Date(updatedAt) > new Date(latest || 0)
+                          ? updatedAt
+                          : latest;
+                      }, "")}
+                  />
                 </article>
               </div>
             ) : null}
@@ -1284,6 +1437,10 @@ export default function CombatTrainingJournal({ data, methodicalSubjects = [], u
                   type="button"
                 >
                   <strong>{outpostName}</strong>
+                  <JournalDailyStatus
+                    now={dailyStatusNow}
+                    updatedAt={getOutpostLastUpdatedAt(outpostName)}
+                  />
                   {getUpdatedSubjectCount(outpostName) > 0 ? (
                     <span
                       aria-label={`Обновлено предметов: ${getUpdatedSubjectCount(outpostName)}`}
@@ -1336,7 +1493,7 @@ export default function CombatTrainingJournal({ data, methodicalSubjects = [], u
                   onClick={() => {
                     if (submission) {
                       setEmptySubjectNotice("");
-                      setSelectedJournalSubmission(submission);
+                      openJournalSubmission(submission);
                     } else {
                       setEmptySubjectNotice(
                         `В предмете «${subject.title}» ещё нет обновлений.`
@@ -1351,6 +1508,10 @@ export default function CombatTrainingJournal({ data, methodicalSubjects = [], u
                       ? `Последнее обновление: ${formatCreatedAt(submission.updatedAt || submission.createdAt)}`
                       : "Обновлений пока нет"}
                   </span>
+                  <JournalDailyStatus
+                    now={dailyStatusNow}
+                    updatedAt={submission?.updatedAt || submission?.createdAt}
+                  />
                 </button>
               );
             })}
@@ -1358,25 +1519,17 @@ export default function CombatTrainingJournal({ data, methodicalSubjects = [], u
           {emptySubjectNotice ? (
             <p className="dashboard-state">{emptySubjectNotice}</p>
           ) : null}
-          <h3>История обновлений</h3>
+          <h3>Обновления журнала</h3>
           {outpostUpdates.length > 0 ? (
             <div className="saved-table-list">
               {outpostUpdates.map((revision) => (
                 <article
                   className="saved-table-card"
                   key={revision.key}
-                  onClick={() => setSelectedJournalSubmission({
-                    ...revision,
-                    id: `revision-${revision.key}`,
-                    documentTitle: revision.subjectTitle,
-                  })}
+                  onClick={() => openJournalRevision(revision)}
                   onKeyDown={(event) => openCardWithKeyboard(
                     event,
-                    () => setSelectedJournalSubmission({
-                      ...revision,
-                      id: `revision-${revision.key}`,
-                      documentTitle: revision.subjectTitle,
-                    })
+                    () => openJournalRevision(revision)
                   )}
                   role="button"
                   tabIndex={0}
@@ -1472,6 +1625,21 @@ export default function CombatTrainingJournal({ data, methodicalSubjects = [], u
           }));
         })
         .sort((left, right) => new Date(right.createdAt) - new Date(left.createdAt));
+      const getAdminUnitLastUpdatedAt = (unitNumber) =>
+        getLatestSubmissionUpdatedAt(
+          journalSubmissions.filter(
+            (submission) =>
+              String(submission.unitNumber) === String(unitNumber) &&
+              submission.senderRole === "regional"
+          )
+        );
+      const getAdminOutpostLastUpdatedAt = (outpostName) =>
+        getLatestSubmissionUpdatedAt(
+          outpostSubmissions.filter(
+            (submission) =>
+              formatOutpostName(submission.outpostName) === outpostName
+          )
+        );
 
       if (!selectedAdminUnitNumber) {
         return (
@@ -1488,6 +1656,10 @@ export default function CombatTrainingJournal({ data, methodicalSubjects = [], u
                 type="button"
               >
                 <strong>{unitNumber} аскер бөлүгү</strong>
+                <JournalDailyStatus
+                  now={dailyStatusNow}
+                  updatedAt={getAdminUnitLastUpdatedAt(unitNumber)}
+                />
               </button>
             ))}
           </div>
@@ -1509,7 +1681,7 @@ export default function CombatTrainingJournal({ data, methodicalSubjects = [], u
                     onClick={() => {
                       if (submission) {
                         setEmptySubjectNotice("");
-                        setSelectedJournalSubmission(submission);
+                        openJournalSubmission(submission);
                       } else {
                         setEmptySubjectNotice(
                           `В предмете «${subject.title}» ещё нет обновлений.`
@@ -1524,6 +1696,10 @@ export default function CombatTrainingJournal({ data, methodicalSubjects = [], u
                         ? `Последнее обновление: ${formatCreatedAt(submission.updatedAt || submission.createdAt)}`
                         : "Обновлений пока нет"}
                     </span>
+                    <JournalDailyStatus
+                      now={dailyStatusNow}
+                      updatedAt={submission?.updatedAt || submission?.createdAt}
+                    />
                   </button>
                 );
               })}
@@ -1531,25 +1707,17 @@ export default function CombatTrainingJournal({ data, methodicalSubjects = [], u
             {emptySubjectNotice ? (
               <p className="dashboard-state">{emptySubjectNotice}</p>
             ) : null}
-            <h3>История обновлений</h3>
+            <h3>Обновления журнала</h3>
             {adminOutpostUpdates.length > 0 ? (
               <div className="saved-table-list">
                 {adminOutpostUpdates.map((revision) => (
                   <article
                     className="saved-table-card"
                     key={revision.key}
-                    onClick={() => setSelectedJournalSubmission({
-                      ...revision,
-                      id: `revision-${revision.key}`,
-                      documentTitle: revision.subjectTitle,
-                    })}
+                    onClick={() => openJournalRevision(revision)}
                     onKeyDown={(event) => openCardWithKeyboard(
                       event,
-                      () => setSelectedJournalSubmission({
-                        ...revision,
-                        id: `revision-${revision.key}`,
-                        documentTitle: revision.subjectTitle,
-                      })
+                      () => openJournalRevision(revision)
                     )}
                     role="button"
                     tabIndex={0}
@@ -1594,7 +1762,7 @@ export default function CombatTrainingJournal({ data, methodicalSubjects = [], u
                     onClick={() => {
                       if (submission) {
                         setEmptySubjectNotice("");
-                        setSelectedJournalSubmission(submission);
+                        openJournalSubmission(submission);
                       } else {
                         setEmptySubjectNotice(
                           `В предмете «${subject.title}» ещё нет обновлений.`
@@ -1609,6 +1777,10 @@ export default function CombatTrainingJournal({ data, methodicalSubjects = [], u
                         ? `Последнее обновление: ${formatCreatedAt(submission.updatedAt || submission.createdAt)}`
                         : "Обновлений пока нет"}
                     </span>
+                    <JournalDailyStatus
+                      now={dailyStatusNow}
+                      updatedAt={submission?.updatedAt || submission?.createdAt}
+                    />
                   </button>
                 );
               })}
@@ -1616,25 +1788,17 @@ export default function CombatTrainingJournal({ data, methodicalSubjects = [], u
             {emptySubjectNotice ? (
               <p className="dashboard-state">{emptySubjectNotice}</p>
             ) : null}
-            <h3>История обновлений</h3>
+            <h3>Обновления журнала</h3>
             {adminUnitUpdates.length > 0 ? (
               <div className="saved-table-list">
                 {adminUnitUpdates.map((revision) => (
                   <article
                     className="saved-table-card"
                     key={revision.key}
-                    onClick={() => setSelectedJournalSubmission({
-                      ...revision,
-                      id: `revision-${revision.key}`,
-                      documentTitle: revision.subjectTitle,
-                    })}
+                    onClick={() => openJournalRevision(revision)}
                     onKeyDown={(event) => openCardWithKeyboard(
                       event,
-                      () => setSelectedJournalSubmission({
-                        ...revision,
-                        id: `revision-${revision.key}`,
-                        documentTitle: revision.subjectTitle,
-                      })
+                      () => openJournalRevision(revision)
                     )}
                     role="button"
                     tabIndex={0}
@@ -1685,6 +1849,10 @@ export default function CombatTrainingJournal({ data, methodicalSubjects = [], u
               >
                 <strong>Предметтер</strong>
                 <span>Аскер бөлүгүнүн предметтери жана жаңыртуулары</span>
+                <JournalDailyStatus
+                  now={dailyStatusNow}
+                  updatedAt={getLatestSubmissionUpdatedAt(militaryUnitSubmissions)}
+                />
               </article>
             </div>
           ) : (
@@ -1717,6 +1885,10 @@ export default function CombatTrainingJournal({ data, methodicalSubjects = [], u
                   type="button"
                 >
                   <strong>{outpostName}</strong>
+                  <JournalDailyStatus
+                    now={dailyStatusNow}
+                    updatedAt={getAdminOutpostLastUpdatedAt(outpostName)}
+                  />
                   {getAdminOutpostUpdatedSubjectCount(outpostName) > 0 ? (
                     <span
                       aria-label={`Обновлено предметов: ${getAdminOutpostUpdatedSubjectCount(outpostName)}`}

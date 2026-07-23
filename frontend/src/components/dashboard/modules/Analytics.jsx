@@ -162,6 +162,20 @@ export default function Analytics({ data, user }) {
     user?.role === "regional" && selectedAnalyticsScope === "regional-unit"
       ? currentRegionalOutgoingSubmissions
       : currentAnalysisSubmissions;
+  const regionalOutpostNames = Array.from(new Set([
+    ...(OUTPOSTS_BY_MILITARY_UNIT[user?.region] || []).map(([, name]) =>
+      formatOutpostName(name)
+    ),
+    ...currentAnalysisSubmissions.map((submission) =>
+      formatOutpostName(submission.outpostName)
+    ),
+  ].filter(Boolean)));
+  const selectedRegionalAnalysisSubmissions = selectedAdminOutpostName
+    ? currentAnalysisSubmissions.filter(
+        (submission) =>
+          formatOutpostName(submission.outpostName) === selectedAdminOutpostName
+      )
+    : [];
   const currentAdminAnalysisSubmissions = selectedSectionId && user?.role === "admin"
     ? analysisSubmissions.filter(
         (submission) =>
@@ -2151,6 +2165,177 @@ export default function Analytics({ data, user }) {
                 )}
               </div>
             )}
+          </>
+        ) : isRegionalSubunitAnalysis ? (
+          <>
+            {selectedAdminOutpostName ? (
+              <div className="module-submission-list">
+                <h2>{selectedAdminOutpostName}</h2>
+                <h3>Заставадан жөнөтүлгөн талдоолор</h3>
+                {selectedRegionalAnalysisSubmissions.length > 0 ? (
+                  <div className="saved-table-list">
+                    {selectedRegionalAnalysisSubmissions.map((submission) => (
+                      <article
+                        className="saved-table-card"
+                        key={`regional-analysis-${submission.id}`}
+                        onClick={() => openAnalysisSubmission(submission)}
+                        onKeyDown={(event) => {
+                          if (event.key === "Enter" || event.key === " ") {
+                            event.preventDefault();
+                            openAnalysisSubmission(submission);
+                          }
+                        }}
+                        role="button"
+                        tabIndex={0}
+                      >
+                        <strong>{submission.documentTitle}</strong>
+                        <span>
+                          {submission.table?.document?.title || submission.table?.sectionTitle}
+                        </span>
+                        <div
+                          className="saved-table-card__actions"
+                          onClick={(event) => event.stopPropagation()}
+                          onKeyDown={(event) => event.stopPropagation()}
+                        >
+                          <SubmissionEditPermissionButton
+                            onUpdated={(updated) =>
+                              setAnalysisSubmissions((items) =>
+                                items.map((item) => item.id === updated.id ? updated : item)
+                              )
+                            }
+                            submission={submission}
+                          />
+                          <button
+                            onClick={() => setForwardingSubmission(submission)}
+                            type="button"
+                          >
+                            Отправить
+                          </button>
+                          <button
+                            disabled={deletingAnalysisSubmissionId === submission.id}
+                            onClick={() => handleDeleteAnalysisSubmission(submission)}
+                            type="button"
+                          >
+                            {deletingAnalysisSubmissionId === submission.id
+                              ? "Өчүрүү..."
+                              : "Өчүрүү"}
+                          </button>
+                        </div>
+                      </article>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="dashboard-state">
+                    Бул заставадан жөнөтүлгөн талдоолор азырынча жок.
+                  </p>
+                )}
+              </div>
+            ) : (
+              <>
+                <div className="module-period-list">
+                  <h2>{user?.region} аскер бөлүгүнүн заставалары</h2>
+                  {regionalOutpostNames.length > 0 ? (
+                    <div className="saved-table-list">
+                      {regionalOutpostNames.map((outpostName) => {
+                        const documentCount = currentAnalysisSubmissions.filter(
+                          (submission) =>
+                            formatOutpostName(submission.outpostName) === outpostName
+                        ).length;
+
+                        return (
+                          <button
+                            className={`saved-table-card${
+                              documentCount > 0
+                                ? " saved-table-card--with-notification"
+                                : ""
+                            }`}
+                            key={outpostName}
+                            onClick={() => setSelectedAdminOutpostName(outpostName)}
+                            type="button"
+                          >
+                            <strong>{outpostName}</strong>
+                            {documentCount > 0 ? (
+                              <span
+                                aria-label={`Документов: ${documentCount}`}
+                                className="combat-journal-notification-badge"
+                              >
+                                {documentCount}
+                              </span>
+                            ) : null}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <p className="dashboard-state">
+                      Бул аскер бөлүгүнө катталган заставалар азырынча жок.
+                    </p>
+                  )}
+                </div>
+                <div className="module-submission-list">
+                  <h3>Чыгыш</h3>
+                  {currentRegionalOutgoingSubmissions.length > 0 ? (
+                    <div className="saved-table-list">
+                      {currentRegionalOutgoingSubmissions.map((submission) => (
+                        <article
+                          className="saved-table-card"
+                          key={`analysis-outgoing-${submission.id}`}
+                          onClick={() => openAnalysisSubmission(submission)}
+                          onKeyDown={(event) => {
+                            if (event.key === "Enter" || event.key === " ") {
+                              event.preventDefault();
+                              openAnalysisSubmission(submission);
+                            }
+                          }}
+                          role="button"
+                          tabIndex={0}
+                        >
+                          <strong>{submission.documentTitle}</strong>
+                          <div
+                            className="saved-table-card__actions"
+                            onClick={(event) => event.stopPropagation()}
+                            onKeyDown={(event) => event.stopPropagation()}
+                          >
+                            <SubmissionEditPermissionButton
+                              onUpdated={(updated) =>
+                                setAnalysisSubmissions((items) =>
+                                  items.map((item) => item.id === updated.id ? updated : item)
+                                )
+                              }
+                              submission={submission}
+                            />
+                            <button
+                              disabled={deletingAnalysisSubmissionId === submission.id}
+                              onClick={() => handleDeleteAnalysisSubmission(submission)}
+                              type="button"
+                            >
+                              {deletingAnalysisSubmissionId === submission.id
+                                ? "Өчүрүү..."
+                                : "Өчүрүү"}
+                            </button>
+                          </div>
+                        </article>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="dashboard-state">
+                      Жөнөтүлгөн документтер азырынча жок.
+                    </p>
+                  )}
+                </div>
+              </>
+            )}
+            <SubmissionForwardDialog
+              onClose={() => setForwardingSubmission(null)}
+              onForward={async (submission, title) => {
+                const forwarded = await forwardThematicAccountSubmission(
+                  submission.id,
+                  title
+                );
+                setAnalysisSubmissions((items) => [forwarded, ...items]);
+              }}
+              submission={forwardingSubmission}
+            />
           </>
         ) : analyticsSections.some((section) => section.id === selectedSection.id) ? (
           <>
