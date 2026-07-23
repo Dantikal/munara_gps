@@ -23,6 +23,8 @@ const adminItems = [
   { id: "library", label: "Сабактардын тематикасынын эсеби жана жүгүртмөсү" },
   { id: "combatTrainingJournal", label: "Күжүрмөн даярдоону каттоо журналы" },
   { id: "combatTrainingResults", label: "Күжүрмөн даярдоонун жыйынтыктары ( көзөмөл сабактары, көзөмөл текшерүү сабактары)" },
+  { id: "meetings", label: "Жыйындар" },
+  { id: "youngSoldierTrainingCourse", label: "Жаш жоокерлерди даярдоо курсу" },
   { id: "combatTrainingAnalytics", label: "Күжүрмөн даярдоонун талдоолору (1 айдын, окуу мезгилинин, окуу жылынын)" },
   { id: "smr", label: "Күжүрмөн даярдоо боюнча усулдук колдонмолор" },
   { id: "combatTrainingPlan", label: "Күжүрмөн даярдоонун пландалган иш-чаралары" },
@@ -55,6 +57,13 @@ const fieldItems = [
   { id: "contactAdmin", label: "Администратор менен байланыш" },
 ];
 
+const regionalItems = [
+  ...fieldItems.slice(0, 3),
+  { id: "meetings", label: "Жыйындар" },
+  { id: "youngSoldierTrainingCourse", label: "Жаш жоокерлерди даярдоо курсу" },
+  ...fieldItems.slice(3),
+];
+
 export default function Sidebar({
   role,
   activeItem,
@@ -73,7 +82,7 @@ export default function Sidebar({
   const sections =
     role === "admin"
       ? getAdminSections(pendingCount)
-      : [{ id: "field", items: fieldItems }];
+      : [{ id: "field", items: role === "regional" ? regionalItems : fieldItems }];
   const hiddenItemIds = new Set(
     modules && !modules.combatTrainingJournal ? ["combatTrainingJournal"] : []
   );

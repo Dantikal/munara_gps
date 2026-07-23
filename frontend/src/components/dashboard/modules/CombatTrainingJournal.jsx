@@ -79,7 +79,7 @@ const makeEditableHeaderRows = (headerRows) =>
     )
   );
 
-const buildSubjectJournalTable = (title, options = {}) => {
+export const buildSubjectJournalTable = (title, options = {}) => {
   const { enableCellColoring = false, hideDate = false } = options;
   const mainHeaderRowSpan = hideDate ? 3 : 4;
   const labels = {

@@ -2517,14 +2517,22 @@ button.module-section-card:focus-visible {
   font-weight: 600;
 }
 
-.library-weekly-status-group {
+.library-weekly-status-group,
+.analysis-monthly-status-group,
+.analysis-period-status-group,
+.results-monthly-status-group,
+.results-cycle-status-group {
   align-items: flex-start;
   display: inline-flex;
   flex-direction: column;
   gap: 4px;
 }
 
-.library-weekly-status {
+.library-weekly-status,
+.analysis-monthly-status,
+.analysis-period-status,
+.results-monthly-status,
+.results-cycle-status {
   border-radius: 999px;
   color: #ffffff;
   display: inline-flex;
@@ -2534,19 +2542,42 @@ button.module-section-card:focus-visible {
   padding: 5px 10px;
 }
 
-.library-weekly-status--sent {
+.library-weekly-status--sent,
+.analysis-monthly-status--sent,
+.analysis-period-status--sent,
+.results-monthly-status--sent,
+.results-cycle-status--sent {
   background: #1f8a44;
 }
 
-.library-weekly-status--missing {
+.library-weekly-status--missing,
+.analysis-monthly-status--missing,
+.analysis-period-status--missing,
+.results-monthly-status--missing,
+.results-cycle-status--missing {
   background: #c43d3d;
 }
 
-.library-weekly-countdown {
+.library-weekly-countdown,
+.analysis-monthly-countdown,
+.analysis-period-countdown,
+.results-monthly-countdown,
+.results-cycle-countdown {
   color: #53645d;
   font-size: 12px;
   font-variant-numeric: tabular-nums;
   font-weight: 600;
+}
+
+.analysis-section-card__open .analysis-monthly-status-group,
+.analysis-section-card__open .analysis-period-status-group,
+.module-document-card .analysis-monthly-status-group,
+.module-document-card .analysis-period-status-group,
+.module-section-card .results-monthly-status-group,
+.module-document-card .results-monthly-status-group,
+.module-section-card .results-cycle-status-group,
+.module-document-card .results-cycle-status-group {
+  margin-left: auto;
 }
 
 .saved-table-card__actions {

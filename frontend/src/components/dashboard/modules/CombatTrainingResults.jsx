@@ -18,12 +18,177 @@ import SubmissionEditPermissionButton from "./SubmissionEditPermissionButton.jsx
 const EMPTY_ARRAY = [];
 const STORAGE_KEY = "combat-training-results-custom-periods";
 const HIDDEN_DEFAULT_PERIOD_TITLES = new Set(["1-ай", "1 ай"]);
+const OBSERVATION_SECTION_ID = "observation";
+const INSPECTION_SECTION_ID = "inspection";
+const OBSERVATION_MONTHLY_DEADLINE_DAY = 29;
 const SIGNATURE_SLOTS = [
   { id: "captain", top: 318, buttonTop: 330 },
   { id: "lieutenant", top: 405, buttonTop: 417 },
 ];
 const DEFAULT_DOCUMENT_TITLE =
   "20___ аскер бөлүгүнүн ______ чек ара заставасынын (топ, бөлүкчө, взвод, рота)\nЧек ара тактикасы боюнча көзөмөл сабагынын\nВЕДОМОСТУ";
+
+const getLatestResultSubmission = (submissions = []) =>
+  [...submissions].sort(
+    (left, right) =>
+      new Date(right.updatedAt || right.createdAt) -
+      new Date(left.updatedAt || left.createdAt)
+  )[0] || null;
+
+const getObservationMonthlyDeadline = (now) => {
+  const current = new Date(now);
+  let deadline = new Date(
+    current.getFullYear(),
+    current.getMonth(),
+    OBSERVATION_MONTHLY_DEADLINE_DAY,
+    23,
+    59,
+    59,
+    999
+  );
+
+  if (current.getTime() > deadline.getTime()) {
+    deadline = new Date(
+      current.getFullYear(),
+      current.getMonth() + 1,
+      OBSERVATION_MONTHLY_DEADLINE_DAY,
+      23,
+      59,
+      59,
+      999
+    );
+  }
+
+  return deadline;
+};
+
+const isObservationSubmittedThisMonth = (submission, now) => {
+  const sentAt = new Date(
+    submission?.updatedAt || submission?.createdAt || ""
+  ).getTime();
+  if (!Number.isFinite(sentAt) || sentAt > now) return false;
+
+  const deadline = getObservationMonthlyDeadline(now);
+  const previousDeadline = new Date(
+    deadline.getFullYear(),
+    deadline.getMonth() - 1,
+    OBSERVATION_MONTHLY_DEADLINE_DAY,
+    23,
+    59,
+    59,
+    999
+  ).getTime();
+
+  return sentAt > previousDeadline;
+};
+
+const formatObservationMonthlyCountdown = (now) => {
+  const remainingSeconds = Math.max(
+    0,
+    Math.ceil((getObservationMonthlyDeadline(now).getTime() - now) / 1000)
+  );
+  const days = Math.floor(remainingSeconds / 86400);
+  const hours = Math.floor((remainingSeconds % 86400) / 3600);
+  const minutes = Math.floor((remainingSeconds % 3600) / 60);
+  const seconds = remainingSeconds % 60;
+
+  return `${days}д ${String(hours).padStart(2, "0")}:${String(minutes).padStart(
+    2,
+    "0"
+  )}:${String(seconds).padStart(2, "0")}`;
+};
+
+const ObservationMonthlySubmissionStatus = ({ submission, now }) => {
+  const isSubmitted = isObservationSubmittedThisMonth(submission, now);
+
+  return (
+    <span className="results-monthly-status-group">
+      <span
+        className={`results-monthly-status results-monthly-status--${
+          isSubmitted ? "sent" : "missing"
+        }`}
+      >
+        {isSubmitted ? "Отправлено" : "Не отправлено"}
+      </span>
+      <span className="results-monthly-countdown">
+        До 29 числа: {formatObservationMonthlyCountdown(now)}
+      </span>
+    </span>
+  );
+};
+
+const getInspectionReportingCycle = (now) => {
+  const current = new Date(now);
+  const year = current.getFullYear();
+  const month = current.getMonth();
+
+  if (month >= 9) {
+    return {
+      startedAt: new Date(year, 9, 1, 0, 0, 0, 0),
+      endsAt: new Date(year + 1, 3, 1, 0, 0, 0, 0),
+      nextMonthLabel: "апреля",
+    };
+  }
+
+  if (month >= 3) {
+    return {
+      startedAt: new Date(year, 3, 1, 0, 0, 0, 0),
+      endsAt: new Date(year, 9, 1, 0, 0, 0, 0),
+      nextMonthLabel: "октября",
+    };
+  }
+
+  return {
+    startedAt: new Date(year - 1, 9, 1, 0, 0, 0, 0),
+    endsAt: new Date(year, 3, 1, 0, 0, 0, 0),
+    nextMonthLabel: "апреля",
+  };
+};
+
+const isInspectionSubmittedThisCycle = (submission, now) => {
+  const sentAt = new Date(
+    submission?.updatedAt || submission?.createdAt || ""
+  ).getTime();
+  if (!Number.isFinite(sentAt) || sentAt > now) return false;
+
+  return sentAt >= getInspectionReportingCycle(now).startedAt.getTime();
+};
+
+const formatInspectionCycleCountdown = (now) => {
+  const remainingSeconds = Math.max(
+    0,
+    Math.ceil((getInspectionReportingCycle(now).endsAt.getTime() - now) / 1000)
+  );
+  const days = Math.floor(remainingSeconds / 86400);
+  const hours = Math.floor((remainingSeconds % 86400) / 3600);
+  const minutes = Math.floor((remainingSeconds % 3600) / 60);
+  const seconds = remainingSeconds % 60;
+
+  return `${days}д ${String(hours).padStart(2, "0")}:${String(minutes).padStart(
+    2,
+    "0"
+  )}:${String(seconds).padStart(2, "0")}`;
+};
+
+const InspectionReportingStatus = ({ submission, now }) => {
+  const isSubmitted = isInspectionSubmittedThisCycle(submission, now);
+  const cycle = getInspectionReportingCycle(now);
+
+  return (
+    <span className="results-cycle-status-group">
+      <span
+        className={`results-cycle-status results-cycle-status--${
+          isSubmitted ? "sent" : "missing"
+        }`}
+      >
+        {isSubmitted ? "Отправлено" : "Не заполнено"}
+      </span>
+      <span className="results-cycle-countdown">
+        До 1 {cycle.nextMonthLabel}: {formatInspectionCycleCountdown(now)}
+      </span>
+    </span>
+  );
+};
 const PHYSICAL_TRAINING_DOCUMENT_TITLE =
   "20___ аскер бөлүгүнүн ______  чек ара заставасынын\nДене тарбия даярдыгы боюнча көзөмөл сабагынын\nВЕДОМОСТУ";
 const SHOOTING_TRAINING_DOCUMENT_TITLE =
@@ -92,7 +257,7 @@ const createEmptyCustomRows = () =>
     note: "",
   }));
 
-const createCustomTable = (title, rows = createEmptyCustomRows()) => ({
+export const createCustomTable = (title, rows = createEmptyCustomRows()) => ({
   title,
   columns: customDocumentColumns,
   rows,
@@ -116,7 +281,7 @@ const createEmptyKojRow = (number, columns = kojBaseColumns) =>
     {}
   );
 
-const createKojTable = (title) => ({
+export const createKojTable = (title) => ({
   type: "kojResults",
   templateVersion: 3,
   title,
@@ -500,7 +665,7 @@ const createPhysicalTrainingRows = () => [
   createEmptyPhysicalRow(22),
 ];
 
-const createPhysicalTrainingTable = (title, rows = createPhysicalTrainingRows()) => ({
+export const createPhysicalTrainingTable = (title, rows = createPhysicalTrainingRows()) => ({
   type: "physicalTraining",
   title,
   columns: physicalTrainingColumns,
@@ -571,7 +736,7 @@ const createShootingTrainingRows = () => [
   createShootingSectionRow("2-бөлүмчө үчүн:"),
 ];
 
-const createShootingTrainingTable = (title, rows = createShootingTrainingRows()) => ({
+export const createShootingTrainingTable = (title, rows = createShootingTrainingRows()) => ({
   type: "shootingTraining",
   title,
   columns: shootingTrainingColumns,
@@ -688,7 +853,7 @@ const createEmptyLineRow = (number) => ({
 const createLineTrainingRows = () =>
   Array.from({ length: 9 }, (_, index) => createEmptyLineRow(index + 1));
 
-const createLineTrainingTable = (title, rows = createLineTrainingRows()) => ({
+export const createLineTrainingTable = (title, rows = createLineTrainingRows()) => ({
   type: "lineTraining",
   templateVersion: 2,
   title,
@@ -827,13 +992,21 @@ const SubmittedObservationTable = ({ subject, onBack }) => {
 export default function CombatTrainingResults({ data, user }) {
   const signatureCanvasRef = useRef(null);
   const isDrawingSignatureRef = useRef(false);
-  const [selectedSectionId, setSelectedSectionId] = useState(null);
-  const [selectedObservationGroupId, setSelectedObservationGroupId] = useState(null);
+  const [selectedSectionId, setSelectedSectionId] = useState(
+    data?.initialSectionId || null
+  );
+  const [selectedObservationGroupId, setSelectedObservationGroupId] = useState(
+    data?.initialObservationGroupId || null
+  );
   const [selectedInspectionGroupId, setSelectedInspectionGroupId] = useState(null);
   const [selectedAdminUnitNumber, setSelectedAdminUnitNumber] = useState(null);
   const [selectedAdminOutpostName, setSelectedAdminOutpostName] = useState(null);
-  const [selectedSubsectionId, setSelectedSubsectionId] = useState(null);
-  const [selectedPeriodId, setSelectedPeriodId] = useState(null);
+  const [selectedSubsectionId, setSelectedSubsectionId] = useState(
+    data?.initialSubsectionId || null
+  );
+  const [selectedPeriodId, setSelectedPeriodId] = useState(
+    data?.initialPeriodId || null
+  );
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
   const [editingPeriodId, setEditingPeriodId] = useState(null);
@@ -875,6 +1048,7 @@ export default function CombatTrainingResults({ data, user }) {
   const [deletingResultSubmissionId, setDeletingResultSubmissionId] = useState(null);
   const [resultSubmissionListError, setResultSubmissionListError] = useState("");
   const [forwardingSubmission, setForwardingSubmission] = useState(null);
+  const [observationStatusNow, setObservationStatusNow] = useState(() => Date.now());
   const resultsTableScrollRef = useRef(null);
   const resultsTopScrollRef = useRef(null);
   const [resultsTableScrollWidth, setResultsTableScrollWidth] = useState(1200);
@@ -932,6 +1106,14 @@ export default function CombatTrainingResults({ data, user }) {
       isActive = false;
     };
   }, [selectedSectionId, user?.id, user?.role]);
+
+  useEffect(() => {
+    const intervalId = window.setInterval(
+      () => setObservationStatusNow(Date.now()),
+      1000
+    );
+    return () => window.clearInterval(intervalId);
+  }, []);
 
   useEffect(() => {
     if (selectedPeriodId && typeof window !== "undefined") {
@@ -2511,6 +2693,50 @@ export default function CombatTrainingResults({ data, user }) {
           formatOutpostName(submission.outpostName) === selectedAdminOutpostName
       )
     : EMPTY_ARRAY;
+  const getRegionalOutpostObservationSubmission = (outpostName) =>
+    getLatestResultSubmission(
+      observationIncomingSubmissions.filter(
+        (submission) =>
+          formatOutpostName(submission.outpostName) === outpostName
+      )
+    );
+  const getAdminOutpostObservationSubmission = (outpostName) =>
+    getLatestResultSubmission(
+      adminOutpostSubmissions.filter(
+        (submission) =>
+          formatOutpostName(submission.outpostName) === outpostName
+      )
+    );
+  const latestRegionalObservationSubmission = getLatestResultSubmission(
+    observationOutgoingSubmissions
+  );
+  const latestOwnObservationSubmission = getLatestResultSubmission(
+    observationSubmissions.filter(
+      (submission) => String(submission.senderId) === String(user?.id)
+    )
+  );
+  const getRegionalOutpostInspectionSubmission = (outpostName) =>
+    getLatestResultSubmission(
+      inspectionIncomingSubmissions.filter(
+        (submission) =>
+          formatOutpostName(submission.outpostName) === outpostName
+      )
+    );
+  const getAdminOutpostInspectionSubmission = (outpostName) =>
+    getLatestResultSubmission(
+      adminOutpostSubmissions.filter(
+        (submission) =>
+          formatOutpostName(submission.outpostName) === outpostName
+      )
+    );
+  const latestRegionalInspectionSubmission = getLatestResultSubmission(
+    inspectionOutgoingSubmissions
+  );
+  const latestOwnInspectionSubmission = getLatestResultSubmission(
+    inspectionSubmissions.filter(
+      (submission) => String(submission.senderId) === String(user?.id)
+    )
+  );
   const selectedObservationSubmissions = observationSubmissions.filter(
     (submission) => Boolean(submission.table?.subjects?.[selectedSubsectionId])
   );
@@ -2562,6 +2788,21 @@ export default function CombatTrainingResults({ data, user }) {
       {selectedAdminOutpostName ? (
         <div className="module-submission-list">
           <h2>{selectedAdminOutpostName}</h2>
+          {selectedSectionId === OBSERVATION_SECTION_ID ? (
+            <ObservationMonthlySubmissionStatus
+              now={observationStatusNow}
+              submission={getRegionalOutpostObservationSubmission(
+                selectedAdminOutpostName
+              )}
+            />
+          ) : selectedSectionId === INSPECTION_SECTION_ID ? (
+            <InspectionReportingStatus
+              now={observationStatusNow}
+              submission={getRegionalOutpostInspectionSubmission(
+                selectedAdminOutpostName
+              )}
+            />
+          ) : null}
           <h3>Заставадан жөнөтүлгөн документтер</h3>
           {selectedRegionalOutpostSubmissions.length > 0 ? (
             selectedRegionalOutpostSubmissions.map((submission) => (
@@ -2628,6 +2869,21 @@ export default function CombatTrainingResults({ data, user }) {
                     type="button"
                   >
                     <strong>{outpostName}</strong>
+                    {selectedSectionId === OBSERVATION_SECTION_ID ? (
+                      <ObservationMonthlySubmissionStatus
+                        now={observationStatusNow}
+                        submission={getRegionalOutpostObservationSubmission(
+                          outpostName
+                        )}
+                      />
+                    ) : selectedSectionId === INSPECTION_SECTION_ID ? (
+                      <InspectionReportingStatus
+                        now={observationStatusNow}
+                        submission={getRegionalOutpostInspectionSubmission(
+                          outpostName
+                        )}
+                      />
+                    ) : null}
                     {documentCount > 0 ? (
                       <span
                         aria-label={`Документов: ${documentCount}`}
@@ -2729,9 +2985,11 @@ export default function CombatTrainingResults({ data, user }) {
 
   return (
     <div className="combat-training-results">
-      <header className="module-header" style={wordTableStyles.header}>
-        <h1 style={wordTableStyles.headerTitle}>Күжүрмөн даярдоонун жыйынтыктары</h1>
-      </header>
+      {!data?.hideModuleHeader ? (
+        <header className="module-header" style={wordTableStyles.header}>
+          <h1 style={wordTableStyles.headerTitle}>Күжүрмөн даярдоонун жыйынтыктары</h1>
+        </header>
+      ) : null}
 
       {!selectedSectionId ? (
         <div className="module-metric-grid module-section-grid">
@@ -2743,12 +3001,28 @@ export default function CombatTrainingResults({ data, user }) {
               type="button"
             >
               <strong>{section.title}</strong>
+              {section.id === OBSERVATION_SECTION_ID && user?.role !== "admin" ? (
+                <ObservationMonthlySubmissionStatus
+                  now={observationStatusNow}
+                  submission={latestOwnObservationSubmission}
+                />
+              ) : section.id === INSPECTION_SECTION_ID && user?.role !== "admin" ? (
+                <InspectionReportingStatus
+                  now={observationStatusNow}
+                  submission={latestOwnInspectionSubmission}
+                />
+              ) : null}
             </button>
           ))}
         </div>
-      ) : user?.role === "admin" && ["observation", "inspection"].includes(selectedSectionId) ? (
+      ) : !data?.directEditor && user?.role === "admin" && ["observation", "inspection"].includes(selectedSectionId) ? (
         <div className="module-table-view">
-          <button className="module-back-button" onClick={handleBack} type="button" style={wordTableStyles.backButton}>
+          <button
+            className="module-back-button"
+            onClick={data?.onBack || handleBack}
+            type="button"
+            style={wordTableStyles.backButton}
+          >
             Артка
           </button>
           {!selectedAdminUnitNumber ? (
@@ -2765,12 +3039,50 @@ export default function CombatTrainingResults({ data, user }) {
                 >
                   <span aria-hidden="true" className="module-document-icon" />
                   <strong>{unitNumber} аскер бөлүгү</strong>
+                  {selectedSectionId === OBSERVATION_SECTION_ID ? (
+                    <ObservationMonthlySubmissionStatus
+                      now={observationStatusNow}
+                      submission={getLatestResultSubmission(
+                        selectedAdminSectionSubmissions.filter(
+                          (submission) =>
+                            submission.senderRole === "regional" &&
+                            String(submission.unitNumber) === String(unitNumber)
+                        )
+                      )}
+                    />
+                  ) : selectedSectionId === INSPECTION_SECTION_ID ? (
+                    <InspectionReportingStatus
+                      now={observationStatusNow}
+                      submission={getLatestResultSubmission(
+                        selectedAdminSectionSubmissions.filter(
+                          (submission) =>
+                            submission.senderRole === "regional" &&
+                            String(submission.unitNumber) === String(unitNumber)
+                        )
+                      )}
+                    />
+                  ) : null}
                 </button>
               ))}
             </div>
           ) : selectedAdminOutpostName ? (
             <div className="module-submission-list">
               <h2>{selectedAdminOutpostName}</h2>
+              {selectedSectionId === OBSERVATION_SECTION_ID ? (
+                <ObservationMonthlySubmissionStatus
+                  now={observationStatusNow}
+                  submission={getAdminOutpostObservationSubmission(
+                    selectedAdminOutpostName
+                  )}
+                />
+              ) : selectedSectionId === INSPECTION_SECTION_ID ? (
+                <InspectionReportingStatus
+                  now={observationStatusNow}
+                  submission={getAdminOutpostInspectionSubmission(
+                    selectedAdminOutpostName
+                  )}
+                />
+              ) : null}
               <h3>Заставадан жөнөтүлгөн документтер</h3>
               {selectedAdminOutpostSubmissions.length > 0 ? (
                 selectedAdminOutpostSubmissions.map(renderAdminSubmissionRow)
@@ -2786,6 +3098,21 @@ export default function CombatTrainingResults({ data, user }) {
           ) : (
             <div className="module-submission-list">
               <h2>{selectedAdminUnitNumber} аскер бөлүгү</h2>
+              {selectedSectionId === OBSERVATION_SECTION_ID ? (
+                <ObservationMonthlySubmissionStatus
+                  now={observationStatusNow}
+                  submission={getLatestResultSubmission(
+                    adminMilitaryUnitSubmissions
+                  )}
+                />
+              ) : selectedSectionId === INSPECTION_SECTION_ID ? (
+                <InspectionReportingStatus
+                  now={observationStatusNow}
+                  submission={getLatestResultSubmission(
+                    adminMilitaryUnitSubmissions
+                  )}
+                />
+              ) : null}
               <h3>Аскер бөлүгүнөн жөнөтүлгөн документтер</h3>
               {adminMilitaryUnitSubmissions.length > 0 ? (
                 adminMilitaryUnitSubmissions.map(renderAdminSubmissionRow)
@@ -2804,6 +3131,17 @@ export default function CombatTrainingResults({ data, user }) {
                     >
                       <span aria-hidden="true" className="module-document-icon" />
                       <strong>{outpostName}</strong>
+                      {selectedSectionId === OBSERVATION_SECTION_ID ? (
+                        <ObservationMonthlySubmissionStatus
+                          now={observationStatusNow}
+                          submission={getAdminOutpostObservationSubmission(outpostName)}
+                        />
+                      ) : selectedSectionId === INSPECTION_SECTION_ID ? (
+                        <InspectionReportingStatus
+                          now={observationStatusNow}
+                          submission={getAdminOutpostInspectionSubmission(outpostName)}
+                        />
+                      ) : null}
                     </button>
                   ))}
                 </div>
@@ -2831,6 +3169,10 @@ export default function CombatTrainingResults({ data, user }) {
           </div>
           <div className="module-submission-list">
             <h3>Чыгыш</h3>
+            <ObservationMonthlySubmissionStatus
+              now={observationStatusNow}
+              submission={latestRegionalObservationSubmission}
+            />
             {observationOutgoingSubmissions.length > 0 ? observationOutgoingSubmissions.map((submission) => (
               <div className="module-period-row" key={`out-${submission.id}`}>
                 <button className="module-period-card module-period-card--document" onClick={() => setSelectedResultSubmission(submission)} type="button">
@@ -2869,7 +3211,12 @@ export default function CombatTrainingResults({ data, user }) {
         </div>
       ) : user?.role === "regional" && selectedSectionId === "inspection" && !selectedInspectionGroupId ? (
         <div className="module-table-view">
-          <button className="module-back-button" onClick={handleBack} type="button" style={wordTableStyles.backButton}>
+          <button
+            className="module-back-button"
+            onClick={data?.onBack || handleBack}
+            type="button"
+            style={wordTableStyles.backButton}
+          >
             Артка
           </button>
           <div className="module-document-list">
@@ -2892,6 +3239,10 @@ export default function CombatTrainingResults({ data, user }) {
           </div>
           <div className="module-submission-list">
             <h3>Чыгыш</h3>
+            <InspectionReportingStatus
+              now={observationStatusNow}
+              submission={latestRegionalInspectionSubmission}
+            />
             {inspectionOutgoingSubmissions.length > 0 ? inspectionOutgoingSubmissions.map((submission) => (
               <div className="module-period-row" key={`inspection-out-${submission.id}`}>
                 <button className="module-period-card module-period-card--document" onClick={() => setSelectedResultSubmission(submission)} type="button">
@@ -2926,9 +3277,41 @@ export default function CombatTrainingResults({ data, user }) {
               </button>
             ))}
           </div>
+          {selectedSectionId === OBSERVATION_SECTION_ID &&
+          (
+            user?.role === "outpost" ||
+            (user?.role === "regional" && selectedObservationGroupId === "regional-unit")
+          ) ? (
+            <div className="module-submission-list">
+              <h3>
+                {user?.role === "outpost"
+                  ? "Заставадан аскер бөлүгүнө жөнөтүү"
+                  : "Аскер бөлүгүнөн администраторго жөнөтүү"}
+              </h3>
+              <ObservationMonthlySubmissionStatus
+                now={observationStatusNow}
+                submission={latestOwnObservationSubmission}
+              />
+            </div>
+          ) : null}
+          {selectedSectionId === INSPECTION_SECTION_ID &&
+          user?.role === "regional" &&
+          selectedInspectionGroupId === "regional-unit" ? (
+            <div className="module-submission-list">
+              <h3>Аскер бөлүгүнөн администраторго жөнөтүү</h3>
+              <InspectionReportingStatus
+                now={observationStatusNow}
+                submission={latestOwnInspectionSubmission}
+              />
+            </div>
+          ) : null}
           {user?.role === "outpost" && selectedSectionId === "inspection" && (
             <div className="module-submission-list">
               <h3>Чыгыш</h3>
+              <InspectionReportingStatus
+                now={observationStatusNow}
+                submission={latestOwnInspectionSubmission}
+              />
               {inspectionSubmissions.length > 0 ? inspectionSubmissions.map((submission) => (
                 <div className="module-period-row" key={submission.id}>
                   <button
@@ -2964,7 +3347,12 @@ export default function CombatTrainingResults({ data, user }) {
         </div>
       ) : selectedPeriodId && selectedTable ? (
         <div className="table-view" style={wordTableStyles.container}>
-          <button className="module-back-button" onClick={handleBack} type="button" style={wordTableStyles.backButton}>
+          <button
+            className="module-back-button"
+            onClick={data?.onBack || handleBack}
+            type="button"
+            style={wordTableStyles.backButton}
+          >
             Артка
           </button>
           
@@ -3009,7 +3397,7 @@ export default function CombatTrainingResults({ data, user }) {
               <button style={wordTableStyles.button} onClick={handleSaveTable} type="button">
                 Сохранить
               </button>
-              {(
+              {!data?.hideResultSubmissionActions && (
                 user?.role === "outpost" ||
                 (
                   user?.role === "regional" &&

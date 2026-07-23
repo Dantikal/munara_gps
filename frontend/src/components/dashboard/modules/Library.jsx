@@ -756,7 +756,7 @@ const commandThematicAccountSubjects = [
   }),
 ];
 
-const buildThematicAccountLikePhoto = (table, isCommand = false, periodId) => {
+export const buildThematicAccountLikePhoto = (table, isCommand = false, periodId) => {
   if (!table) {
     return table;
   }
@@ -847,7 +847,7 @@ const buildThematicAccountLikePhoto = (table, isCommand = false, periodId) => {
   };
 };
 
-const buildLessonScheduleLikePhoto = (table) => {
+export const buildLessonScheduleLikePhoto = (table) => {
   if (!table || table.variant !== "lesson-schedule") {
     return table;
   }
@@ -2523,7 +2523,7 @@ export default function Library({ data, onBack, onRefresh, onSubmissionCreated }
       <button disabled={!isTableEditing || isSubmittingThematicAccount} onClick={handleTableSave} type="button">
         Сохранить
       </button>
-      {!data?.autoSubmitOnSave && (
+      {!data?.autoSubmitOnSave && !data?.hideSubmit && (
         <button disabled={isSubmitDisabled} onClick={handleTableSend} type="button">
           {data?.submissionActionLabel || "Отправить"}
         </button>
@@ -2863,7 +2863,7 @@ export default function Library({ data, onBack, onRefresh, onSubmissionCreated }
             <button disabled={!isTableEditing || isSubmittingThematicAccount} onClick={handleTableSave} type="button">
               Сохранить
             </button>
-            {!data?.autoSubmitOnSave && (
+            {!data?.autoSubmitOnSave && !data?.hideSubmit && (
               <button disabled={isSubmitDisabled} onClick={handleTableSend} type="button">
                 {data?.submissionActionLabel || "Отправить"}
               </button>

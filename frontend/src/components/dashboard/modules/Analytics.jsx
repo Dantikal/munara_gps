@@ -25,9 +25,174 @@ const ANALYSIS_DOCUMENTS_BY_SECTION_KEY = "analysis-documents-by-section";
 const ANALYSIS_ACTIVE_IDS_BY_SECTION_KEY = "analysis-active-document-ids-by-section";
 const ANALYTICS_SECTIONS_STORAGE_KEY = "analytics-section-titles";
 const ADMIN_ANALYSIS_WORKSPACE_ID = "admin-analysis-workspace";
+const MONTHLY_ANALYSIS_SECTION_ID = "monthly-analysis";
+const PERIOD_ANALYSIS_SECTION_ID = "period-analysis";
+const MONTHLY_ANALYSIS_DEADLINE_DAY = 28;
 
 const getMonthlyAnalysisDraftStorageKey = (sectionId) =>
   `${MONTHLY_ANALYSIS_DRAFT_STORAGE_KEY}:${sectionId || "monthly-analysis"}`;
+
+const getLatestAnalysisSubmission = (submissions = []) =>
+  [...submissions].sort(
+    (left, right) =>
+      new Date(right.updatedAt || right.createdAt) -
+      new Date(left.updatedAt || left.createdAt)
+  )[0] || null;
+
+const getMonthlyAnalysisDeadline = (now) => {
+  const current = new Date(now);
+  let deadline = new Date(
+    current.getFullYear(),
+    current.getMonth(),
+    MONTHLY_ANALYSIS_DEADLINE_DAY,
+    23,
+    59,
+    59,
+    999
+  );
+
+  if (current.getTime() > deadline.getTime()) {
+    deadline = new Date(
+      current.getFullYear(),
+      current.getMonth() + 1,
+      MONTHLY_ANALYSIS_DEADLINE_DAY,
+      23,
+      59,
+      59,
+      999
+    );
+  }
+
+  return deadline;
+};
+
+const isMonthlyAnalysisSubmitted = (submission, now) => {
+  const sentAt = new Date(
+    submission?.updatedAt || submission?.createdAt || ""
+  ).getTime();
+  if (!Number.isFinite(sentAt) || sentAt > now) return false;
+
+  const deadline = getMonthlyAnalysisDeadline(now);
+  const previousDeadline = new Date(
+    deadline.getFullYear(),
+    deadline.getMonth() - 1,
+    MONTHLY_ANALYSIS_DEADLINE_DAY,
+    23,
+    59,
+    59,
+    999
+  ).getTime();
+
+  return sentAt > previousDeadline;
+};
+
+const formatMonthlyAnalysisCountdown = (now) => {
+  const remainingSeconds = Math.max(
+    0,
+    Math.ceil((getMonthlyAnalysisDeadline(now).getTime() - now) / 1000)
+  );
+  const days = Math.floor(remainingSeconds / 86400);
+  const hours = Math.floor((remainingSeconds % 86400) / 3600);
+  const minutes = Math.floor((remainingSeconds % 3600) / 60);
+  const seconds = remainingSeconds % 60;
+
+  return `${days}д ${String(hours).padStart(2, "0")}:${String(minutes).padStart(
+    2,
+    "0"
+  )}:${String(seconds).padStart(2, "0")}`;
+};
+
+const MonthlyAnalysisSubmissionStatus = ({ submission, now }) => {
+  const isSubmitted = isMonthlyAnalysisSubmitted(submission, now);
+
+  return (
+    <span className="analysis-monthly-status-group">
+      <span
+        className={`analysis-monthly-status analysis-monthly-status--${
+          isSubmitted ? "sent" : "missing"
+        }`}
+      >
+        {isSubmitted ? "Отправлено" : "Не отправлено"}
+      </span>
+      <span className="analysis-monthly-countdown">
+        До 28 числа: {formatMonthlyAnalysisCountdown(now)}
+      </span>
+    </span>
+  );
+};
+
+const getPeriodAnalysisReportingCycle = (now) => {
+  const current = new Date(now);
+  const year = current.getFullYear();
+  const month = current.getMonth();
+
+  if (month >= 9) {
+    return {
+      startedAt: new Date(year, 9, 1, 0, 0, 0, 0),
+      endsAt: new Date(year + 1, 3, 1, 0, 0, 0, 0),
+      nextMonthLabel: "апреля",
+    };
+  }
+
+  if (month >= 3) {
+    return {
+      startedAt: new Date(year, 3, 1, 0, 0, 0, 0),
+      endsAt: new Date(year, 9, 1, 0, 0, 0, 0),
+      nextMonthLabel: "октября",
+    };
+  }
+
+  return {
+    startedAt: new Date(year - 1, 9, 1, 0, 0, 0, 0),
+    endsAt: new Date(year, 3, 1, 0, 0, 0, 0),
+    nextMonthLabel: "апреля",
+  };
+};
+
+const isPeriodAnalysisSubmitted = (submission, now) => {
+  const sentAt = new Date(
+    submission?.updatedAt || submission?.createdAt || ""
+  ).getTime();
+  if (!Number.isFinite(sentAt) || sentAt > now) return false;
+
+  return sentAt >= getPeriodAnalysisReportingCycle(now).startedAt.getTime();
+};
+
+const formatPeriodAnalysisCountdown = (now) => {
+  const remainingSeconds = Math.max(
+    0,
+    Math.ceil((getPeriodAnalysisReportingCycle(now).endsAt.getTime() - now) / 1000)
+  );
+  const days = Math.floor(remainingSeconds / 86400);
+  const hours = Math.floor((remainingSeconds % 86400) / 3600);
+  const minutes = Math.floor((remainingSeconds % 3600) / 60);
+  const seconds = remainingSeconds % 60;
+
+  return `${days}д ${String(hours).padStart(2, "0")}:${String(minutes).padStart(
+    2,
+    "0"
+  )}:${String(seconds).padStart(2, "0")}`;
+};
+
+const PeriodAnalysisSubmissionStatus = ({ submission, now }) => {
+  const isSubmitted = isPeriodAnalysisSubmitted(submission, now);
+  const cycle = getPeriodAnalysisReportingCycle(now);
+
+  return (
+    <span className="analysis-period-status-group">
+      <span
+        className={`analysis-period-status analysis-period-status--${
+          isSubmitted ? "sent" : "missing"
+        }`}
+      >
+        {isSubmitted ? "Отправлено" : "Не заполнено"}
+      </span>
+      <span className="analysis-period-countdown">
+        До 1 {cycle.nextMonthLabel}: {formatPeriodAnalysisCountdown(now)}
+      </span>
+    </span>
+  );
+};
 
 const DEFAULT_ANALYTICS_SECTIONS = [
   {
@@ -74,11 +239,25 @@ export default function Analytics({ data, user }) {
   const activeMonthlyAnalysisDocumentIdRef = useRef(null);
   const analysisDocumentsBySectionRef = useRef({});
   const analysisActiveIdsBySectionRef = useRef({});
+  const analyticsStorageNamespace =
+    typeof data?.storageNamespace === "string" && data.storageNamespace.trim()
+      ? data.storageNamespace.trim()
+      : "";
+  const getAnalyticsStorageKey = (storageKey) =>
+    analyticsStorageNamespace
+      ? `${storageKey}:${analyticsStorageNamespace}`
+      : storageKey;
+  const getAnalyticsDraftStorageKey = (sectionId) =>
+    getAnalyticsStorageKey(getMonthlyAnalysisDraftStorageKey(sectionId));
   const [analyticsSections, setAnalyticsSections] = useState(getStoredAnalyticsSections);
   const [editingSectionId, setEditingSectionId] = useState(null);
   const [editingSectionTitle, setEditingSectionTitle] = useState("");
-  const [selectedAnalyticsScope, setSelectedAnalyticsScope] = useState(null);
-  const [selectedSectionId, setSelectedSectionId] = useState(null);
+  const [selectedAnalyticsScope, setSelectedAnalyticsScope] = useState(
+    data?.directEditor ? "regional-unit" : null
+  );
+  const [selectedSectionId, setSelectedSectionId] = useState(
+    data?.initialSectionId || null
+  );
   const [selectedAdminUnitNumber, setSelectedAdminUnitNumber] = useState(null);
   const [selectedAdminOutpostName, setSelectedAdminOutpostName] = useState(null);
   const [monthlyAnalysisDocuments, setMonthlyAnalysisDocuments] = useState([]);
@@ -123,6 +302,7 @@ export default function Analytics({ data, user }) {
   const [isSendingAnalysis, setIsSendingAnalysis] = useState(false);
   const [deletingAnalysisSubmissionId, setDeletingAnalysisSubmissionId] = useState(null);
   const [forwardingSubmission, setForwardingSubmission] = useState(null);
+  const [monthlyStatusNow, setMonthlyStatusNow] = useState(() => Date.now());
   const isRegionalSubunitAnalysis =
     user?.role === "regional" && selectedAnalyticsScope === "subunits";
   const canEditAnalysis =
@@ -208,6 +388,61 @@ export default function Analytics({ data, user }) {
         (submission) => formatOutpostName(submission.outpostName) === selectedAdminOutpostName
       )
     : [];
+  const getRegionalOutpostAnalysisSubmission = (outpostName) =>
+    getLatestAnalysisSubmission(
+      currentAnalysisSubmissions.filter(
+        (submission) =>
+          formatOutpostName(submission.outpostName) === outpostName
+      )
+    );
+  const getAdminOutpostAnalysisSubmission = (outpostName) =>
+    getLatestAnalysisSubmission(
+      adminOutpostSubmissions.filter(
+        (submission) =>
+          formatOutpostName(submission.outpostName) === outpostName
+      )
+    );
+  const latestRegionalAnalysisSubmission = getLatestAnalysisSubmission(
+    currentRegionalOutgoingSubmissions
+  );
+  const latestOwnMonthlySubmission = getLatestAnalysisSubmission(
+    analysisSubmissions.filter(
+      (submission) =>
+        submission.table?.sectionId === MONTHLY_ANALYSIS_SECTION_ID &&
+        String(submission.senderId) === String(user?.id)
+    )
+  );
+  const latestOwnPeriodSubmission = getLatestAnalysisSubmission(
+    analysisSubmissions.filter(
+      (submission) =>
+        submission.table?.sectionId === PERIOD_ANALYSIS_SECTION_ID &&
+        String(submission.senderId) === String(user?.id)
+    )
+  );
+  const renderAnalysisReportingStatus = (
+    submission,
+    sectionId = selectedSectionId
+  ) => {
+    if (sectionId === MONTHLY_ANALYSIS_SECTION_ID) {
+      return (
+        <MonthlyAnalysisSubmissionStatus
+          now={monthlyStatusNow}
+          submission={submission}
+        />
+      );
+    }
+
+    if (sectionId === PERIOD_ANALYSIS_SECTION_ID) {
+      return (
+        <PeriodAnalysisSubmissionStatus
+          now={monthlyStatusNow}
+          submission={submission}
+        />
+      );
+    }
+
+    return null;
+  };
   const analysisSourceSectionId =
     selectedSectionId === "year-analysis"
       ? "period-analysis"
@@ -407,7 +642,7 @@ export default function Analytics({ data, user }) {
       monthlyAnalysisDocumentsRef.current = nextDocuments;
       if (typeof window !== "undefined") {
         window.localStorage.setItem(
-          MONTHLY_ANALYSIS_DOCUMENTS_STORAGE_KEY,
+          getAnalyticsStorageKey(MONTHLY_ANALYSIS_DOCUMENTS_STORAGE_KEY),
           JSON.stringify(nextDocuments)
         );
       }
@@ -439,14 +674,16 @@ export default function Analytics({ data, user }) {
     };
 
     window.localStorage.setItem(
-      getMonthlyAnalysisDraftStorageKey(selectedSectionId),
+      getAnalyticsDraftStorageKey(selectedSectionId),
       JSON.stringify(draftPayload)
     );
   };
 
   useEffect(() => {
     try {
-      const storedDocumentsBySectionValue = window.localStorage.getItem(ANALYSIS_DOCUMENTS_BY_SECTION_KEY);
+      const storedDocumentsBySectionValue = window.localStorage.getItem(
+        getAnalyticsStorageKey(ANALYSIS_DOCUMENTS_BY_SECTION_KEY)
+      );
       if (storedDocumentsBySectionValue) {
         const parsedDocumentsBySectionValue = JSON.parse(storedDocumentsBySectionValue);
         if (parsedDocumentsBySectionValue && typeof parsedDocumentsBySectionValue === "object") {
@@ -455,7 +692,9 @@ export default function Analytics({ data, user }) {
         }
       }
 
-      const storedActiveIdsBySectionValue = window.localStorage.getItem(ANALYSIS_ACTIVE_IDS_BY_SECTION_KEY);
+      const storedActiveIdsBySectionValue = window.localStorage.getItem(
+        getAnalyticsStorageKey(ANALYSIS_ACTIVE_IDS_BY_SECTION_KEY)
+      );
       if (storedActiveIdsBySectionValue) {
         const parsedActiveIdsBySectionValue = JSON.parse(storedActiveIdsBySectionValue);
         if (parsedActiveIdsBySectionValue && typeof parsedActiveIdsBySectionValue === "object") {
@@ -464,7 +703,9 @@ export default function Analytics({ data, user }) {
         }
       }
 
-      const storedDocumentsValue = window.localStorage.getItem(MONTHLY_ANALYSIS_DOCUMENTS_STORAGE_KEY);
+      const storedDocumentsValue = window.localStorage.getItem(
+        getAnalyticsStorageKey(MONTHLY_ANALYSIS_DOCUMENTS_STORAGE_KEY)
+      );
       if (storedDocumentsValue) {
         const parsedDocumentsValue = JSON.parse(storedDocumentsValue);
         if (Array.isArray(parsedDocumentsValue)) {
@@ -481,7 +722,9 @@ export default function Analytics({ data, user }) {
         }
       }
 
-      const storedActiveDocumentId = window.localStorage.getItem(MONTHLY_ANALYSIS_ACTIVE_DOCUMENT_ID_KEY);
+      const storedActiveDocumentId = window.localStorage.getItem(
+        getAnalyticsStorageKey(MONTHLY_ANALYSIS_ACTIVE_DOCUMENT_ID_KEY)
+      );
       if (storedActiveDocumentId) {
         setActiveMonthlyAnalysisDocumentId(storedActiveDocumentId);
         activeMonthlyAnalysisDocumentIdRef.current = storedActiveDocumentId;
@@ -495,7 +738,9 @@ export default function Analytics({ data, user }) {
         }));
       }
 
-      const storedValue = window.localStorage.getItem(MONTHLY_ANALYSIS_DRAFT_STORAGE_KEY);
+      const storedValue = window.localStorage.getItem(
+        getAnalyticsStorageKey(MONTHLY_ANALYSIS_DRAFT_STORAGE_KEY)
+      );
       if (!storedValue) {
         hasHydratedMonthlyAnalysisRef.current = true;
         return;
@@ -541,6 +786,72 @@ export default function Analytics({ data, user }) {
   }, []);
 
   useEffect(() => {
+    if (!data?.directEditor || !data?.directDocumentId) return;
+
+    const sectionId = data.initialSectionId || MONTHLY_ANALYSIS_SECTION_ID;
+    const storedSectionDocuments =
+      analysisDocumentsBySectionRef.current[sectionId] || [];
+    const storedDocument = storedSectionDocuments.find(
+      (document) => document.id === data.directDocumentId
+    );
+    const directDocument = {
+      addressee:
+        "КР Мамлекетик чек ара кызматынын күжүрмөн даярдоо башкармалыгынын башчысына",
+      attachments: [],
+      body: "",
+      commanderName: "",
+      commanderRank: "",
+      commanderSignature: "",
+      commanderTitle: "",
+      created: true,
+      extraPages: [],
+      isMonthlyDocumentOpen: true,
+      registryNumber: null,
+      ownerId: user?.id || null,
+      sectionId,
+      updatedAt: Date.now(),
+      ...storedDocument,
+      id: data.directDocumentId,
+      title: data.directDocumentTitle || storedDocument?.title || "",
+    };
+    const nextDocuments = [
+      directDocument,
+      ...storedSectionDocuments.filter(
+        (document) => document.id !== data.directDocumentId
+      ),
+    ];
+    const nextDocumentsBySection = {
+      ...analysisDocumentsBySectionRef.current,
+      [sectionId]: nextDocuments,
+    };
+    const nextActiveIdsBySection = {
+      ...analysisActiveIdsBySectionRef.current,
+      [sectionId]: data.directDocumentId,
+    };
+
+    monthlyAnalysisDocumentsRef.current = nextDocuments;
+    activeMonthlyAnalysisDocumentIdRef.current = data.directDocumentId;
+    analysisDocumentsBySectionRef.current = nextDocumentsBySection;
+    analysisActiveIdsBySectionRef.current = nextActiveIdsBySection;
+    setMonthlyAnalysisDocuments(nextDocuments);
+    setActiveMonthlyAnalysisDocumentId(data.directDocumentId);
+    setAnalysisDocumentsBySection(nextDocumentsBySection);
+    setAnalysisActiveIdsBySection(nextActiveIdsBySection);
+    setSelectedAnalyticsScope("regional-unit");
+    setSelectedSectionId(sectionId);
+    setMonthlyAnalysisCreated(true);
+    setIsCreateDialogOpen(false);
+    setIsMonthlyDocumentOpen(true);
+    applyMonthlyAnalysisDocumentToState(directDocument);
+  }, [
+    data?.directDocumentId,
+    data?.directDocumentTitle,
+    data?.directEditor,
+    data?.initialSectionId,
+    user?.id,
+  ]);
+
+  useEffect(() => {
     if (!selectedSectionId || !analyticsSections.some((section) => section.id === selectedSectionId)) return;
 
     const nextDocuments = analysisDocumentsBySection[selectedSectionId] || [];
@@ -553,11 +864,21 @@ export default function Analytics({ data, user }) {
   }, [selectedSectionId, analysisDocumentsBySection, analysisActiveIdsBySection]);
 
   useEffect(() => {
+    const intervalId = window.setInterval(
+      () => setMonthlyStatusNow(Date.now()),
+      1000
+    );
+    return () => window.clearInterval(intervalId);
+  }, []);
+
+  useEffect(() => {
     if (!hasHydratedMonthlyAnalysisRef.current) return;
     if (!selectedSectionId || !analyticsSections.some((section) => section.id === selectedSectionId)) return;
 
     try {
-      const storedValue = window.localStorage.getItem(getMonthlyAnalysisDraftStorageKey(selectedSectionId));
+      const storedValue = window.localStorage.getItem(
+        getAnalyticsDraftStorageKey(selectedSectionId)
+      );
       if (!storedValue) return;
 
       const parsedValue = JSON.parse(storedValue);
@@ -587,7 +908,9 @@ export default function Analytics({ data, user }) {
       if (typeof parsedValue.registryNumber === "number" && Number.isFinite(parsedValue.registryNumber)) {
         setMonthlyAnalysisRegistryNumber(parsedValue.registryNumber);
       }
-      if (typeof parsedValue.isMonthlyDocumentOpen === "boolean") {
+      if (data?.directEditor) {
+        setIsMonthlyDocumentOpen(true);
+      } else if (typeof parsedValue.isMonthlyDocumentOpen === "boolean") {
         setIsMonthlyDocumentOpen(parsedValue.isMonthlyDocumentOpen);
       }
       if (typeof parsedValue.isCreateDialogOpen === "boolean") {
@@ -596,7 +919,7 @@ export default function Analytics({ data, user }) {
     } catch {
       // Ignore invalid section draft data.
     }
-  }, [selectedSectionId]);
+  }, [data?.directEditor, selectedSectionId]);
 
   useEffect(() => {
     if (!hasHydratedMonthlyAnalysisRef.current) return;
@@ -632,16 +955,18 @@ export default function Analytics({ data, user }) {
     if (!hasHydratedMonthlyAnalysisRef.current) return;
     persistMonthlyAnalysisDraft();
     window.localStorage.setItem(
-      MONTHLY_ANALYSIS_DOCUMENTS_STORAGE_KEY,
+      getAnalyticsStorageKey(MONTHLY_ANALYSIS_DOCUMENTS_STORAGE_KEY),
       JSON.stringify(monthlyAnalysisDocumentsRef.current)
     );
     if (activeMonthlyAnalysisDocumentIdRef.current) {
       window.localStorage.setItem(
-        MONTHLY_ANALYSIS_ACTIVE_DOCUMENT_ID_KEY,
+        getAnalyticsStorageKey(MONTHLY_ANALYSIS_ACTIVE_DOCUMENT_ID_KEY),
         activeMonthlyAnalysisDocumentIdRef.current
       );
     } else {
-      window.localStorage.removeItem(MONTHLY_ANALYSIS_ACTIVE_DOCUMENT_ID_KEY);
+      window.localStorage.removeItem(
+        getAnalyticsStorageKey(MONTHLY_ANALYSIS_ACTIVE_DOCUMENT_ID_KEY)
+      );
     }
 
     if (selectedSectionId && analyticsSections.some((section) => section.id === selectedSectionId)) {
@@ -660,11 +985,11 @@ export default function Analytics({ data, user }) {
       setAnalysisActiveIdsBySection(nextActiveIdsBySection);
 
       window.localStorage.setItem(
-        ANALYSIS_DOCUMENTS_BY_SECTION_KEY,
+        getAnalyticsStorageKey(ANALYSIS_DOCUMENTS_BY_SECTION_KEY),
         JSON.stringify(nextDocumentsBySection)
       );
       window.localStorage.setItem(
-        ANALYSIS_ACTIVE_IDS_BY_SECTION_KEY,
+        getAnalyticsStorageKey(ANALYSIS_ACTIVE_IDS_BY_SECTION_KEY),
         JSON.stringify(nextActiveIdsBySection)
       );
     }
@@ -740,7 +1065,10 @@ export default function Analytics({ data, user }) {
     });
 
     if (typeof window !== "undefined") {
-      window.localStorage.setItem(MONTHLY_ANALYSIS_ACTIVE_DOCUMENT_ID_KEY, documentId);
+      window.localStorage.setItem(
+        getAnalyticsStorageKey(MONTHLY_ANALYSIS_ACTIVE_DOCUMENT_ID_KEY),
+        documentId
+      );
     }
   };
 
@@ -803,15 +1131,15 @@ export default function Analytics({ data, user }) {
       });
       if (typeof window !== "undefined") {
         window.localStorage.setItem(
-          MONTHLY_ANALYSIS_DOCUMENTS_STORAGE_KEY,
+          getAnalyticsStorageKey(MONTHLY_ANALYSIS_DOCUMENTS_STORAGE_KEY),
           JSON.stringify(nextDocuments)
         );
         window.localStorage.setItem(
-          ANALYSIS_DOCUMENTS_BY_SECTION_KEY,
+          getAnalyticsStorageKey(ANALYSIS_DOCUMENTS_BY_SECTION_KEY),
           JSON.stringify(nextDocumentsBySection)
         );
         window.localStorage.setItem(
-          ANALYSIS_ACTIVE_IDS_BY_SECTION_KEY,
+          getAnalyticsStorageKey(ANALYSIS_ACTIVE_IDS_BY_SECTION_KEY),
           JSON.stringify(nextActiveIdsBySection)
         );
       }
@@ -868,16 +1196,19 @@ export default function Analytics({ data, user }) {
     setSelectedSectionId(selectedSectionId || "monthly-analysis");
     if (typeof window !== "undefined") {
       window.localStorage.setItem(
-        MONTHLY_ANALYSIS_DOCUMENTS_STORAGE_KEY,
+        getAnalyticsStorageKey(MONTHLY_ANALYSIS_DOCUMENTS_STORAGE_KEY),
         JSON.stringify(nextDocuments.length ? nextDocuments : [...monthlyAnalysisDocumentsRef.current, newDocument])
       );
-      window.localStorage.setItem(MONTHLY_ANALYSIS_ACTIVE_DOCUMENT_ID_KEY, newDocumentId);
       window.localStorage.setItem(
-        ANALYSIS_DOCUMENTS_BY_SECTION_KEY,
+        getAnalyticsStorageKey(MONTHLY_ANALYSIS_ACTIVE_DOCUMENT_ID_KEY),
+        newDocumentId
+      );
+      window.localStorage.setItem(
+        getAnalyticsStorageKey(ANALYSIS_DOCUMENTS_BY_SECTION_KEY),
         JSON.stringify(nextDocumentsBySection)
       );
       window.localStorage.setItem(
-        ANALYSIS_ACTIVE_IDS_BY_SECTION_KEY,
+        getAnalyticsStorageKey(ANALYSIS_ACTIVE_IDS_BY_SECTION_KEY),
         JSON.stringify(nextActiveIdsBySection)
       );
     }
@@ -1445,6 +1776,10 @@ export default function Analytics({ data, user }) {
         <button
           className="module-back-button"
           onClick={() => {
+            if (data?.directEditor && data?.onBack) {
+              data.onBack();
+              return;
+            }
             setIsMonthlyDocumentOpen(false);
             setIsMonthlyAnalysisPickerOpen(false);
             setSelectedAnalysisSubmission(null);
@@ -1506,7 +1841,7 @@ export default function Analytics({ data, user }) {
               Отправить
             </button>
           ) : null}
-          {!selectedAnalysisSubmission && canEditAnalysis ? (
+          {!data?.directEditor && !selectedAnalysisSubmission && canEditAnalysis ? (
             <button
               className="module-action-button"
               disabled={isMonthlyAnalysisSent}
@@ -1990,6 +2325,10 @@ export default function Analytics({ data, user }) {
         <button
           className="module-back-button"
           onClick={() => {
+            if (data?.directEditor && data?.onBack) {
+              data.onBack();
+              return;
+            }
             if (selectedAdminOutpostName) {
               setSelectedAdminOutpostName(null);
               return;
@@ -2042,6 +2381,15 @@ export default function Analytics({ data, user }) {
                   >
                     <span aria-hidden="true" className="module-document-icon" />
                     <strong>{unitNumber} аскер бөлүгү</strong>
+                    {renderAnalysisReportingStatus(
+                      getLatestAnalysisSubmission(
+                        currentAdminAnalysisSubmissions.filter(
+                          (submission) =>
+                            submission.senderRole === "regional" &&
+                            String(submission.unitNumber) === String(unitNumber)
+                        )
+                      )
+                    )}
                   </button>
                 ))}
               </div>
@@ -2127,6 +2475,9 @@ export default function Analytics({ data, user }) {
             ) : selectedAdminOutpostName ? (
               <div className="module-submission-list">
                 <h2>{selectedAdminOutpostName}</h2>
+                {renderAnalysisReportingStatus(
+                  getAdminOutpostAnalysisSubmission(selectedAdminOutpostName)
+                )}
                 <h3>Заставадан жөнөтүлгөн талдоолор</h3>
                 {selectedAdminOutpostSubmissions.length > 0 ? (
                   selectedAdminOutpostSubmissions.map(renderAdminAnalysisSubmission)
@@ -2139,6 +2490,9 @@ export default function Analytics({ data, user }) {
             ) : (
               <div className="module-submission-list">
                 <h2>{selectedAdminUnitNumber} аскер бөлүгү</h2>
+                {renderAnalysisReportingStatus(
+                  getLatestAnalysisSubmission(adminMilitaryUnitSubmissions)
+                )}
                 <h3>Аскер бөлүгүнөн жөнөтүлгөн талдоолор</h3>
                 {adminMilitaryUnitSubmissions.length > 0 ? (
                   adminMilitaryUnitSubmissions.map(renderAdminAnalysisSubmission)
@@ -2157,6 +2511,9 @@ export default function Analytics({ data, user }) {
                       >
                         <span aria-hidden="true" className="module-document-icon" />
                         <strong>{outpostName}</strong>
+                        {renderAnalysisReportingStatus(
+                          getAdminOutpostAnalysisSubmission(outpostName)
+                        )}
                       </button>
                     ))}
                   </div>
@@ -2171,6 +2528,9 @@ export default function Analytics({ data, user }) {
             {selectedAdminOutpostName ? (
               <div className="module-submission-list">
                 <h2>{selectedAdminOutpostName}</h2>
+                {renderAnalysisReportingStatus(
+                  getRegionalOutpostAnalysisSubmission(selectedAdminOutpostName)
+                )}
                 <h3>Заставадан жөнөтүлгөн талдоолор</h3>
                 {selectedRegionalAnalysisSubmissions.length > 0 ? (
                   <div className="saved-table-list">
@@ -2254,6 +2614,9 @@ export default function Analytics({ data, user }) {
                             type="button"
                           >
                             <strong>{outpostName}</strong>
+                            {renderAnalysisReportingStatus(
+                              getRegionalOutpostAnalysisSubmission(outpostName)
+                            )}
                             {documentCount > 0 ? (
                               <span
                                 aria-label={`Документов: ${documentCount}`}
@@ -2274,6 +2637,9 @@ export default function Analytics({ data, user }) {
                 </div>
                 <div className="module-submission-list">
                   <h3>Чыгыш</h3>
+                  {renderAnalysisReportingStatus(
+                    latestRegionalAnalysisSubmission
+                  )}
                   {currentRegionalOutgoingSubmissions.length > 0 ? (
                     <div className="saved-table-list">
                       {currentRegionalOutgoingSubmissions.map((submission) => (
@@ -2388,6 +2754,13 @@ export default function Analytics({ data, user }) {
             {(user?.role === "outpost" || user?.role === "admin" || user?.role === "regional") ? (
               <div className="module-submission-list">
                 <h3>{user?.role === "outpost" || selectedAnalyticsScope === "regional-unit" ? "Чыгыш" : "Кириш"}</h3>
+                {user?.role === "outpost" || selectedAnalyticsScope === "regional-unit"
+                  ? renderAnalysisReportingStatus(
+                      selectedSectionId === PERIOD_ANALYSIS_SECTION_ID
+                        ? latestOwnPeriodSubmission
+                        : latestOwnMonthlySubmission
+                    )
+                  : null}
                 {displayedAnalysisSubmissions.length > 0 ? (
                   <div className="saved-table-list">
                     {displayedAnalysisSubmissions.map((submission) => (
@@ -2564,6 +2937,18 @@ export default function Analytics({ data, user }) {
             >
               <span aria-hidden="true" className="module-document-icon" />
               <strong>{section.title}</strong>
+              {[MONTHLY_ANALYSIS_SECTION_ID, PERIOD_ANALYSIS_SECTION_ID].includes(
+                section.id
+              ) &&
+              user?.role !== "admin" &&
+              !isRegionalSubunitAnalysis
+                ? renderAnalysisReportingStatus(
+                    section.id === PERIOD_ANALYSIS_SECTION_ID
+                      ? latestOwnPeriodSubmission
+                      : latestOwnMonthlySubmission,
+                    section.id
+                  )
+                : null}
             </button>
             {canEditAnalysis ? (
               <button
