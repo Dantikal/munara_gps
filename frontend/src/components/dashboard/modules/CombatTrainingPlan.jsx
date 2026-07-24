@@ -270,6 +270,19 @@ export default function CombatTrainingPlan({ user, title = MODULE_TITLE, layout 
     );
   };
 
+  const printDraft = () => {
+    const style = document.createElement("style");
+    style.dataset.combatTrainingPrint = "landscape";
+    style.textContent = "@media print { @page { size: A4 landscape; margin: 7mm; } }";
+    document.head.appendChild(style);
+    window.addEventListener(
+      "afterprint",
+      () => style.remove(),
+      { once: true }
+    );
+    window.print();
+  };
+
   const getSignaturePoint = (event) => {
     const canvas = signatureCanvasRef.current;
     if (!canvas) return null;
@@ -475,7 +488,7 @@ export default function CombatTrainingPlan({ user, title = MODULE_TITLE, layout 
     const days = getSectionDays(selectedSection);
 
     return (
-      <section className="module-panel combat-training-plan">
+      <section className="module-panel combat-training-plan combat-training-plan--draft-print">
         <button
           className="module-back-button"
           onClick={() => setSelectedSectionId(null)}
@@ -484,15 +497,22 @@ export default function CombatTrainingPlan({ user, title = MODULE_TITLE, layout 
           Артка
         </button>
         <header className="module-header">
-          <div>
-            <h1>{selectedSection.title}</h1>
-          </div>
+          <button
+            className="combat-training-plan__print-button"
+            onClick={printDraft}
+            type="button"
+          >
+            Распечатать
+          </button>
         </header>
 
         {notice && <p className="dashboard-notice">{notice}</p>}
 
         <div className="combat-training-plan__calendar-wrap">
-          <div className="combat-training-plan__calendar">
+          <div
+            className="combat-training-plan__calendar"
+            data-title={selectedSection.title}
+          >
             {days.map((day, index) => (
               <div className="combat-training-plan__day" key={day.name}>
                 <strong>{day.name}</strong>

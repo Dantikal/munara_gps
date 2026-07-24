@@ -931,11 +931,32 @@ th {
   padding-bottom: 6px;
 }
 
+.combat-training-plan__table-title {
+  color: #111;
+  font-family: "Times New Roman", Times, serif;
+  font-size: 22px;
+  line-height: 1.25;
+  margin: 0 0 16px;
+  text-align: center;
+}
+
 .combat-training-plan__calendar {
   display: grid;
   gap: 8px;
   grid-template-columns: repeat(7, minmax(150px, 1fr));
   min-width: 1100px;
+}
+
+.combat-training-plan__calendar::before {
+  color: #111;
+  content: attr(data-title);
+  font-family: "Times New Roman", Times, serif;
+  font-size: 22px;
+  font-weight: 700;
+  grid-column: 1 / -1;
+  line-height: 1.25;
+  margin: 0 0 8px;
+  text-align: center;
 }
 
 .combat-training-plan__day {
@@ -1082,6 +1103,137 @@ th {
   max-width: 100%;
   touch-action: none;
   width: 860px;
+}
+
+@page combat-training-draft {
+  size: A4 landscape;
+  margin: 7mm;
+}
+
+@media print {
+  .combat-training-plan--draft-print,
+  .combat-training-plan--draft-print * {
+    visibility: visible !important;
+  }
+
+  .combat-training-plan--draft-print {
+    background: #fff !important;
+    border: 0 !important;
+    box-shadow: none !important;
+    left: 0 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    page: combat-training-draft;
+    break-after: avoid !important;
+    page-break-after: avoid !important;
+    position: absolute !important;
+    top: 0 !important;
+    width: 100% !important;
+  }
+
+  .combat-training-plan--draft-print .module-back-button,
+  .combat-training-plan--draft-print .combat-training-plan__print-button,
+  .combat-training-plan--draft-print .module-actions,
+  .combat-training-plan--draft-print .dashboard-notice,
+  .combat-training-plan--draft-print .dashboard-error {
+    display: none !important;
+  }
+
+  .combat-training-plan--draft-print .module-header {
+    display: block !important;
+    margin: 0 0 2mm !important;
+    text-align: center;
+  }
+
+  .combat-training-plan--draft-print .module-header h1 {
+    color: #000 !important;
+    font-family: "Times New Roman", Times, serif;
+    font-size: 14pt !important;
+    line-height: 1.2;
+    margin: 0 !important;
+  }
+
+  .combat-training-plan--draft-print .combat-training-plan__calendar-wrap {
+    overflow: visible !important;
+    padding: 0 !important;
+  }
+
+  .combat-training-plan--draft-print .combat-training-plan__calendar {
+    gap: 1.5mm !important;
+    grid-template-columns: repeat(7, minmax(0, 1fr)) !important;
+    min-width: 0 !important;
+    width: 100% !important;
+  }
+
+  .combat-training-plan--draft-print .combat-training-plan__calendar::before {
+    color: #000 !important;
+    font-size: 14pt !important;
+    margin: 0 0 1mm !important;
+  }
+
+  .combat-training-plan--draft-print .combat-training-plan__day {
+    background: #fff !important;
+    border: 1px solid #000 !important;
+    border-radius: 0 !important;
+    break-inside: avoid;
+    gap: 0.8mm !important;
+    padding: 0.8mm !important;
+  }
+
+  .combat-training-plan--draft-print .combat-training-plan__day > strong {
+    color: #000 !important;
+    font-size: 8pt !important;
+  }
+
+  .combat-training-plan--draft-print .combat-training-plan__day-entry {
+    border-color: #777 !important;
+    gap: 0.5mm !important;
+    padding-top: 0.8mm !important;
+  }
+
+  .combat-training-plan--draft-print .combat-training-plan__day label,
+  .combat-training-plan--draft-print .combat-training-plan__time-fields label {
+    color: #000 !important;
+    font-size: 6.5pt !important;
+    gap: 0.2mm !important;
+  }
+
+  .combat-training-plan--draft-print .combat-training-plan__day input,
+  .combat-training-plan--draft-print .combat-training-plan__day textarea,
+  .combat-training-plan--draft-print .combat-training-plan__signature-block input {
+    background: #fff !important;
+    border-color: #555 !important;
+    box-shadow: none !important;
+    color: #000 !important;
+    font-size: 7pt !important;
+    padding: 0.5mm !important;
+  }
+
+  .combat-training-plan--draft-print .combat-training-plan__day textarea {
+    min-height: 10mm !important;
+    resize: none !important;
+  }
+
+  .combat-training-plan--draft-print .combat-training-plan__time-fields {
+    gap: 0.5mm !important;
+    grid-template-columns: 1fr !important;
+  }
+
+  .combat-training-plan--draft-print .combat-training-plan__signature-block {
+    break-inside: avoid;
+    font-size: 9pt !important;
+    margin-top: 2mm !important;
+    max-width: 120mm !important;
+  }
+
+  .combat-training-plan--draft-print .combat-training-plan__signature-block > input {
+    margin-bottom: 2mm !important;
+  }
+
+  .combat-training-plan--draft-print .combat-training-plan__signature-row {
+    gap: 4mm !important;
+    grid-template-columns: 35mm minmax(50mm, 1fr) !important;
+  }
 }
 
 .admin-user-form {
