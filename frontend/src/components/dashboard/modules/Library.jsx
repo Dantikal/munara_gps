@@ -10,6 +10,7 @@ import {
   deleteThematicAccountSubmission,
   forwardThematicAccountSubmission,
   getThematicAccountSubmissions,
+  markThematicAccountSubmissionRead,
   updateLibraryPeriod,
 } from "../../../api/dashboard.js";
 import { getApiErrorMessage } from "../../../api/errors.js";
@@ -25,6 +26,10 @@ const TABLE_STORAGE_PREFIX = "munara-library-table";
 const TABLE_FIELD_STORAGE_SUFFIX = "fields";
 const TABLE_ACTION_STORAGE_SUFFIX = "action";
 const CUSTOM_PERIODS_STORAGE_PREFIX = "munara-library-custom-periods";
+const HIDDEN_THEMATIC_MONTHS_STORAGE_PREFIX =
+  "munara-library-hidden-thematic-months";
+const CUSTOM_THEMATIC_MONTHS_STORAGE_PREFIX =
+  "munara-library-custom-thematic-months";
 export const SAVED_TABLES_STORAGE_KEY = "munara-library-saved-tables";
 const EMPTY_ARRAY = [];
 const MULTILINE_COLUMN_KEYS = new Set([
@@ -54,11 +59,131 @@ const OUTPOST_SUBMISSION_SECTION_IDS = new Set([
   "typical-week",
   "combat-training-personnel-journal",
   "combat-training-command-journal",
+  "meetings-thematic-account",
+  "meetings-lesson-schedule",
+  "meetings-combat-training-journal",
+  "young-soldier-thematic-account",
+  "young-soldier-lesson-schedule",
+  "young-soldier-combat-training-journal",
 ]);
 const COMMAND_SUBMISSION_SECTION_IDS = new Set([
   "command-thematic-account",
   "command-lesson-schedule",
 ]);
+
+const getHiddenThematicMonthsStorageKey = (scope, documentId) =>
+  `${HIDDEN_THEMATIC_MONTHS_STORAGE_PREFIX}:${scope || "default"}:${
+    documentId || "default"
+  }`;
+
+const getCustomThematicMonthsStorageKey = (scope, documentId) =>
+  `${CUSTOM_THEMATIC_MONTHS_STORAGE_PREFIX}:${scope || "default"}:${
+    documentId || "default"
+  }`;
+
+const getStoredHiddenThematicMonths = (scope, documentId) => {
+  if (typeof window === "undefined") return [];
+  try {
+    const stored = JSON.parse(
+      window.localStorage.getItem(
+        getHiddenThematicMonthsStorageKey(scope, documentId)
+      ) || "[]"
+    );
+    return Array.isArray(stored) ? stored : [];
+  } catch {
+    return [];
+  }
+};
+
+const getStoredCustomThematicMonths = (scope, documentId) => {
+  if (typeof window === "undefined") return [];
+  try {
+    const stored = JSON.parse(
+      window.localStorage.getItem(
+        getCustomThematicMonthsStorageKey(scope, documentId)
+      ) || "[]"
+    );
+    return Array.isArray(stored) ? stored : [];
+  } catch {
+    return [];
+  }
+};
+
+const appendCustomThematicMonths = (table, customMonths) => {
+  if (
+    table?.variant !== "thematic-account" ||
+    !Array.isArray(customMonths) ||
+    customMonths.length === 0
+  ) {
+    return table;
+  }
+
+  const customColumns = customMonths.flatMap((month) =>
+    ["1", "2", "3", "4", "5"].map((week) => ({
+      key: `${month.key}_${week}`,
+      label: week,
+      width: 54,
+    }))
+  );
+  const headerRows = (table.headerRows || []).map((row) => [...row]);
+  if (headerRows[0]) {
+    headerRows[0].push(
+      ...customMonths.map((month) => ({
+        key: month.key,
+        label: month.label,
+        defaultValue: month.label,
+        editableKey: `${month.key}_label`,
+        colSpan: 5,
+      }))
+    );
+  }
+  if (headerRows[1]) {
+    headerRows[1].push(
+      ...customMonths.flatMap((month) =>
+        ["1", "2", "3", "4", "5"].map((week) => ({
+          key: `${month.key}_${week}`,
+          label: week,
+        }))
+      )
+    );
+  }
+
+  return {
+    ...table,
+    columns: [...(table.columns || []), ...customColumns],
+    headerRows,
+    rows: (table.rows || []).map((row) => ({
+      ...customColumns.reduce(
+        (values, column) => ({ ...values, [column.key]: "" }),
+        {}
+      ),
+      ...row,
+    })),
+  };
+};
+
+const hideThematicMonthColumns = (table, hiddenMonthKeys) => {
+  if (
+    table?.variant !== "thematic-account" ||
+    !Array.isArray(hiddenMonthKeys) ||
+    hiddenMonthKeys.length === 0
+  ) {
+    return table;
+  }
+
+  const isHiddenKey = (key) =>
+    hiddenMonthKeys.some(
+      (monthKey) => key === monthKey || String(key || "").startsWith(`${monthKey}_`)
+    );
+
+  return {
+    ...table,
+    columns: (table.columns || []).filter((column) => !isHiddenKey(column.key)),
+    headerRows: (table.headerRows || []).map((row) =>
+      row.filter((cell) => !isHiddenKey(cell.key))
+    ),
+  };
+};
 const REMOVED_THEMATIC_PERIOD_IDS = new Set(["period-1", "period-2", "period-3", "period-4"]);
 const REMOVED_THEMATIC_PERIOD_TITLE_PARTS = [
   "2026-окуу жылынын 2 мезгилине",
@@ -977,6 +1102,13 @@ export default function Library({ data, onBack, onRefresh, onSubmissionCreated }
   const [submissionListError, setSubmissionListError] = useState("");
   const [deletingLessonPeriodId, setDeletingLessonPeriodId] = useState(null);
   const [weeklyStatusNow, setWeeklyStatusNow] = useState(() => Date.now());
+  const [hiddenThematicMonths, setHiddenThematicMonths] = useState(() =>
+    getStoredHiddenThematicMonths(data?.scope, data?.id)
+  );
+  const [customThematicMonths, setCustomThematicMonths] = useState(() =>
+    getStoredCustomThematicMonths(data?.scope, data?.id)
+  );
+  const [thematicMonthDialog, setThematicMonthDialog] = useState(null);
   const directTable = data?.table;
   const selectedSection = sections.find((section) => section.id === selectedSectionId);
   const selectedSubsections = getNestedSections(selectedSection);
@@ -1098,6 +1230,34 @@ export default function Library({ data, onBack, onRefresh, onSubmissionCreated }
           formatOutpostName(submission.outpostName) === outpostName
       )
     );
+  const handleOpenRegionalOutpost = (outpostName) => {
+    const unreadSubmissionIds = regionalOutpostSubmissions
+      .filter(
+        (submission) =>
+          formatOutpostName(submission.outpostName) === outpostName &&
+          !submission.isRead
+      )
+      .map((submission) => submission.id);
+
+    setSelectedAdminOutpostName(outpostName);
+    if (unreadSubmissionIds.length === 0) return;
+
+    const unreadIdSet = new Set(unreadSubmissionIds);
+    setThematicSubmissions((items) =>
+      items.map((item) =>
+        unreadIdSet.has(item.id) ? { ...item, isRead: true } : item
+      )
+    );
+    Promise.all(
+      unreadSubmissionIds.map((submissionId) =>
+        markThematicAccountSubmissionRead(submissionId)
+      )
+    ).catch(() => {
+      setSubmissionListError(
+        "Документтерди окулду деп белгилөө мүмкүн болгон жок."
+      );
+    });
+  };
   const isAdminGroupedSubmissionSection =
     currentUser?.role === "admin" &&
     ADMIN_GROUPED_SUBMISSION_SECTION_IDS.has(submissionSectionId);
@@ -1161,7 +1321,6 @@ export default function Library({ data, onBack, onRefresh, onSubmissionCreated }
   const showsRegionalOutgoingSubmissions =
     currentUser?.role === "regional" &&
     OUTPOST_SUBMISSION_SECTION_IDS.has(submissionSectionId) &&
-    !COMMAND_SUBMISSION_SECTION_IDS.has(submissionSectionId) &&
     !isRegionalTypicalWeekIncomingLocation &&
     (
       showsOutpostSubmissions ||
@@ -1182,23 +1341,30 @@ export default function Library({ data, onBack, onRefresh, onSubmissionCreated }
     activePeriodContainerId === "command-lesson-schedule";
   const selectedTable = useMemo(
     () => {
+      let nextTable;
       if (selectedSubmission) {
-        return sourceSelectedTable;
-      }
-
-      if (isThematicAccountTable) {
-        return buildThematicAccountLikePhoto(
+        nextTable = sourceSelectedTable;
+      } else if (isThematicAccountTable) {
+        nextTable = buildThematicAccountLikePhoto(
           sourceSelectedTable,
           isCommandThematicAccountTable,
           selectedPeriod?.id,
         );
+      } else {
+        nextTable = shouldUseLessonSchedulePhotoLayout
+          ? buildLessonScheduleLikePhoto(sourceSelectedTable)
+          : sourceSelectedTable;
       }
-
-      return shouldUseLessonSchedulePhotoLayout
-        ? buildLessonScheduleLikePhoto(sourceSelectedTable)
-        : sourceSelectedTable;
+      if (!data?.allowThematicMonthDeletion) return nextTable;
+      return hideThematicMonthColumns(
+        appendCustomThematicMonths(nextTable, customThematicMonths),
+        hiddenThematicMonths
+      );
     },
     [
+      data?.allowThematicMonthDeletion,
+      customThematicMonths,
+      hiddenThematicMonths,
       isCommandThematicAccountTable,
       isThematicAccountTable,
       selectedSubmission,
@@ -1210,6 +1376,15 @@ export default function Library({ data, onBack, onRefresh, onSubmissionCreated }
   );
   const tableColumns = selectedTable?.columns || EMPTY_ARRAY;
   const tableHeaderFields = selectedTable?.headerFields || EMPTY_ARRAY;
+  const thematicMonthOptions =
+    data?.allowThematicMonthDeletion &&
+    selectedTable?.variant === "thematic-account"
+      ? (selectedTable.headerRows?.[0] || []).filter(
+          (cell) =>
+            Number(cell.colSpan) > 1 &&
+            !["number", "topic", "hours"].includes(cell.key)
+        )
+      : EMPTY_ARRAY;
   const tableOwnerId = [
     selectedSection?.id,
     selectedSubsection?.id,
@@ -1750,6 +1925,81 @@ export default function Library({ data, onBack, onRefresh, onSubmissionCreated }
     setEditableRows((currentRows) => currentRows.slice(0, -1));
   };
 
+  const handleDeleteThematicMonth = () => {
+    if (thematicMonthOptions.length === 0) return;
+    setThematicMonthDialog({
+      mode: "delete",
+      count: "1",
+      error: "",
+    });
+  };
+
+  const handleAddThematicMonths = () => {
+    setThematicMonthDialog({
+      mode: "add",
+      count: "1",
+      error: "",
+    });
+  };
+
+  const handleConfirmThematicMonthDialog = (event) => {
+    event.preventDefault();
+    if (!thematicMonthDialog) return;
+
+    const count = Number(thematicMonthDialog.count);
+    const maximum =
+      thematicMonthDialog.mode === "delete"
+        ? thematicMonthOptions.length
+        : 12;
+
+    if (!Number.isInteger(count) || count < 1 || count > maximum) {
+      setThematicMonthDialog((currentDialog) => ({
+        ...currentDialog,
+        error: `Укажите целое число от 1 до ${maximum}.`,
+      }));
+      return;
+    }
+
+    if (thematicMonthDialog.mode === "delete") {
+      const monthKeysToHide = thematicMonthOptions
+        .slice(-count)
+        .map((month) => month.key);
+      const nextHiddenMonths = [
+        ...new Set([...hiddenThematicMonths, ...monthKeysToHide]),
+      ];
+      setHiddenThematicMonths(nextHiddenMonths);
+      try {
+        window.localStorage.setItem(
+          getHiddenThematicMonthsStorageKey(data?.scope, data?.id),
+          JSON.stringify(nextHiddenMonths)
+        );
+      } catch {
+        // The month remains hidden for the current session.
+      }
+      setTableNotice(`Удалено колонок месяцев: ${count}.`);
+    } else {
+      const createdAt = Date.now();
+      const nextMonths = Array.from({ length: count }, (_, index) => ({
+        key: `custom_month_${createdAt}_${index + 1}`,
+        label: `ЖАҢЫ АЙ ${customThematicMonths.length + index + 1}`,
+      }));
+      const nextCustomMonths = [...customThematicMonths, ...nextMonths];
+      setCustomThematicMonths(nextCustomMonths);
+      try {
+        window.localStorage.setItem(
+          getCustomThematicMonthsStorageKey(data?.scope, data?.id),
+          JSON.stringify(nextCustomMonths)
+        );
+      } catch {
+        // The new month columns remain available for the current session.
+      }
+      setTableNotice(`Добавлено колонок месяцев: ${count}.`);
+    }
+
+    setTableStatus("editing");
+    setThematicMonthDialog(null);
+  };
+
   const addCustomPeriodFromTemplate = (title, templatePeriod) => {
     const periodId = `custom-${Date.now()}`;
     const table = customPeriodConfig.createTable
@@ -2137,6 +2387,13 @@ export default function Library({ data, onBack, onRefresh, onSubmissionCreated }
       OUTPOST_SUBMISSION_SECTION_IDS.has(submissionSectionId) &&
       !selectedSubmission
     ) {
+      if (data?.requestSubmissionTitleOnUpdate) {
+        setSubmissionDocumentTitle("");
+        setSubmissionError("");
+        setSubmissionDialogOpen(true);
+        return;
+      }
+
       setIsSubmittingThematicAccount(true);
       setTableNotice("");
       persistCurrentTable("editing");
@@ -2195,7 +2452,30 @@ export default function Library({ data, onBack, onRefresh, onSubmissionCreated }
 
     setIsSubmittingThematicAccount(true);
     setSubmissionError("");
-    const shouldResetLessonSchedule = selectedTable?.variant === "lesson-schedule";
+    const isUpdatingDirectSubmission =
+      isDirectSubmissionUpdate &&
+      OUTPOST_SUBMISSION_SECTION_IDS.has(submissionSectionId) &&
+      !selectedSubmission;
+    const shouldResetLessonSchedule =
+      !isUpdatingDirectSubmission &&
+      selectedTable?.variant === "lesson-schedule";
+
+    if (isUpdatingDirectSubmission) {
+      persistCurrentTable("editing");
+      upsertSavedTable({
+        id: tableStorageKey,
+        title: editableTitle || selectedTable?.title || data?.title,
+        savedAt: new Date().toISOString(),
+        scope: data?.scope,
+        table: selectedTable
+          ? { ...selectedTable, title: editableTitle || selectedTable.title }
+          : selectedTable,
+        tableStorageKey,
+        headerStorageKey,
+        tableActionStorageKey,
+      });
+    }
+
     try {
       const submission = await createThematicAccountSubmission({
         documentTitle,
@@ -2203,15 +2483,20 @@ export default function Library({ data, onBack, onRefresh, onSubmissionCreated }
         periodId: data?.submissionPeriodId || selectedPeriod?.id || "",
         table: buildCurrentSubmissionTable(),
       });
-      completeCurrentTableSubmission();
       setThematicSubmissions((items) => [
         submission,
         ...items.filter((item) => item.id !== submission.id),
       ]);
+      if (isUpdatingDirectSubmission) {
+        setTableStatus("editing");
+        setTableNotice("Журнал обновлён и сохранён.");
+      } else {
+        completeCurrentTableSubmission();
+      }
       if (shouldResetLessonSchedule) {
         setSelectedSubmission(null);
         setSelectedPeriodId(null);
-      } else {
+      } else if (!isUpdatingDirectSubmission) {
         setSelectedSubmission(submission);
       }
       setSubmissionDialogOpen(false);
@@ -2520,6 +2805,25 @@ export default function Library({ data, onBack, onRefresh, onSubmissionCreated }
       <button disabled={!isTableEditing || editableRows.length === 0} onClick={handleDeleteTableRow} type="button">
         - удалить строку
       </button>
+      {thematicMonthOptions.length > 0 ? (
+        <button
+          disabled={!isTableEditing}
+          onClick={handleDeleteThematicMonth}
+          type="button"
+        >
+          - Удалить месяц
+        </button>
+      ) : null}
+      {data?.allowThematicMonthDeletion &&
+      selectedTable?.variant === "thematic-account" ? (
+        <button
+          disabled={!isTableEditing}
+          onClick={handleAddThematicMonths}
+          type="button"
+        >
+          + Добавить месяц
+        </button>
+      ) : null}
       <button disabled={!isTableEditing || isSubmittingThematicAccount} onClick={handleTableSave} type="button">
         Сохранить
       </button>
@@ -2597,6 +2901,80 @@ export default function Library({ data, onBack, onRefresh, onSubmissionCreated }
 
   return (
     <section className="module-panel">
+      {thematicMonthDialog ? (
+        <div
+          className="thematic-month-dialog"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) {
+              setThematicMonthDialog(null);
+            }
+          }}
+          role="presentation"
+        >
+          <form
+            aria-labelledby="thematic-month-dialog-title"
+            aria-modal="true"
+            className="thematic-month-dialog__panel"
+            onSubmit={handleConfirmThematicMonthDialog}
+            role="dialog"
+          >
+            <div className="thematic-month-dialog__icon" aria-hidden="true">
+              {thematicMonthDialog.mode === "delete" ? "−" : "+"}
+            </div>
+            <h2 id="thematic-month-dialog-title">
+              {thematicMonthDialog.mode === "delete"
+                ? "Удалить месяцы"
+                : "Добавить месяцы"}
+            </h2>
+            <p>
+              {thematicMonthDialog.mode === "delete"
+                ? `Укажите количество колонок для удаления. Доступно: ${thematicMonthOptions.length}.`
+                : "Укажите, сколько новых колонок месяцев добавить."}
+            </p>
+            <label>
+              Количество месяцев
+              <input
+                autoFocus
+                inputMode="numeric"
+                max={
+                  thematicMonthDialog.mode === "delete"
+                    ? thematicMonthOptions.length
+                    : 12
+                }
+                min="1"
+                onChange={(event) =>
+                  setThematicMonthDialog((currentDialog) => ({
+                    ...currentDialog,
+                    count: event.target.value,
+                    error: "",
+                  }))
+                }
+                type="number"
+                value={thematicMonthDialog.count}
+              />
+            </label>
+            {thematicMonthDialog.error ? (
+              <p className="thematic-month-dialog__error" role="alert">
+                {thematicMonthDialog.error}
+              </p>
+            ) : null}
+            <div className="thematic-month-dialog__actions">
+              <button
+                className="thematic-month-dialog__cancel"
+                onClick={() => setThematicMonthDialog(null)}
+                type="button"
+              >
+                Отмена
+              </button>
+              <button className="thematic-month-dialog__confirm" type="submit">
+                {thematicMonthDialog.mode === "delete"
+                  ? "Удалить"
+                  : "Добавить"}
+              </button>
+            </div>
+          </form>
+        </div>
+      ) : null}
       <header>
         <h1>{data?.title || "Сабактардын тематикасынын эсеби жана жүгүртмөсү"}</h1>
         <p>{data?.description || `Доступные документы для ${data?.scope || "текущей роли"}.`}</p>
@@ -2860,6 +3238,25 @@ export default function Library({ data, onBack, onRefresh, onSubmissionCreated }
             <button disabled={!isTableEditing || editableRows.length === 0} onClick={handleDeleteTableRow} type="button">
               - удалить строку
             </button>
+            {thematicMonthOptions.length > 0 ? (
+              <button
+                disabled={!isTableEditing}
+                onClick={handleDeleteThematicMonth}
+                type="button"
+              >
+                - Удалить месяц
+              </button>
+            ) : null}
+            {data?.allowThematicMonthDeletion &&
+            selectedTable?.variant === "thematic-account" ? (
+              <button
+                disabled={!isTableEditing}
+                onClick={handleAddThematicMonths}
+                type="button"
+              >
+                + Добавить месяц
+              </button>
+            ) : null}
             <button disabled={!isTableEditing || isSubmittingThematicAccount} onClick={handleTableSave} type="button">
               Сохранить
             </button>
@@ -2972,20 +3369,21 @@ export default function Library({ data, onBack, onRefresh, onSubmissionCreated }
                 {regionalOutpostNames.length > 0 ? (
                   <div className="saved-table-list">
                     {regionalOutpostNames.map((outpostName) => {
-                      const documentCount = regionalOutpostSubmissions.filter(
+                      const unreadDocumentCount = regionalOutpostSubmissions.filter(
                         (submission) =>
-                          formatOutpostName(submission.outpostName) === outpostName
+                          formatOutpostName(submission.outpostName) === outpostName &&
+                          !submission.isRead
                       ).length;
 
                       return (
                         <button
                           className={`saved-table-card${
-                            documentCount > 0
+                            unreadDocumentCount > 0
                               ? " saved-table-card--with-notification"
                               : ""
                           }`}
                           key={outpostName}
-                          onClick={() => setSelectedAdminOutpostName(outpostName)}
+                          onClick={() => handleOpenRegionalOutpost(outpostName)}
                           type="button"
                         >
                           <strong>{outpostName}</strong>
@@ -2997,12 +3395,12 @@ export default function Library({ data, onBack, onRefresh, onSubmissionCreated }
                               )}
                             />
                           ) : null}
-                          {documentCount > 0 ? (
+                          {unreadDocumentCount > 0 ? (
                             <span
-                              aria-label={`Документов: ${documentCount}`}
+                              aria-label={`Новых документов: ${unreadDocumentCount}`}
                               className="combat-journal-notification-badge"
                             >
-                              {documentCount}
+                              {unreadDocumentCount}
                             </span>
                           ) : null}
                         </button>
@@ -3353,7 +3751,11 @@ export default function Library({ data, onBack, onRefresh, onSubmissionCreated }
               handleSubmitThematicAccount();
             }}
           >
-            <h2 id="submission-dialog-title">Таблицаны жөнөтүү</h2>
+            <h2 id="submission-dialog-title">
+              {isDirectSubmissionUpdate && data?.requestSubmissionTitleOnUpdate
+                ? "Журналды жаңылоо"
+                : "Таблицаны жөнөтүү"}
+            </h2>
             <label className="module-inline-field">
               <span>Иш кагаздардын аталышы</span>
               <input
@@ -3377,7 +3779,13 @@ export default function Library({ data, onBack, onRefresh, onSubmissionCreated }
                 Отмена
               </button>
               <button disabled={isSubmittingThematicAccount} type="submit">
-                {isSubmittingThematicAccount ? "Отправка..." : "Отправить"}
+                {isDirectSubmissionUpdate && data?.requestSubmissionTitleOnUpdate
+                  ? isSubmittingThematicAccount
+                    ? "Обновление..."
+                    : "Обновить"
+                  : isSubmittingThematicAccount
+                    ? "Отправка..."
+                    : "Отправить"}
               </button>
             </div>
           </form>

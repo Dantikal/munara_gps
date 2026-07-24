@@ -76,6 +76,7 @@ export default function CombatTrainingPlan({ user, title = MODULE_TITLE, layout 
   const [draftTitle, setDraftTitle] = useState(DEFAULT_PLAN_TITLE);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
+  const [isPublishing, setIsPublishing] = useState(false);
   const [isSignatureDialogOpen, setIsSignatureDialogOpen] = useState(false);
   const signatureCanvasRef = useRef(null);
   const isDrawingSignatureRef = useRef(false);
@@ -106,7 +107,15 @@ export default function CombatTrainingPlan({ user, title = MODULE_TITLE, layout 
 
     const saveTimer = window.setTimeout(() => {
       sections.forEach((section) => {
-        const { id, title: sectionTitle, layout: sectionLayout, createdAt, updatedAt, ...data } = section;
+        const {
+          id,
+          title: sectionTitle,
+          layout: sectionLayout,
+          createdAt,
+          updatedAt,
+          publishedAt,
+          ...data
+        } = section;
         updateCombatTrainingPlan(id, { data }).catch(() => {
           setError("Таблицаны серверге сактоо мүмкүн болгон жок.");
         });
@@ -213,15 +222,44 @@ export default function CombatTrainingPlan({ user, title = MODULE_TITLE, layout 
     );
   };
 
-  const handleSend = () => {
-    setSections((currentSections) =>
-      currentSections.map((section) =>
-        section.id === selectedSectionId
-          ? { ...section, sentAt: new Date().toISOString() }
-          : section
-      )
-    );
-    setNotice("Иш планы ийгиликтүү жөнөтүлдү.");
+  const handleSend = async () => {
+    if (!isAdmin || !selectedSection || isPublishing) return;
+
+    const {
+      id,
+      title: sectionTitle,
+      layout: sectionLayout,
+      createdAt,
+      updatedAt,
+      publishedAt,
+      ...currentData
+    } = selectedSection;
+    const data = {
+      ...currentData,
+      sentAt: new Date().toISOString(),
+    };
+
+    setIsPublishing(true);
+    setError("");
+    setNotice("");
+    try {
+      const updatedSection = await updateCombatTrainingPlan(id, { data });
+      setSections((currentSections) =>
+        currentSections.map((section) =>
+          section.id === id ? updatedSection : section
+        )
+      );
+      setNotice("Иш планы ийгиликтүү жаңыланды.");
+    } catch (requestError) {
+      setError(
+        getApiErrorMessage(
+          requestError,
+          "Иш планын жаңылоо мүмкүн болгон жок."
+        )
+      );
+    } finally {
+      setIsPublishing(false);
+    }
   };
 
   const updateSelectedSection = (changes) => {
@@ -418,6 +456,18 @@ export default function CombatTrainingPlan({ user, title = MODULE_TITLE, layout 
               </tbody>
             </table>
           </div>
+          {isAdmin ? (
+            <div className="module-actions">
+              <button
+                className="module-action-button"
+                disabled={isPublishing}
+                onClick={handleSend}
+                type="button"
+              >
+                {isPublishing ? "Жаңылатууда..." : "Жаңылатуу"}
+              </button>
+            </div>
+          ) : null}
         </section>
       );
     }
@@ -557,6 +607,18 @@ export default function CombatTrainingPlan({ user, title = MODULE_TITLE, layout 
           </div>
         </div>
 
+        {isAdmin ? (
+          <div className="module-actions">
+            <button
+              className="module-action-button"
+              disabled={isPublishing}
+              onClick={handleSend}
+              type="button"
+            >
+              {isPublishing ? "Жаңылатууда..." : "Жаңылатуу"}
+            </button>
+          </div>
+        ) : null}
       </section>
     );
   }

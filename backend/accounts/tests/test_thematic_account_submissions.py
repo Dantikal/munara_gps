@@ -80,6 +80,35 @@ class ThematicAccountSubmissionApiTests(APITestCase):
         response = self.client.get(self.url)
         self.assertEqual(response.data, [])
 
+    def test_regional_opening_outpost_submission_marks_notification_as_read(self):
+        self.client.force_authenticate(self.outpost)
+        create_response = self.client.post(
+            self.url,
+            {
+                "documentTitle": "Unread command document",
+                "sectionId": "command-thematic-account",
+                "periodId": "period-1",
+                "table": {"title": "Command training", "columns": [], "rows": []},
+            },
+            format="json",
+        )
+        submission_id = create_response.data["id"]
+
+        self.client.force_authenticate(self.regional)
+        list_response = self.client.get(self.url)
+        self.assertFalse(list_response.data[0]["isRead"])
+
+        read_response = self.client.patch(
+            reverse("thematic-account-submission-detail", kwargs={"pk": submission_id}),
+            {"isRead": True},
+            format="json",
+        )
+        self.assertEqual(read_response.status_code, 200)
+        self.assertTrue(read_response.data["isRead"])
+
+        refreshed_response = self.client.get(self.url)
+        self.assertTrue(refreshed_response.data[0]["isRead"])
+
     def test_matching_regional_unit_can_forward_outpost_document_to_admin(self):
         self.client.force_authenticate(self.outpost)
         response = self.client.post(
@@ -159,6 +188,55 @@ class ThematicAccountSubmissionApiTests(APITestCase):
         self.assertEqual(response.status_code, 201)
         self.assertEqual(response.data["sectionId"], "lesson-schedule")
 
+    def test_meetings_journal_updates_one_document_and_keeps_revision_history(self):
+        self.client.force_authenticate(self.regional)
+        payload = {
+            "documentTitle": "Жыйындын күжүрмөн даярдоо журналы",
+            "sectionId": "meetings-combat-training-journal",
+            "periodId": "meeting-journal-subject-1",
+            "table": {"title": "Журнал", "columns": [], "rows": [{"value": "1"}]},
+        }
+
+        first_response = self.client.post(self.url, payload, format="json")
+        self.assertEqual(first_response.status_code, 201)
+        self.assertEqual(len(first_response.data["revisions"]), 1)
+
+        payload["table"]["rows"] = [{"value": "2"}]
+        second_response = self.client.post(self.url, payload, format="json")
+        self.assertEqual(second_response.status_code, 200)
+        self.assertEqual(second_response.data["id"], first_response.data["id"])
+        self.assertEqual(len(second_response.data["revisions"]), 2)
+        self.assertEqual(
+            second_response.data["revisions"][0]["table"]["rows"][0]["value"],
+            "2",
+        )
+
+    def test_young_soldier_journal_keeps_update_history(self):
+        self.client.force_authenticate(self.regional)
+        payload = {
+            "documentTitle": "Биринчи жаңылоо",
+            "sectionId": "young-soldier-combat-training-journal",
+            "periodId": "young-soldier-journal-subject-1",
+            "table": {
+                "title": "Жаш жоокерлердин журналы",
+                "subjectId": 1,
+                "columns": [],
+                "rows": [],
+            },
+        }
+
+        first_response = self.client.post(self.url, payload, format="json")
+        self.assertEqual(first_response.status_code, 201)
+
+        payload["documentTitle"] = "Экинчи жаңылоо"
+        second_response = self.client.post(self.url, payload, format="json")
+        self.assertEqual(second_response.status_code, 200)
+        self.assertEqual(second_response.data["id"], first_response.data["id"])
+        self.assertEqual(
+            [item["documentTitle"] for item in second_response.data["revisions"]],
+            ["Экинчи жаңылоо", "Биринчи жаңылоо"],
+        )
+
     def test_outpost_can_submit_command_training_table(self):
         self.client.force_authenticate(self.outpost)
         response = self.client.post(
@@ -210,6 +288,41 @@ class ThematicAccountSubmissionApiTests(APITestCase):
         self.assertEqual(len(response.data), 1)
         self.assertEqual(response.data[0]["documentTitle"], "Regional command training document")
         self.assertEqual(response.data[0]["senderRole"], User.Role.REGIONAL)
+
+    def test_regional_unit_can_submit_meetings_and_young_soldier_documents(self):
+        self.client.force_authenticate(self.regional)
+        section_ids = [
+            "meetings-thematic-account",
+            "meetings-lesson-schedule",
+            "meetings-combat-training-journal",
+            "meetings-observation",
+            "meetings-analysis",
+            "young-soldier-thematic-account",
+            "young-soldier-lesson-schedule",
+            "young-soldier-combat-training-journal",
+            "young-soldier-observation",
+            "young-soldier-analysis",
+        ]
+
+        for section_id in section_ids:
+            with self.subTest(section_id=section_id):
+                response = self.client.post(
+                    self.url,
+                    {
+                        "documentTitle": section_id,
+                        "sectionId": section_id,
+                        "periodId": f"{section_id}-document",
+                        "table": {
+                            "title": section_id,
+                            "columns": [],
+                            "rows": [],
+                        },
+                    },
+                    format="json",
+                )
+                self.assertEqual(response.status_code, 201)
+                self.assertEqual(response.data["sectionId"], section_id)
+                self.assertEqual(response.data["unitNumber"], "2021")
 
     def test_outpost_can_submit_typical_week(self):
         self.client.force_authenticate(self.outpost)

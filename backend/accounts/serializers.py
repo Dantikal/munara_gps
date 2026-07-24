@@ -180,7 +180,15 @@ class AdminUserSerializer(serializers.ModelSerializer):
 class MethodicalManualSubjectSerializer(serializers.ModelSerializer):
     class Meta:
         model = MethodicalManualSubject
-        fields = ["id", "title", "order", "is_active", "created_at", "updated_at"]
+        fields = [
+            "id",
+            "title",
+            "collection",
+            "order",
+            "is_active",
+            "created_at",
+            "updated_at",
+        ]
         read_only_fields = ["id", "created_at", "updated_at"]
 
     def validate_title(self, value):
@@ -391,9 +399,19 @@ class CombatTrainingJournalSerializer(serializers.ModelSerializer):
 
 
 class CombatTrainingJournalSubjectSerializer(serializers.ModelSerializer):
+    unitNumber = serializers.CharField(source="unit_number")
+
     class Meta:
         model = CombatTrainingJournalSubject
-        fields = ["id", "title", "order", "is_active", "created_at", "updated_at"]
+        fields = [
+            "id",
+            "title",
+            "unitNumber",
+            "order",
+            "is_active",
+            "created_at",
+            "updated_at",
+        ]
         read_only_fields = ["id", "created_at", "updated_at"]
 
     def validate_title(self, value):
@@ -401,6 +419,12 @@ class CombatTrainingJournalSubjectSerializer(serializers.ModelSerializer):
         if not title:
             raise serializers.ValidationError("Укажите название предмета.")
         return title
+
+    def validate_unitNumber(self, value):
+        unit_number = value.strip()
+        if not unit_number:
+            raise serializers.ValidationError("Укажите номер аскер бөлүгү.")
+        return unit_number
 
 
 class AdminChatMessageSerializer(serializers.ModelSerializer):

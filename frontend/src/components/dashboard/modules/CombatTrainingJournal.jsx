@@ -5,6 +5,7 @@ import {
   createCombatTrainingJournalSubject,
   deleteCombatTrainingJournal,
   deleteCombatTrainingJournalRevision,
+  deleteCombatTrainingJournalSubject,
   deleteThematicAccountSubmission,
   forwardThematicAccountSubmission,
   getCombatTrainingJournalOutposts,
@@ -13,6 +14,7 @@ import {
   getThematicAccountSubmissions,
   markCombatTrainingJournalRevisionRead,
   updateCombatTrainingJournal,
+  updateCombatTrainingJournalSubject,
 } from "../../../api/dashboard.js";
 import {
   OUTPOSTS_BY_MILITARY_UNIT,
@@ -41,6 +43,10 @@ const JOURNAL_CATEGORIES = [
     title: "Командирдик даярдоо боюнча күжүрмөн даярдоону каттоо журналы",
   },
 ];
+const ADMIN_SUBJECT_LIST_CATEGORY = {
+  id: "subject-list",
+  title: "Сабактардын тизмеси",
+};
 
 const buildJournalTitle = (year, unitName) =>
   `${year || DEFAULT_YEAR} Р¶. РћРєСѓСѓ Р¶С‹Р»С‹РЅРґР°РіС‹ ${
@@ -50,7 +56,7 @@ const buildJournalTitle = (year, unitName) =>
 const getJournalTitle = (journal) =>
   journal?.title?.trim() || buildJournalTitle(journal?.year, journal?.unitName);
 
-const buildSubjectRegistrationTitle = (subjectTitle) => {
+export const buildSubjectRegistrationTitle = (subjectTitle) => {
   const title = subjectTitle?.trim() || "";
   const brokenSuffix = "Р±РѕСЋРЅС‡Р° РѕРєСѓСѓ РєУ©РЅТЇРіТЇТЇР»У©СЂТЇРЅ РєР°С‚С‚РѕРѕ";
   const suffix =
@@ -429,9 +435,10 @@ export default function CombatTrainingJournal({ data, methodicalSubjects = [], u
   const [deletingJournalSubmissionId, setDeletingJournalSubmissionId] = useState(null);
   const [deletingRevisionId, setDeletingRevisionId] = useState(null);
   const [deletingJournalId, setDeletingJournalId] = useState(null);
+  const [deletingSubjectId, setDeletingSubjectId] = useState(null);
   const [forwardingSubmission, setForwardingSubmission] = useState(null);
   const [dailyStatusNow, setDailyStatusNow] = useState(() => Date.now());
-  const selectedCategory = JOURNAL_CATEGORIES.find(
+  const selectedCategory = [...JOURNAL_CATEGORIES, ADMIN_SUBJECT_LIST_CATEGORY].find(
     (category) => category.id === selectedJournalCategory
   );
   const journalScope = selectedJournalCategory === "command-training"
@@ -569,7 +576,14 @@ export default function CombatTrainingJournal({ data, methodicalSubjects = [], u
 
   useEffect(() => {
     let isMounted = true;
-    getCombatTrainingJournalSubjects()
+    if (user?.role === "admin" && !selectedAdminUnitNumber) {
+      setAvailableSubjects([]);
+      return undefined;
+    }
+
+    getCombatTrainingJournalSubjects(
+      user?.role === "admin" ? selectedAdminUnitNumber : undefined
+    )
       .then((items) => {
         if (isMounted) {
           setAvailableSubjects(Array.isArray(items) ? items : []);
@@ -578,14 +592,14 @@ export default function CombatTrainingJournal({ data, methodicalSubjects = [], u
       })
       .catch(() => {
         if (isMounted) {
-          setAvailableSubjects(methodicalSubjects);
+          setAvailableSubjects([]);
           setSubjectLoadError("Не удалось загрузить список предметов.");
         }
       });
     return () => {
       isMounted = false;
     };
-  }, [methodicalSubjects]);
+  }, [selectedAdminUnitNumber, user?.id, user?.role]);
 
   useEffect(() => {
     if (!selectedJournal) {
@@ -942,6 +956,7 @@ export default function CombatTrainingJournal({ data, methodicalSubjects = [], u
     try {
       const createdSubject = await createCombatTrainingJournalSubject({
         title: subjectTitle,
+        unitNumber: selectedAdminUnitNumber,
         order: availableSubjects.length + 1,
       });
       setAvailableSubjects((items) => [...items, createdSubject]);
@@ -962,34 +977,58 @@ export default function CombatTrainingJournal({ data, methodicalSubjects = [], u
     });
   };
 
-  const handleUpdateSubject = (event) => {
+  const handleUpdateSubject = async (event) => {
     event.preventDefault();
 
-    const title = buildSubjectRegistrationTitle(subjectEditDraft?.title || "");
+    const title = subjectEditDraft?.title?.trim() || "";
     if (!subjectEditDraft?.id || !title) {
       return;
     }
 
-    const nextSubjects = subjects.map((subject) =>
-      subject.id === subjectEditDraft.id
-        ? {
-            ...subject,
-            title,
-          }
-        : subject
-    );
+    try {
+      const updatedSubject = await updateCombatTrainingJournalSubject(
+        subjectEditDraft.id,
+        { title }
+      );
+      const replaceSubject = (items) =>
+        items.map((subject) =>
+          subject.id === updatedSubject.id ? updatedSubject : subject
+        );
+      setAvailableSubjects(replaceSubject);
+      setSubjects(replaceSubject);
+      setSelectedSubject((currentSelectedSubject) =>
+        currentSelectedSubject?.id === updatedSubject.id
+          ? updatedSubject
+          : currentSelectedSubject
+      );
+      setSubjectEditDraft(null);
+      setSubjectLoadError("");
+    } catch {
+      setSubjectLoadError("Не удалось изменить название предмета.");
+    }
+  };
 
-    setSubjects(nextSubjects);
-    saveStoredJournals(subjectRegistryStorageKey, nextSubjects);
-    setSelectedSubject((currentSelectedSubject) =>
-      currentSelectedSubject?.id === subjectEditDraft.id
-        ? {
-            ...currentSelectedSubject,
-            title,
-          }
-        : currentSelectedSubject
-    );
-    setSubjectEditDraft(null);
+  const handleDeleteSubject = async (subject) => {
+    if (
+      user?.role !== "admin" ||
+      !window.confirm(`«${subject.title}» предметин өчүрөсүзбү?`)
+    ) {
+      return;
+    }
+
+    setDeletingSubjectId(subject.id);
+    try {
+      await deleteCombatTrainingJournalSubject(subject.id);
+      const removeSubject = (items) =>
+        items.filter((item) => item.id !== subject.id);
+      setAvailableSubjects(removeSubject);
+      setSubjects(removeSubject);
+      setSubjectLoadError("");
+    } catch {
+      setSubjectLoadError("Не удалось удалить предмет.");
+    } finally {
+      setDeletingSubjectId(null);
+    }
   };
 
   const openSubjectCreateDialog = async () => {
@@ -999,7 +1038,11 @@ export default function CombatTrainingJournal({ data, methodicalSubjects = [], u
     setIsSubjectCreateOpen(true);
 
     try {
-      setAvailableSubjects(await getCombatTrainingJournalSubjects());
+      setAvailableSubjects(
+        await getCombatTrainingJournalSubjects(
+          user?.role === "admin" ? selectedAdminUnitNumber : undefined
+        )
+      );
     } catch {
       setSubjectLoadError(
         "\u041d\u0435 \u0443\u0434\u0430\u043b\u043e\u0441\u044c \u0437\u0430\u0433\u0440\u0443\u0437\u0438\u0442\u044c \u0441\u043f\u0438\u0441\u043e\u043a \u043f\u0440\u0435\u0434\u043c\u0435\u0442\u043e\u0432."
@@ -1096,7 +1139,10 @@ export default function CombatTrainingJournal({ data, methodicalSubjects = [], u
           <h1>{selectedJournalTitle}</h1>
         </header>
         <div className="combat-journal-subject-header">
-          <h2>{SUBJECT_SECTION_TITLE}</h2>
+          <div>
+            <h2>{SUBJECT_SECTION_TITLE}</h2>
+            <p>Предметтердин саны: {subjects.length}</p>
+          </div>
           <div className="saved-table-card__actions">
             {user?.role === "admin" ? (
               <button
@@ -1168,7 +1214,7 @@ export default function CombatTrainingJournal({ data, methodicalSubjects = [], u
         )}
         {subjects.length > 0 ? (
           <div className="saved-table-list">
-            {subjects.map((subject) => (
+            {subjects.map((subject, subjectIndex) => (
               <article
                 className="saved-table-card"
                 key={subject.id}
@@ -1177,7 +1223,7 @@ export default function CombatTrainingJournal({ data, methodicalSubjects = [], u
                 role="button"
                 tabIndex={0}
               >
-                <strong>{getJournalSubjectTitle(subject)}</strong>
+                <strong>{subjectIndex + 1}. {getJournalSubjectTitle(subject)}</strong>
                 {getSubjectLastUpdatedAt(subject) ? (
                   <span>
                     Последнее обновление: {formatCreatedAt(getSubjectLastUpdatedAt(subject))}
@@ -1287,6 +1333,132 @@ export default function CombatTrainingJournal({ data, methodicalSubjects = [], u
       setDeletingRevisionId(null);
     }
   }
+
+  const renderAdminSubjectList = () => {
+    if (user?.role !== "admin") return null;
+
+    const unitNumbers = Array.from(
+      new Set(
+        (data?.unitNumbers || [])
+          .map((unitNumber) => String(unitNumber || "").trim())
+          .filter(Boolean)
+      )
+    );
+
+    if (!selectedAdminUnitNumber) {
+      return (
+        <div className="saved-table-list">
+          {unitNumbers.map((unitNumber) => (
+            <button
+              className="saved-table-card"
+              key={unitNumber}
+              onClick={() => {
+                setSubjectLoadError("");
+                setSelectedAdminUnitNumber(unitNumber);
+              }}
+              type="button"
+            >
+              <strong>{unitNumber} аскер бөлүгү</strong>
+            </button>
+          ))}
+        </div>
+      );
+    }
+
+    return (
+      <div className="module-submission-list">
+        <div className="combat-journal-subject-header">
+          <div>
+            <h2>{selectedAdminUnitNumber} аскер бөлүгү</h2>
+            <p>Предметтер бул аскер бөлүгүнө жана анын заставаларына гана көрүнөт.</p>
+            <p>Предметтердин саны: {availableSubjects.length}</p>
+          </div>
+          <button
+            className="combat-journal-create-button"
+            onClick={() => {
+              setManualSubjectTitle("");
+              setSubjectLoadError("");
+              setIsSubjectCreateOpen(true);
+            }}
+            type="button"
+          >
+            Предмет кошуу
+          </button>
+        </div>
+
+        {isSubjectCreateOpen ? (
+          <div className="combat-journal-dialog" role="dialog" aria-modal="true">
+            <form
+              className="combat-journal-dialog__panel"
+              onSubmit={handleCreateSubject}
+            >
+              <h2>Предмет кошуу</h2>
+              <label>
+                Предметтин аталышы
+                <input
+                  autoFocus
+                  onChange={(event) => setManualSubjectTitle(event.target.value)}
+                  placeholder="Название предмета"
+                  type="text"
+                  value={manualSubjectTitle}
+                />
+              </label>
+              {subjectLoadError ? (
+                <p className="dashboard-error">{subjectLoadError}</p>
+              ) : null}
+              <div className="combat-journal-dialog__actions">
+                <button disabled={!manualSubjectTitle.trim()} type="submit">
+                  Кошуу
+                </button>
+                <button
+                  onClick={() => {
+                    setManualSubjectTitle("");
+                    setIsSubjectCreateOpen(false);
+                  }}
+                  type="button"
+                >
+                  Отмена
+                </button>
+              </div>
+            </form>
+          </div>
+        ) : null}
+
+        {renderSubjectEditDialog()}
+        {subjectLoadError && !isSubjectCreateOpen ? (
+          <p className="dashboard-error">{subjectLoadError}</p>
+        ) : null}
+        {availableSubjects.length > 0 ? (
+          <div className="saved-table-list">
+            {availableSubjects.map((subject, subjectIndex) => (
+              <article className="saved-table-card" key={subject.id}>
+                <strong>{subjectIndex + 1}. {subject.title}</strong>
+                <div className="saved-table-card__actions">
+                  <button
+                    onClick={() => openSubjectEditDialog(subject)}
+                    type="button"
+                  >
+                    Изменить
+                  </button>
+                  <button
+                    disabled={deletingSubjectId === subject.id}
+                    onClick={() => handleDeleteSubject(subject)}
+                    type="button"
+                  >
+                    {deletingSubjectId === subject.id ? "Удаление..." : "Удалить"}
+                  </button>
+                </div>
+              </article>
+            ))}
+          </div>
+        ) : (
+          <p className="dashboard-state">
+            Бул аскер бөлүгү үчүн предметтер азырынча кошулган жок.
+          </p>
+        )}
+      </div>
+    );
+  };
 
   const renderJournalSubmissions = () => {
     if (!journalSubmissionSectionId) {
@@ -1482,9 +1654,9 @@ export default function CombatTrainingJournal({ data, methodicalSubjects = [], u
       return (
         <div className="module-submission-list">
           <h2>{selectedAdminOutpostName}</h2>
-          <h3>Предметы</h3>
+          <h3>Предметы ({availableSubjects.length})</h3>
           <div className="saved-table-list">
-            {availableSubjects.map((subject) => {
+            {availableSubjects.map((subject, subjectIndex) => {
               const submission = getOutpostSubjectSubmission(subject);
               return (
                 <button
@@ -1502,7 +1674,7 @@ export default function CombatTrainingJournal({ data, methodicalSubjects = [], u
                   }}
                   type="button"
                 >
-                  <strong>{subject.title}</strong>
+                  <strong>{subjectIndex + 1}. {subject.title}</strong>
                   <span>
                     {submission
                       ? `Последнее обновление: ${formatCreatedAt(submission.updatedAt || submission.createdAt)}`
@@ -1670,9 +1842,9 @@ export default function CombatTrainingJournal({ data, methodicalSubjects = [], u
         return (
           <div className="module-submission-list">
             <h2>{selectedAdminOutpostName}</h2>
-            <h3>Предметтер</h3>
+            <h3>Предметтер ({availableSubjects.length})</h3>
             <div className="saved-table-list">
-              {availableSubjects.map((subject) => {
+              {availableSubjects.map((subject, subjectIndex) => {
                 const submission = getAdminOutpostSubjectSubmission(subject);
                 return (
                   <button
@@ -1690,7 +1862,7 @@ export default function CombatTrainingJournal({ data, methodicalSubjects = [], u
                     }}
                     type="button"
                   >
-                    <strong>{subject.title}</strong>
+                    <strong>{subjectIndex + 1}. {subject.title}</strong>
                     <span>
                       {submission
                         ? `Последнее обновление: ${formatCreatedAt(submission.updatedAt || submission.createdAt)}`
@@ -1751,9 +1923,11 @@ export default function CombatTrainingJournal({ data, methodicalSubjects = [], u
       if (isAdminUnitSubjectsOpen && selectedJournalCategory === "command-training") {
         return (
           <div className="module-submission-list">
-            <h2>{selectedAdminUnitNumber} аскер бөлүгү · Предметтер</h2>
+            <h2>
+              {selectedAdminUnitNumber} аскер бөлүгү · Предметтер ({availableSubjects.length})
+            </h2>
             <div className="saved-table-list">
-              {availableSubjects.map((subject) => {
+              {availableSubjects.map((subject, subjectIndex) => {
                 const submission = getAdminUnitSubjectSubmission(subject);
                 return (
                   <button
@@ -1771,7 +1945,7 @@ export default function CombatTrainingJournal({ data, methodicalSubjects = [], u
                     }}
                     type="button"
                   >
-                    <strong>{subject.title}</strong>
+                    <strong>{subjectIndex + 1}. {subject.title}</strong>
                     <span>
                       {submission
                         ? `Последнее обновление: ${formatCreatedAt(submission.updatedAt || submission.createdAt)}`
@@ -1950,7 +2124,10 @@ export default function CombatTrainingJournal({ data, methodicalSubjects = [], u
           <h1>{COMBAT_TRAINING_JOURNAL_TITLE}</h1>
         </header>
         <div className="saved-table-list">
-          {JOURNAL_CATEGORIES.map((category) => (
+          {[
+            ...JOURNAL_CATEGORIES,
+            ...(user?.role === "admin" ? [ADMIN_SUBJECT_LIST_CATEGORY] : []),
+          ].map((category) => (
             <button
               className={`saved-table-card${
                 user?.role === "regional" && getCategoryNotificationCount(category.id) > 0
@@ -2066,7 +2243,9 @@ export default function CombatTrainingJournal({ data, methodicalSubjects = [], u
         </div>
       )}
       {renderJournalEditDialog()}
-      {renderJournalSubmissions()}
+      {selectedJournalCategory === ADMIN_SUBJECT_LIST_CATEGORY.id
+        ? renderAdminSubjectList()
+        : renderJournalSubmissions()}
       <SubmissionForwardDialog
         onClose={() => setForwardingSubmission(null)}
         onForward={async (submission, title) => {

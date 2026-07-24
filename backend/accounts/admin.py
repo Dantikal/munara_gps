@@ -170,12 +170,12 @@ class TrainingTableAdmin(JSONModelAdmin):
 
 @admin.register(MethodicalManualSubject)
 class MethodicalManualSubjectAdmin(admin.ModelAdmin):
-    list_display = ("title", "order", "is_active", "updated_at")
+    list_display = ("title", "collection", "order", "is_active", "updated_at")
     list_editable = ("order", "is_active")
-    list_filter = ("is_active",)
+    list_filter = ("collection", "is_active")
     search_fields = ("title",)
     readonly_fields = ("created_at", "updated_at")
-    ordering = ("order", "title")
+    ordering = ("collection", "order", "title")
 
 
 @admin.register(MethodicalManualDocument)

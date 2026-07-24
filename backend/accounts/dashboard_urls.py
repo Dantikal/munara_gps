@@ -6,9 +6,12 @@ from .dashboard_views import (
     CombatTrainingJournalListCreateView,
     CombatTrainingJournalOutpostListView,
     CombatTrainingJournalRevisionDetailView,
+    CombatTrainingJournalSubjectDetailView,
     CombatTrainingJournalSubjectListCreateView,
     CombatTrainingPlanDetailView,
     CombatTrainingPlanListCreateView,
+    CombatTrainingPlanReadAllView,
+    CombatTrainingPlanUnreadCountView,
     CombatTrainingNewsDetailView,
     CombatTrainingNewsLikeView,
     CombatTrainingNewsListCreateView,
@@ -45,6 +48,16 @@ urlpatterns = [
         "combat-training-plans/<int:pk>/",
         CombatTrainingPlanDetailView.as_view(),
         name="combat-training-plan-detail",
+    ),
+    path(
+        "combat-training-plans/unread-count/",
+        CombatTrainingPlanUnreadCountView.as_view(),
+        name="combat-training-plan-unread-count",
+    ),
+    path(
+        "combat-training-plans/read-all/",
+        CombatTrainingPlanReadAllView.as_view(),
+        name="combat-training-plan-read-all",
     ),
     path(
         "thematic-account-submissions/",
@@ -103,6 +116,11 @@ urlpatterns = [
         "combat-training-journal-subjects/",
         CombatTrainingJournalSubjectListCreateView.as_view(),
         name="combat-training-journal-subject-list",
+    ),
+    path(
+        "combat-training-journal-subjects/<int:pk>/",
+        CombatTrainingJournalSubjectDetailView.as_view(),
+        name="combat-training-journal-subject-detail",
     ),
     path(
         "combat-training-journal-outposts/",

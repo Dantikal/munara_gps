@@ -135,3 +135,41 @@ class MethodicalManualDocumentApiTests(APITestCase):
             format="multipart",
         )
         self.assertEqual(response.status_code, 400)
+
+    def test_subjects_are_separated_by_collection(self):
+        self.client.force_authenticate(self.admin)
+        course_subject = MethodicalManualSubject.objects.create(
+            title="Биринчи курс",
+            collection=MethodicalManualSubject.Collection.YOUNG_SOLDIER_PROGRAM,
+        )
+
+        response = self.client.get(
+            reverse("methodical-subject-list"),
+            {"collection": MethodicalManualSubject.Collection.YOUNG_SOLDIER_PROGRAM},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual([item["id"] for item in response.data], [course_subject.id])
+        self.assertEqual(
+            response.data[0]["collection"],
+            MethodicalManualSubject.Collection.YOUNG_SOLDIER_PROGRAM,
+        )
+
+    def test_admin_creates_subject_in_young_soldier_collection(self):
+        self.client.force_authenticate(self.admin)
+
+        response = self.client.post(
+            reverse("methodical-subject-list"),
+            {
+                "title": "Окуу материалдары",
+                "collection": MethodicalManualSubject.Collection.YOUNG_SOLDIER_PROGRAM,
+                "order": 1,
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(
+            response.data["collection"],
+            MethodicalManualSubject.Collection.YOUNG_SOLDIER_PROGRAM,
+        )

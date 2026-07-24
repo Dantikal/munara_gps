@@ -22,8 +22,10 @@ export const createMethodicalSubject = async (payload) => {
   return data;
 };
 
-export const getMethodicalSubjects = async () => {
-  const { data } = await api.get("/dashboard/methodical-subjects/");
+export const getMethodicalSubjects = async (collection) => {
+  const { data } = await api.get("/dashboard/methodical-subjects/", {
+    params: collection ? { collection } : undefined,
+  });
   return data;
 };
 
@@ -86,6 +88,14 @@ export const getThematicAccountSubmissions = async () => {
   return data;
 };
 
+export const markThematicAccountSubmissionRead = async (id) => {
+  const { data } = await api.patch(
+    `/dashboard/thematic-account-submissions/${id}/`,
+    { isRead: true }
+  );
+  return data;
+};
+
 export const getCombatTrainingJournalOutposts = async () => {
   const { data } = await api.get("/dashboard/combat-training-journal-outposts/");
   return data;
@@ -145,6 +155,16 @@ export const getCombatTrainingPlans = async (layout = "plan") => {
   return data;
 };
 
+export const getCombatTrainingPlanUnreadCount = async () => {
+  const { data } = await api.get("/dashboard/combat-training-plans/unread-count/");
+  return data.unreadCount || 0;
+};
+
+export const markAllCombatTrainingPlansRead = async () => {
+  const { data } = await api.post("/dashboard/combat-training-plans/read-all/");
+  return data;
+};
+
 export const createCombatTrainingPlan = async (payload) => {
   const { data } = await api.post("/dashboard/combat-training-plans/", payload);
   return data;
@@ -180,14 +200,28 @@ export const deleteCombatTrainingJournal = async (id) => {
   await api.delete(`/dashboard/combat-training-journals/${id}/`);
 };
 
-export const getCombatTrainingJournalSubjects = async () => {
-  const { data } = await api.get("/dashboard/combat-training-journal-subjects/");
+export const getCombatTrainingJournalSubjects = async (unitNumber) => {
+  const { data } = await api.get("/dashboard/combat-training-journal-subjects/", {
+    params: unitNumber ? { unitNumber } : undefined,
+  });
   return data;
 };
 
 export const createCombatTrainingJournalSubject = async (payload) => {
   const { data } = await api.post("/dashboard/combat-training-journal-subjects/", payload);
   return data;
+};
+
+export const updateCombatTrainingJournalSubject = async (id, payload) => {
+  const { data } = await api.patch(
+    `/dashboard/combat-training-journal-subjects/${id}/`,
+    payload
+  );
+  return data;
+};
+
+export const deleteCombatTrainingJournalSubject = async (id) => {
+  await api.delete(`/dashboard/combat-training-journal-subjects/${id}/`);
 };
 
 export const getCombatTrainingNews = async () => {

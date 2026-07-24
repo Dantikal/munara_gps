@@ -1,7 +1,30 @@
 import React from "react";
 import { useEffect, useState } from "react";
 
-import { getChatUnreadCount, getCombatTrainingNewsUnreadCount } from "../../api/dashboard.js";
+import {
+  getChatUnreadCount,
+  getCombatTrainingNewsUnreadCount,
+  getCombatTrainingPlanUnreadCount,
+  markAllCombatTrainingPlansRead,
+} from "../../api/dashboard.js";
+
+const BellIcon = () => (
+  <svg
+    aria-hidden="true"
+    fill="none"
+    height="16"
+    viewBox="0 0 24 24"
+    width="16"
+  >
+    <path
+      d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9ZM10 21h4"
+      stroke="currentColor"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      strokeWidth="2"
+    />
+  </svg>
+);
 
 const roleLabels = {
   admin: "Администратор",
@@ -78,6 +101,7 @@ export default function Sidebar({
     activeItem === "users" || activeItem === "requests" || activeItem === "submissionEditRequests" || activeItem === "drafts";
   const [adminOpen, setAdminOpen] = useState(isAdminChildActive);
   const [newsUnreadCount, setNewsUnreadCount] = useState(0);
+  const [planUnreadCount, setPlanUnreadCount] = useState(0);
   const [chatUnreadCount, setChatUnreadCount] = useState(modules?.chatUnreadCount || 0);
   const sections =
     role === "admin"
@@ -123,6 +147,32 @@ export default function Sidebar({
   }, [role]);
 
   useEffect(() => {
+    if (role === "admin") {
+      setPlanUnreadCount(0);
+      return undefined;
+    }
+
+    let isMounted = true;
+    const refreshPlanUnreadCount = async () => {
+      try {
+        const count = await getCombatTrainingPlanUnreadCount();
+        if (isMounted) setPlanUnreadCount(count);
+      } catch {
+        // Navigation remains available if notification loading fails.
+      }
+    };
+
+    refreshPlanUnreadCount();
+    const intervalId = window.setInterval(refreshPlanUnreadCount, 60000);
+    window.addEventListener("focus", refreshPlanUnreadCount);
+    return () => {
+      isMounted = false;
+      window.clearInterval(intervalId);
+      window.removeEventListener("focus", refreshPlanUnreadCount);
+    };
+  }, [role]);
+
+  useEffect(() => {
     let isMounted = true;
     const refreshChatUnreadCount = async () => {
       try {
@@ -149,6 +199,15 @@ export default function Sidebar({
     if (itemId === "requests") {
       onOpenRequests?.();
       return;
+    }
+
+    if (itemId === "combatTrainingPlan" && planUnreadCount > 0) {
+      setPlanUnreadCount(0);
+      markAllCombatTrainingPlansRead().catch(() => {
+        getCombatTrainingPlanUnreadCount()
+          .then(setPlanUnreadCount)
+          .catch(() => {});
+      });
     }
 
     onNavigate(itemId);
@@ -205,7 +264,22 @@ export default function Sidebar({
                     <span className="dashboard-sidebar__item-badge">{chatUnreadCount}</span>
                   ) : null}
                   {item.id === "combatTrainingReport" && newsUnreadCount > 0 ? (
-                    <span className="dashboard-sidebar__item-badge">{newsUnreadCount}</span>
+                    <span
+                      aria-label={`Жаңы маалыматтар: ${newsUnreadCount}`}
+                      className="dashboard-sidebar__item-badge dashboard-sidebar__item-badge--bell"
+                      title="Жаңы маалымат"
+                    >
+                      <BellIcon />
+                    </span>
+                  ) : null}
+                  {item.id === "combatTrainingPlan" && planUnreadCount > 0 ? (
+                    <span
+                      aria-label="Пландалган иш-чаралар жаңыртылды"
+                      className="dashboard-sidebar__item-badge dashboard-sidebar__item-badge--bell"
+                      title="Жаңы жаңыртуу"
+                    >
+                      <BellIcon />
+                    </span>
                   ) : null}
                 </button>
               ))}

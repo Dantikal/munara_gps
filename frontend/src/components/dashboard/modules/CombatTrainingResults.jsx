@@ -231,7 +231,7 @@ const INSPECTION_BP_FIRST_FOOTER = `20___ аскер бөлүгүнүн ______ �
 const customDocumentColumns = [
   { key: "number", label: "№", width: 50 },
   { key: "personalNumber", label: "Өздүк номуру", width: 100 },
-  { key: "ticketNumber", label: "Билет №", width: 80 },
+  { key: "ticketNumber", label: "Билет №", width: 110 },
   { key: "question1", label: "1-суроо", width: 120 },
   { key: "answer1", label: "Жообу", width: 120 },
   { key: "question2", label: "2-суроо", width: 120 },
@@ -1091,6 +1091,7 @@ export default function CombatTrainingResults({ data, user }) {
               [
                 "combat-training-results-observation",
                 "combat-training-results-inspection",
+                data?.submissionSectionId,
               ].includes(item.sectionId)
             )
           );
@@ -1351,10 +1352,12 @@ export default function CombatTrainingResults({ data, user }) {
       const isInspectionSubmission = selectedSectionId === "inspection";
       const submission = await createThematicAccountSubmission({
         documentTitle: title,
-        sectionId: isInspectionSubmission
-          ? "combat-training-results-inspection"
-          : "combat-training-results-observation",
-        periodId: "",
+        sectionId:
+          data?.submissionSectionId ||
+          (isInspectionSubmission
+            ? "combat-training-results-inspection"
+            : "combat-training-results-observation"),
+        periodId: data?.submissionPeriodId || "",
         table: isInspectionSubmission ? {
           subsectionId: selectedSubsectionId,
           subsectionTitle: selectedSubsection?.title || selectedSubsectionId,
@@ -1389,6 +1392,7 @@ export default function CombatTrainingResults({ data, user }) {
         submission,
         ...items.filter((item) => item.id !== submission.id),
       ]);
+      data?.onSubmissionCreated?.(submission);
       setIsResultSendDialogOpen(false);
       setResultSubmissionTitle("");
     } catch (error) {

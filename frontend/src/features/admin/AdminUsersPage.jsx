@@ -101,6 +101,7 @@ export default function AdminUsersPage() {
   const [users, setUsers] = useState([]);
   const [activeGroup, setActiveGroup] = useState("outpost");
   const [selectedUser, setSelectedUser] = useState(null);
+  const [selectedRegionalUnit, setSelectedRegionalUnit] = useState(null);
   const [form, setForm] = useState(() => createEmptyForm("outpost"));
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -233,6 +234,7 @@ export default function AdminUsersPage() {
   const selectGroup = (role) => {
     setActiveGroup(role);
     setSelectedUser(null);
+    setSelectedRegionalUnit(null);
     setForm(createEmptyForm(role));
     setIsFormOpen(false);
     setMessage("");
@@ -305,6 +307,98 @@ export default function AdminUsersPage() {
             </figure>
           </div>
         </section>
+      </section>
+    );
+  }
+
+  if (selectedRegionalUnit) {
+    const unitUsers = users
+      .filter(
+        (user) =>
+          ["regional", "outpost"].includes(user.role) &&
+          String(user.region || "") === String(selectedRegionalUnit.region)
+      )
+      .sort((left, right) => {
+        if (left.role !== right.role) return left.role === "regional" ? -1 : 1;
+        return String(left.outpost_name || left.full_name || left.email).localeCompare(
+          String(right.outpost_name || right.full_name || right.email),
+          "ru"
+        );
+      });
+    const regionalAccount = unitUsers.find(
+      (user) => user.id === selectedRegionalUnit.accountId
+    );
+
+    return (
+      <section className="module-panel admin-users-page">
+        <button
+          className="module-back-button"
+          onClick={() => setSelectedRegionalUnit(null)}
+          type="button"
+        >
+          Артка
+        </button>
+        <header className="admin-users-page__header">
+          <div>
+            <h1>{selectedRegionalUnit.region} аскер бөлүгү</h1>
+            <p>
+              {regionalAccount?.email || selectedRegionalUnit.email} · Пользователей:{" "}
+              {unitUsers.length}
+            </p>
+          </div>
+        </header>
+        {message && <p className="dashboard-notice">{message}</p>}
+        {error && <p className="dashboard-error">{error}</p>}
+        {unitUsers.length > 0 ? (
+          <div className="module-period-list">
+            {unitUsers.map((unitUser) => {
+              const avatar = unitUser.avatar || unitUser.photo_face;
+              return (
+                <div className="module-period-row" key={unitUser.id}>
+                  <button
+                    className="admin-user-list-card"
+                    onClick={() => setSelectedUser(unitUser)}
+                    type="button"
+                  >
+                    <span className="admin-user-avatar">
+                      {avatar ? (
+                        <img alt="" src={avatar} />
+                      ) : (
+                        <span>{getInitials(unitUser)}</span>
+                      )}
+                    </span>
+                    <span className="admin-user-list-card__text">
+                      <strong>{unitUser.full_name || unitUser.email}</strong>
+                      <small>
+                        {roleLabels[unitUser.role]} · {unitUser.email}
+                      </small>
+                      {unitUser.role === "outpost" ? (
+                        <small>{formatOutpostName(unitUser.outpost_name)}</small>
+                      ) : null}
+                    </span>
+                    <span aria-hidden="true" className="admin-user-list-card__arrow">
+                      ›
+                    </span>
+                  </button>
+                  <div className="module-period-actions">
+                    <button
+                      className="danger"
+                      disabled={saving}
+                      onClick={() => deleteUser(unitUser)}
+                      type="button"
+                    >
+                      Удалить
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        ) : (
+          <p className="dashboard-state">
+            Пользователей с номером {selectedRegionalUnit.region} не найдено.
+          </p>
+        )}
       </section>
     );
   }
@@ -438,7 +532,20 @@ export default function AdminUsersPage() {
           {filteredUsers.map((user) => {
             const avatar = user.avatar || user.photo_face;
             return (
-              <button className="admin-user-list-card" key={user.id} onClick={() => setSelectedUser(user)} type="button">
+              <button
+                className="admin-user-list-card"
+                key={user.id}
+                onClick={() =>
+                  activeGroup === "regional"
+                    ? setSelectedRegionalUnit({
+                        accountId: user.id,
+                        email: user.email,
+                        region: user.region,
+                      })
+                    : setSelectedUser(user)
+                }
+                type="button"
+              >
                 <span className="admin-user-avatar">
                   {avatar ? <img alt="" src={avatar} /> : <span>{getInitials(user)}</span>}
                 </span>

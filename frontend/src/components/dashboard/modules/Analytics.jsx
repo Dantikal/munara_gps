@@ -27,7 +27,9 @@ const ANALYTICS_SECTIONS_STORAGE_KEY = "analytics-section-titles";
 const ADMIN_ANALYSIS_WORKSPACE_ID = "admin-analysis-workspace";
 const MONTHLY_ANALYSIS_SECTION_ID = "monthly-analysis";
 const PERIOD_ANALYSIS_SECTION_ID = "period-analysis";
+const YEAR_ANALYSIS_SECTION_ID = "year-analysis";
 const MONTHLY_ANALYSIS_DEADLINE_DAY = 28;
+const YEAR_ANALYSIS_REPORTING_YEAR = 2026;
 
 const getMonthlyAnalysisDraftStorageKey = (sectionId) =>
   `${MONTHLY_ANALYSIS_DRAFT_STORAGE_KEY}:${sectionId || "monthly-analysis"}`;
@@ -194,6 +196,62 @@ const PeriodAnalysisSubmissionStatus = ({ submission, now }) => {
   );
 };
 
+const getYearAnalysisDeadline = () =>
+  new Date(YEAR_ANALYSIS_REPORTING_YEAR, 10, 1, 0, 0, 0, 0);
+
+const isYearAnalysisSubmitted = (submission, now) => {
+  const sentAt = new Date(
+    submission?.updatedAt || submission?.createdAt || ""
+  ).getTime();
+  if (!Number.isFinite(sentAt) || sentAt > now) return false;
+
+  const reportingYearStartedAt = new Date(
+    YEAR_ANALYSIS_REPORTING_YEAR - 1,
+    10,
+    1,
+    0,
+    0,
+    0,
+    0
+  ).getTime();
+  return sentAt >= reportingYearStartedAt;
+};
+
+const formatYearAnalysisCountdown = (now) => {
+  const remainingSeconds = Math.max(
+    0,
+    Math.ceil((getYearAnalysisDeadline().getTime() - now) / 1000)
+  );
+  const days = Math.floor(remainingSeconds / 86400);
+  const hours = Math.floor((remainingSeconds % 86400) / 3600);
+  const minutes = Math.floor((remainingSeconds % 3600) / 60);
+  const seconds = remainingSeconds % 60;
+
+  return `${days}д ${String(hours).padStart(2, "0")}:${String(minutes).padStart(
+    2,
+    "0"
+  )}:${String(seconds).padStart(2, "0")}`;
+};
+
+const YearAnalysisSubmissionStatus = ({ submission, now }) => {
+  const isSubmitted = isYearAnalysisSubmitted(submission, now);
+
+  return (
+    <span className="analysis-period-status-group">
+      <span
+        className={`analysis-period-status analysis-period-status--${
+          isSubmitted ? "sent" : "missing"
+        }`}
+      >
+        {isSubmitted ? "Отправлено" : "Не отправлено"}
+      </span>
+      <span className="analysis-period-countdown">
+        До 1 ноября: {formatYearAnalysisCountdown(now)}
+      </span>
+    </span>
+  );
+};
+
 const DEFAULT_ANALYTICS_SECTIONS = [
   {
     id: "monthly-analysis",
@@ -247,6 +305,9 @@ export default function Analytics({ data, user }) {
     analyticsStorageNamespace
       ? `${storageKey}:${analyticsStorageNamespace}`
       : storageKey;
+  const registryCounterStorageKey =
+    data?.registryCounterStorageKey ||
+    getAnalyticsStorageKey(MONTHLY_ANALYSIS_REGISTRY_COUNTER_KEY);
   const getAnalyticsDraftStorageKey = (sectionId) =>
     getAnalyticsStorageKey(getMonthlyAnalysisDraftStorageKey(sectionId));
   const [analyticsSections, setAnalyticsSections] = useState(getStoredAnalyticsSections);
@@ -419,6 +480,13 @@ export default function Analytics({ data, user }) {
         String(submission.senderId) === String(user?.id)
     )
   );
+  const latestOwnYearSubmission = getLatestAnalysisSubmission(
+    analysisSubmissions.filter(
+      (submission) =>
+        submission.table?.sectionId === YEAR_ANALYSIS_SECTION_ID &&
+        String(submission.senderId) === String(user?.id)
+    )
+  );
   const renderAnalysisReportingStatus = (
     submission,
     sectionId = selectedSectionId
@@ -441,6 +509,15 @@ export default function Analytics({ data, user }) {
       );
     }
 
+    if (sectionId === YEAR_ANALYSIS_SECTION_ID) {
+      return (
+        <YearAnalysisSubmissionStatus
+          now={monthlyStatusNow}
+          submission={submission}
+        />
+      );
+    }
+
     return null;
   };
   const analysisSourceSectionId =
@@ -454,8 +531,20 @@ export default function Analytics({ data, user }) {
   const periodAnalysisPlaceholder =
     "2030 аскер бөлүгүнүн Көк-Таш чек ара заставасынын 1-окуу мезгилинин жыйынтыгы жана талдоосу";
   const yearAnalysisPlaceholder = "Окуу жылынын жыйынтыгы жана талдоосу";
-  const monthlyAnalysisSourceDocuments =
-    user?.role === "regional" && selectedAnalyticsScope === "regional-unit"
+  const monthlyAnalysisSourceDocuments = data?.submissionSourceSectionId
+    ? analysisSubmissions
+        .filter(
+          (submission) =>
+            submission.sectionId === data.submissionSourceSectionId &&
+            submission.senderRole === "regional"
+        )
+        .map((submission) => ({
+          ...(submission.table?.document || {}),
+          id: `submission-${submission.id}`,
+          sourceDocumentTitle: submission.documentTitle,
+          sourceOutpostName: submission.unitNumber || submission.senderName,
+        }))
+    : user?.role === "regional" && selectedAnalyticsScope === "regional-unit"
       ? analysisSubmissions
           .filter(
             (submission) =>
@@ -473,14 +562,16 @@ export default function Analytics({ data, user }) {
     analysisSourceSectionId === "period-analysis"
       ? periodAnalysisPlaceholder
       : monthlyAnalysisPlaceholder;
-  const monthlyAnalysisPickerTitle =
-    user?.role === "regional" && selectedAnalyticsScope === "regional-unit"
+  const monthlyAnalysisPickerTitle = data?.submissionSourceSectionId
+    ? "Аскер бөлүктөрү жөнөткөн талдоолорду тандоо"
+    : user?.role === "regional" && selectedAnalyticsScope === "regional-unit"
       ? "Застава жөнөткөн талдоолордон тандоо"
       : selectedSectionId === "year-analysis"
       ? "Окуу мезгилеринин жыйынтыгы жана талдоосунан тандоо"
       : "Айдын талдоосунан тандоо";
-  const monthlyAnalysisPickerEmptyText =
-    user?.role === "regional" && selectedAnalyticsScope === "regional-unit"
+  const monthlyAnalysisPickerEmptyText = data?.submissionSourceSectionId
+    ? "Аскер бөлүктөрү жөнөткөн документтер азырынча жок"
+    : user?.role === "regional" && selectedAnalyticsScope === "regional-unit"
       ? "Застава жөнөткөн документтер азырынча жок"
       : selectedSectionId === "year-analysis"
       ? "Окуу мезгилеринин жыйынтыгында документ жок"
@@ -517,6 +608,8 @@ export default function Analytics({ data, user }) {
               [
                 "combat-training-analysis",
                 "combat-training-analysis-regional",
+                data?.submissionSectionId,
+                data?.submissionSourceSectionId,
               ].includes(item.sectionId)
             )
           );
@@ -529,7 +622,12 @@ export default function Analytics({ data, user }) {
     return () => {
       isActive = false;
     };
-  }, [user?.id, user?.role]);
+  }, [
+    data?.submissionSectionId,
+    data?.submissionSourceSectionId,
+    user?.id,
+    user?.role,
+  ]);
 
   const createMonthlyAnalysisDocumentId = () =>
     `monthly-analysis-${Date.now()}-${Math.random().toString(16).slice(2)}`;
@@ -1302,7 +1400,9 @@ export default function Analytics({ data, user }) {
       return;
     }
 
-    const currentCounter = Number(window.localStorage.getItem(MONTHLY_ANALYSIS_REGISTRY_COUNTER_KEY) || "0");
+    const currentCounter = Number(
+      window.localStorage.getItem(registryCounterStorageKey) || "0"
+    );
     const nextCounter = currentCounter + 1;
     const document = {
       ...(activeMonthlyAnalysisDocument || {}),
@@ -1324,10 +1424,12 @@ export default function Analytics({ data, user }) {
     try {
       const submission = await createThematicAccountSubmission({
         documentTitle,
-        sectionId: user?.role === "regional"
-          ? "combat-training-analysis-regional"
-          : "combat-training-analysis",
-        periodId: selectedSectionId,
+        sectionId:
+          data?.submissionSectionId ||
+          (user?.role === "regional"
+            ? "combat-training-analysis-regional"
+            : "combat-training-analysis"),
+        periodId: data?.submissionPeriodId || selectedSectionId,
         table: {
           sectionId: selectedSectionId,
           sectionTitle: selectedSection?.title || selectedSectionId,
@@ -1338,7 +1440,8 @@ export default function Analytics({ data, user }) {
         submission,
         ...items.filter((item) => item.id !== submission.id),
       ]);
-      window.localStorage.setItem(MONTHLY_ANALYSIS_REGISTRY_COUNTER_KEY, String(nextCounter));
+      data?.onSubmissionCreated?.(submission);
+      window.localStorage.setItem(registryCounterStorageKey, String(nextCounter));
       setMonthlyAnalysisRegistryNumber(nextCounter);
       updateActiveMonthlyAnalysisDocument({ registryNumber: nextCounter });
       persistMonthlyAnalysisDraft({ registryNumber: nextCounter });
@@ -2937,15 +3040,19 @@ export default function Analytics({ data, user }) {
             >
               <span aria-hidden="true" className="module-document-icon" />
               <strong>{section.title}</strong>
-              {[MONTHLY_ANALYSIS_SECTION_ID, PERIOD_ANALYSIS_SECTION_ID].includes(
-                section.id
-              ) &&
+              {[
+                MONTHLY_ANALYSIS_SECTION_ID,
+                PERIOD_ANALYSIS_SECTION_ID,
+                YEAR_ANALYSIS_SECTION_ID,
+              ].includes(section.id) &&
               user?.role !== "admin" &&
               !isRegionalSubunitAnalysis
                 ? renderAnalysisReportingStatus(
-                    section.id === PERIOD_ANALYSIS_SECTION_ID
-                      ? latestOwnPeriodSubmission
-                      : latestOwnMonthlySubmission,
+                    section.id === YEAR_ANALYSIS_SECTION_ID
+                      ? latestOwnYearSubmission
+                      : section.id === PERIOD_ANALYSIS_SECTION_ID
+                        ? latestOwnPeriodSubmission
+                        : latestOwnMonthlySubmission,
                     section.id
                   )
                 : null}

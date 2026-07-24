@@ -6,12 +6,20 @@ import {
   deleteMethodicalDocument,
   deleteMethodicalSubject,
   getMethodicalDocuments,
+  getMethodicalSubjects,
   updateMethodicalSubject,
 } from "../../../api/dashboard.js";
 
 const SECTION_TITLE = "Күжүрмөн даярдоо боюнча усулдук колдонмолор";
+const DEFAULT_COLLECTION = "methodical_manuals";
 
-export default function SMR({ data, user }) {
+export default function SMR({
+  allowTextMaterials = true,
+  collection = DEFAULT_COLLECTION,
+  data,
+  onBack,
+  user,
+}) {
   const [subjects, setSubjects] = useState(data?.subjects || []);
   const [selectedSubjectId, setSelectedSubjectId] = useState(null);
   const [newTitle, setNewTitle] = useState("");
@@ -26,13 +34,33 @@ export default function SMR({ data, user }) {
   const [documentTitle, setDocumentTitle] = useState("");
   const [documentFile, setDocumentFile] = useState(null);
   const [documentText, setDocumentText] = useState("");
-  const [materialMode, setMaterialMode] = useState("text");
+  const [materialMode, setMaterialMode] = useState(
+    allowTextMaterials ? "text" : "file"
+  );
   const [activeDocument, setActiveDocument] = useState(null);
   const isAdmin = user?.role === "admin";
 
   useEffect(() => {
     setSubjects(data?.subjects || []);
   }, [data?.subjects]);
+
+  useEffect(() => {
+    let isCurrent = true;
+
+    getMethodicalSubjects(collection)
+      .then((items) => {
+        if (isCurrent) setSubjects(items);
+      })
+      .catch(() => {
+        if (isCurrent) {
+          setError("Не удалось загрузить список материалов.");
+        }
+      });
+
+    return () => {
+      isCurrent = false;
+    };
+  }, [collection]);
 
   useEffect(() => {
     if (
@@ -92,6 +120,7 @@ export default function SMR({ data, user }) {
 
     try {
       const createdSubject = await createMethodicalSubject({
+        collection,
         order: subjects.length + 1,
         title,
       });
@@ -166,7 +195,7 @@ export default function SMR({ data, user }) {
     setDocumentTitle("");
     setDocumentFile(null);
     setDocumentText("");
-    setMaterialMode("text");
+    setMaterialMode(allowTextMaterials ? "text" : "file");
   };
 
   const handleDocumentCreate = async (event) => {
@@ -222,6 +251,41 @@ export default function SMR({ data, user }) {
     } finally {
       setIsSubmitting(false);
     }
+  };
+
+  const handleMaterialDownload = async (material) => {
+    if (!material) return;
+
+    if (material.fileUrl) {
+      try {
+        const response = await fetch(material.fileUrl);
+        if (!response.ok) throw new Error("Download failed");
+        const blob = await response.blob();
+        const objectUrl = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.href = objectUrl;
+        link.download = material.originalName || material.title;
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        URL.revokeObjectURL(objectUrl);
+      } catch {
+        setError("Не удалось скачать материал.");
+      }
+      return;
+    }
+
+    const blob = new Blob([material.content || ""], {
+      type: "text/plain;charset=utf-8",
+    });
+    const objectUrl = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = objectUrl;
+    link.download = `${material.title || "material"}.txt`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(objectUrl);
   };
 
   const renderActiveMaterial = () => {
@@ -291,8 +355,17 @@ export default function SMR({ data, user }) {
           Артка
         </button>
         <header className="methodical-document-page__header">
-          <h1>{activeDocument.title}</h1>
-          <span>{activeDocument.originalName || "Текстовый материал"}</span>
+          <div>
+            <h1>{activeDocument.title}</h1>
+            <span>{activeDocument.originalName || "Текстовый материал"}</span>
+          </div>
+          <button
+            className="methodical-document-download"
+            onClick={() => handleMaterialDownload(activeDocument)}
+            type="button"
+          >
+            Скачать
+          </button>
         </header>
         {renderActiveMaterial()}
       </section>
@@ -342,16 +415,25 @@ export default function SMR({ data, user }) {
                         <small>{document.originalName || "Текстовый материал"}</small>
                       </span>
                     </button>
-                    {isAdmin && (
+                    <div className="methodical-document-actions">
                       <button
-                        className="methodical-document-delete"
-                        disabled={isSubmitting}
-                        onClick={() => handleDocumentDelete(document)}
+                        className="methodical-document-download methodical-document-download--compact"
+                        onClick={() => handleMaterialDownload(document)}
                         type="button"
                       >
-                        Удалить
+                        Скачать
                       </button>
-                    )}
+                      {isAdmin && (
+                        <button
+                          className="methodical-document-delete"
+                          disabled={isSubmitting}
+                          onClick={() => handleDocumentDelete(document)}
+                          type="button"
+                        >
+                          Удалить
+                        </button>
+                      )}
+                    </div>
                   </article>
                 ))}
               </div>
@@ -384,7 +466,7 @@ export default function SMR({ data, user }) {
                       }}
                       value={materialMode}
                     >
-                      <option value="text">Текст</option>
+                      {allowTextMaterials ? <option value="text">Текст</option> : null}
                       <option value="file">Файл, PDF, фото, видео и другое</option>
                     </select>
                   </label>
@@ -429,6 +511,11 @@ export default function SMR({ data, user }) {
 
   return (
     <section className="module-panel">
+      {onBack ? (
+        <button className="module-back-button" onClick={onBack} type="button">
+          Артка
+        </button>
+      ) : null}
       <header>
         <h1>{data?.title || SECTION_TITLE}</h1>
       </header>

@@ -189,7 +189,12 @@ class CombatTrainingJournal(models.Model):
 
 
 class CombatTrainingJournalSubject(models.Model):
-    title = models.CharField("Название предмета", max_length=255, unique=True)
+    title = models.CharField("Название предмета", max_length=255)
+    unit_number = models.CharField(
+        "Аскер бөлүгүнүн номери",
+        max_length=120,
+        db_index=True,
+    )
     order = models.PositiveIntegerField("Порядок", default=0)
     is_active = models.BooleanField("Активен", default=True)
     created_at = models.DateTimeField("Создано", auto_now_add=True)
@@ -197,6 +202,12 @@ class CombatTrainingJournalSubject(models.Model):
 
     class Meta:
         ordering = ("order", "id")
+        constraints = [
+            models.UniqueConstraint(
+                fields=("unit_number", "title"),
+                name="unique_combat_training_subject_per_unit",
+            )
+        ]
         verbose_name = "Предмет журнала боевой подготовки"
         verbose_name_plural = "Предметы журнала боевой подготовки"
 
@@ -283,6 +294,30 @@ class ThematicAccountSubmission(models.Model):
 
     def __str__(self):
         return self.document_title
+
+
+class ThematicAccountSubmissionRead(models.Model):
+    submission = models.ForeignKey(
+        ThematicAccountSubmission,
+        on_delete=models.CASCADE,
+        related_name="reads",
+    )
+    user = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name="thematic_account_submission_reads",
+    )
+    read_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=("submission", "user"),
+                name="unique_thematic_account_submission_read",
+            )
+        ]
+        verbose_name = "Просмотр отправленного документа"
+        verbose_name_plural = "Просмотры отправленных документов"
 
 
 class CombatTrainingJournalRevision(models.Model):
@@ -390,14 +425,24 @@ class SubmissionEditRequest(models.Model):
 
 
 class MethodicalManualSubject(models.Model):
+    class Collection(models.TextChoices):
+        METHODICAL_MANUALS = "methodical_manuals", "Усулдук колдонмолор"
+        YOUNG_SOLDIER_PROGRAM = "young_soldier_program", "Жаш жоокерлерди даярдоо программасы"
+
     title = models.CharField("Название предмета", max_length=255)
+    collection = models.CharField(
+        "Раздел",
+        max_length=40,
+        choices=Collection.choices,
+        default=Collection.METHODICAL_MANUALS,
+    )
     order = models.PositiveIntegerField("Порядок", default=0)
     is_active = models.BooleanField("Активен", default=True)
     created_at = models.DateTimeField("Создан", auto_now_add=True)
     updated_at = models.DateTimeField("Обновлен", auto_now=True)
 
     class Meta:
-        ordering = ("order", "title")
+        ordering = ("collection", "order", "title")
         verbose_name = "Предмет усулдук колдонмолор"
         verbose_name_plural = "Предметы усулдук колдонмолор"
 
@@ -537,11 +582,30 @@ class CombatTrainingPlan(models.Model):
     )
     created_at = models.DateTimeField("Создано", auto_now_add=True)
     updated_at = models.DateTimeField("Обновлено", auto_now=True)
+    published_at = models.DateTimeField(
+        "Отправлено пользователям",
+        null=True,
+        blank=True,
+        db_index=True,
+    )
 
     class Meta:
         ordering = ("created_at", "id")
         verbose_name = "Плановое мероприятие боевой подготовки"
         verbose_name_plural = "Плановые мероприятия боевой подготовки"
+
+
+class CombatTrainingPlanRead(models.Model):
+    user = models.OneToOneField(
+        User,
+        on_delete=models.CASCADE,
+        related_name="combat_training_plan_read",
+    )
+    read_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Просмотр обновления плановых мероприятий"
+        verbose_name_plural = "Просмотры обновлений плановых мероприятий"
 
 
 class AdminChatMessage(models.Model):

@@ -25,6 +25,7 @@ from .models import (
     CombatTrainingJournalRevisionRead,
     CombatTrainingJournalSubject,
     CombatTrainingPlan,
+    CombatTrainingPlanRead,
     MethodicalManualDocument,
     MethodicalManualSubject,
     SubmissionEditRequest,
@@ -32,6 +33,7 @@ from .models import (
     TrainingSection,
     TrainingTable,
     ThematicAccountSubmission,
+    ThematicAccountSubmissionRead,
 )
 from .permissions import IsActiveUser, IsAdminRole
 from .outposts import format_outpost_name
@@ -388,9 +390,14 @@ def build_training_table_module_from_db(section_slug, scope):
     }
 
 
-def methodical_manual_subject_queryset():
+def methodical_manual_subject_queryset(
+    collection=MethodicalManualSubject.Collection.METHODICAL_MANUALS,
+):
     return (
-        MethodicalManualSubject.objects.filter(is_active=True)
+        MethodicalManualSubject.objects.filter(
+            is_active=True,
+            collection=collection,
+        )
         .annotate(
             menu_priority=Case(
                 When(title=NORMATIVE_LEGAL_ACTS_TITLE, then=Value(0)),
@@ -963,7 +970,11 @@ class MethodicalManualSubjectListCreateView(APIView):
         return [IsAdminRole()]
 
     def get(self, request):
-        subjects = methodical_manual_subject_queryset()
+        collection = request.query_params.get(
+            "collection",
+            MethodicalManualSubject.Collection.METHODICAL_MANUALS,
+        )
+        subjects = methodical_manual_subject_queryset(collection)
         return Response(MethodicalManualSubjectSerializer(subjects, many=True).data)
 
     def post(self, request):
@@ -1289,6 +1300,14 @@ class CombatTrainingJournalSubjectListCreateView(APIView):
 
     def get(self, request):
         subjects = CombatTrainingJournalSubject.objects.filter(is_active=True)
+        if request.user.role == User.Role.ADMIN:
+            unit_number = str(request.query_params.get("unitNumber") or "").strip()
+            if unit_number:
+                subjects = subjects.filter(unit_number=unit_number)
+        else:
+            if not request.user.region:
+                return Response([])
+            subjects = subjects.filter(unit_number=request.user.region)
         return Response(CombatTrainingJournalSubjectSerializer(subjects, many=True).data)
 
     def post(self, request):
@@ -1301,6 +1320,28 @@ class CombatTrainingJournalSubjectListCreateView(APIView):
             CombatTrainingJournalSubjectSerializer(subject).data,
             status=status.HTTP_201_CREATED,
         )
+
+
+class CombatTrainingJournalSubjectDetailView(APIView):
+    permission_classes = [IsAdminRole]
+
+    def get_object(self, pk):
+        return get_object_or_404(CombatTrainingJournalSubject, pk=pk)
+
+    def patch(self, request, pk):
+        subject = self.get_object(pk)
+        serializer = CombatTrainingJournalSubjectSerializer(
+            subject,
+            data=request.data,
+            partial=True,
+        )
+        serializer.is_valid(raise_exception=True)
+        subject = serializer.save()
+        return Response(CombatTrainingJournalSubjectSerializer(subject).data)
+
+    def delete(self, request, pk):
+        self.get_object(pk).delete()
+        return Response(status=204)
 
 
 class CombatTrainingJournalOutpostListView(APIView):
@@ -1367,6 +1408,7 @@ def combat_training_plan_payload(plan):
         "layout": plan.layout,
         "createdAt": plan.created_at.isoformat(),
         "updatedAt": plan.updated_at.isoformat(),
+        "publishedAt": plan.published_at.isoformat() if plan.published_at else None,
     }
 
 
@@ -1419,6 +1461,10 @@ class CombatTrainingPlanDetailView(APIView):
             data = request.data.get("data")
             if not isinstance(data, dict):
                 raise ValidationError({"data": "Таблицанын маалыматы туура эмес."})
+            previous_sent_at = str((plan.data or {}).get("sentAt") or "")
+            next_sent_at = str(data.get("sentAt") or "")
+            if next_sent_at and next_sent_at != previous_sent_at:
+                plan.published_at = timezone.now()
             plan.data = data
         plan.save()
         return Response(combat_training_plan_payload(plan))
@@ -1428,6 +1474,33 @@ class CombatTrainingPlanDetailView(APIView):
             raise PermissionDenied("Планды администратор гана өчүрө алат.")
         self.get_object(pk).delete()
         return Response(status=204)
+
+
+class CombatTrainingPlanUnreadCountView(APIView):
+    permission_classes = [IsActiveUser]
+
+    def get(self, request):
+        if request.user.role == User.Role.ADMIN:
+            return Response({"unreadCount": 0})
+
+        try:
+            read_at = request.user.combat_training_plan_read.read_at
+        except CombatTrainingPlanRead.DoesNotExist:
+            read_at = request.user.date_joined
+
+        unread_count = CombatTrainingPlan.objects.filter(
+            published_at__gt=read_at,
+        ).count()
+        return Response({"unreadCount": unread_count})
+
+
+class CombatTrainingPlanReadAllView(APIView):
+    permission_classes = [IsActiveUser]
+
+    def post(self, request):
+        if request.user.role != User.Role.ADMIN:
+            CombatTrainingPlanRead.objects.update_or_create(user=request.user)
+        return Response({"unreadCount": 0})
 
 
 def thematic_submission_payload(submission, viewing_user=None):
@@ -1448,12 +1521,18 @@ def thematic_submission_payload(submission, viewing_user=None):
         "table": submission.table_data,
         "createdAt": submission.created_at.isoformat(),
         "updatedAt": submission.updated_at.isoformat(),
+        "isRead": bool(
+            viewing_user
+            and any(read.user_id == viewing_user.id for read in submission.reads.all())
+        ),
         "editRequestStatus": edit_request.status if edit_request else None,
         "canEdit": bool(edit_request and edit_request.status == SubmissionEditRequest.Status.APPROVED),
     }
     if submission.section_slug in {
         "combat-training-personnel-journal",
         "combat-training-command-journal",
+        "meetings-combat-training-journal",
+        "young-soldier-combat-training-journal",
     }:
         payload["revisions"] = [
             {
@@ -1496,6 +1575,7 @@ class ThematicAccountSubmissionListCreateView(APIView):
 
     def get(self, request):
         submissions = ThematicAccountSubmission.objects.select_related("sender").prefetch_related(
+            "reads",
             "revisions__reads",
             "revisions__hidden_by",
         )
@@ -1536,6 +1616,16 @@ class ThematicAccountSubmissionListCreateView(APIView):
             "combat-training-results-inspection",
             "combat-training-analysis",
             "combat-training-analysis-regional",
+            "meetings-thematic-account",
+            "meetings-lesson-schedule",
+            "meetings-combat-training-journal",
+            "meetings-observation",
+            "meetings-analysis",
+            "young-soldier-thematic-account",
+            "young-soldier-lesson-schedule",
+            "young-soldier-combat-training-journal",
+            "young-soldier-observation",
+            "young-soldier-analysis",
         }:
             errors["sectionId"] = "Отправляемый раздел указан неверно."
         if not request.user.region:
@@ -1582,6 +1672,8 @@ class ThematicAccountSubmissionListCreateView(APIView):
         elif section_slug in {
             "combat-training-personnel-journal",
             "combat-training-command-journal",
+            "meetings-combat-training-journal",
+            "young-soldier-combat-training-journal",
         }:
             submission = ThematicAccountSubmission.objects.filter(
                 sender=request.user,
@@ -1611,6 +1703,8 @@ class ThematicAccountSubmissionListCreateView(APIView):
         if section_slug in {
             "combat-training-personnel-journal",
             "combat-training-command-journal",
+            "meetings-combat-training-journal",
+            "young-soldier-combat-training-journal",
         }:
             CombatTrainingJournalRevision.objects.create(
                 submission=submission,
@@ -1625,6 +1719,30 @@ class ThematicAccountSubmissionListCreateView(APIView):
 
 class ThematicAccountSubmissionDetailView(APIView):
     permission_classes = [IsActiveUser]
+
+    def patch(self, request, pk):
+        submission = get_object_or_404(
+            ThematicAccountSubmission.objects.select_related("sender").prefetch_related("reads"),
+            pk=pk,
+        )
+        is_matching_regional_unit = (
+            request.user.role == User.Role.REGIONAL
+            and submission.sender.role == User.Role.OUTPOST
+            and submission.unit_number == request.user.region
+        )
+        is_admin_recipient = (
+            request.user.role == User.Role.ADMIN
+            and submission.sender.role == User.Role.REGIONAL
+        )
+        if not (is_matching_regional_unit or is_admin_recipient):
+            raise PermissionDenied("Нет права отмечать этот документ прочитанным.")
+
+        ThematicAccountSubmissionRead.objects.get_or_create(
+            submission=submission,
+            user=request.user,
+        )
+        submission._prefetched_objects_cache.pop("reads", None)
+        return Response(thematic_submission_payload(submission, request.user))
 
     def delete(self, request, pk):
         submission = get_object_or_404(

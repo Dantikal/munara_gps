@@ -13,10 +13,7 @@ import Profile from "./Profile.jsx";
 import SavedTables from "./SavedTables.jsx";
 import Schedule from "./Schedule.jsx";
 import SMR from "./SMR.jsx";
-
-const roleSpecificSectionTitles = {
-  youngSoldierTrainingCourse: "Жаш жоокерлерди даярдоо курсу",
-};
+import YoungSoldierTrainingCourse from "./YoungSoldierTrainingCourse.jsx";
 
 export default function DashboardModuleView({ activeModule, modules, onRefresh, user }) {
   if (activeModule === "profile") {
@@ -45,15 +42,8 @@ export default function DashboardModuleView({ activeModule, modules, onRefresh, 
     return <Meetings modules={modules} user={user} />;
   }
 
-  if (roleSpecificSectionTitles[activeModule]) {
-    return (
-      <section className="module-panel">
-        <header className="module-header">
-          <h1>{roleSpecificSectionTitles[activeModule]}</h1>
-        </header>
-        <p className="dashboard-state">Маалымат азырынча жок.</p>
-      </section>
-    );
+  if (activeModule === "youngSoldierTrainingCourse") {
+    return <YoungSoldierTrainingCourse modules={modules} user={user} />;
   }
 
   if (activeModule === "combatTrainingPlan") {

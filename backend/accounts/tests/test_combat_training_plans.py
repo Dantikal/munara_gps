@@ -69,3 +69,36 @@ class CombatTrainingPlanApiTests(APITestCase):
             format="json",
         )
         self.assertEqual(response.status_code, 403)
+
+    def test_send_action_creates_bell_notification_until_section_is_opened(self):
+        self.client.force_authenticate(self.admin)
+        create_response = self.client.post(
+            self.list_url,
+            {
+                "title": "Жаңыртыла турган план",
+                "layout": "plan",
+                "data": {"planRows": []},
+            },
+            format="json",
+        )
+        detail_url = reverse(
+            "combat-training-plan-detail",
+            kwargs={"pk": create_response.data["id"]},
+        )
+
+        self.client.force_authenticate(self.outpost)
+        unread_url = reverse("combat-training-plan-unread-count")
+        self.assertEqual(self.client.get(unread_url).data["unreadCount"], 0)
+
+        self.client.force_authenticate(self.admin)
+        self.client.patch(
+            detail_url,
+            {"data": {"planRows": [{"number": 1}], "sentAt": "2026-07-24T12:00:00Z"}},
+            format="json",
+        )
+
+        self.client.force_authenticate(self.outpost)
+        self.assertEqual(self.client.get(unread_url).data["unreadCount"], 1)
+        read_response = self.client.post(reverse("combat-training-plan-read-all"))
+        self.assertEqual(read_response.status_code, 200)
+        self.assertEqual(self.client.get(unread_url).data["unreadCount"], 0)
