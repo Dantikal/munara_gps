@@ -332,12 +332,12 @@ const WeeklySubmissionStatus = ({ submission, now }) => {
           isSent ? "sent" : "missing"
         }`}
       >
-        {isSent ? "Отправлено" : "Не отправлено"}
+        {isSent ? "Аткарылды" : "Аткарылган эмес"}
       </span>
       <span className="library-weekly-countdown">
         {isSent && countdown
-          ? `До следующей отправки: ${countdown}`
-          : "Нужно отправить сейчас"}
+          ? `Кийинки жөнөтүүгө чейин: ${countdown}`
+          : "Азыр жөнөтүү керек"}
       </span>
     </span>
   );
@@ -560,23 +560,23 @@ const createTypicalWeekTable = (title) => ({
 });
 
 const thematicAccountPeriodConfig = {
-  buttonLabel: "+ Создать",
-  promptLabel: "Название",
+  buttonLabel: "+ Кошуу",
+  promptLabel: "Аталышы",
   usesServerCreate: true,
   usesTextDialog: true,
   userManaged: true,
   getDefaultTitle: () => "",
 };
 const lessonSchedulePeriodConfig = {
-  buttonLabel: "+ Жума кошуу",
+  buttonLabel: "+ Жуманы кошуу",
   promptLabel: "Жуманын аталышы",
   usesMonthDialog: true,
   usesServerCreate: true,
   getDefaultTitle: (weekNumber) => buildLessonSchedulePeriodTitle(weekNumber),
 };
 const typicalWeekPeriodConfig = {
-  buttonLabel: "+ Создать",
-  promptLabel: "Название",
+  buttonLabel: "+ Кошуу",
+  promptLabel: "Аталышы",
   usesTextDialog: true,
   userManaged: true,
   createTable: createTypicalWeekTable,
@@ -1067,7 +1067,15 @@ export default function Library({ data, onBack, onRefresh, onSubmissionCreated }
   const topScrollRef = useRef(null);
   const isScrollSyncingRef = useRef(false);
   const migratedLessonPeriodsRef = useRef(new Set());
-  const sections = data?.sections || [];
+  const sections = useMemo(
+    () =>
+      (data?.sections || []).map((section) =>
+        section.id === "typical-week"
+          ? { ...section, title: "Типтүү жумасы" }
+          : section
+      ),
+    [data?.sections]
+  );
   const [selectedSectionId, setSelectedSectionId] = useState(null);
   const [selectedSubsectionId, setSelectedSubsectionId] = useState(null);
   const [selectedNestedSubsectionId, setSelectedNestedSubsectionId] = useState(null);
@@ -1955,7 +1963,7 @@ export default function Library({ data, onBack, onRefresh, onSubmissionCreated }
     if (!Number.isInteger(count) || count < 1 || count > maximum) {
       setThematicMonthDialog((currentDialog) => ({
         ...currentDialog,
-        error: `Укажите целое число от 1 до ${maximum}.`,
+        error: `1ден ${maximum}гө чейинки бүтүн санды көрсөтүңүз.`,
       }));
       return;
     }
@@ -1976,7 +1984,7 @@ export default function Library({ data, onBack, onRefresh, onSubmissionCreated }
       } catch {
         // The month remains hidden for the current session.
       }
-      setTableNotice(`Удалено колонок месяцев: ${count}.`);
+      setTableNotice(`Ай мамычалары өчүрүлдү: ${count}.`);
     } else {
       const createdAt = Date.now();
       const nextMonths = Array.from({ length: count }, (_, index) => ({
@@ -1993,7 +2001,7 @@ export default function Library({ data, onBack, onRefresh, onSubmissionCreated }
       } catch {
         // The new month columns remain available for the current session.
       }
-      setTableNotice(`Добавлено колонок месяцев: ${count}.`);
+      setTableNotice(`Ай мамычалары кошулду: ${count}.`);
     }
 
     setTableStatus("editing");
@@ -2067,7 +2075,7 @@ export default function Library({ data, onBack, onRefresh, onSubmissionCreated }
         await createLibraryPeriod({section: activePeriodContainerId, title});
         if (onRefresh) await onRefresh();
       } catch (error) {
-        setTableNotice(getApiErrorMessage(error, "Не удалось добавить документ."));
+        setTableNotice(getApiErrorMessage(error, "Документти кошуу мүмкүн болгон жок."));
       }
       return;
     }
@@ -2085,7 +2093,7 @@ export default function Library({ data, onBack, onRefresh, onSubmissionCreated }
     const title = customTableTitle.trim();
 
     if (!title) {
-      setCustomTableError("Введите название.");
+      setCustomTableError("Аталышын жазыңыз.");
       return;
     }
 
@@ -2099,7 +2107,7 @@ export default function Library({ data, onBack, onRefresh, onSubmissionCreated }
         if (onRefresh) await onRefresh();
         closeCustomTableDialog();
       } catch (error) {
-        setCustomTableError(getApiErrorMessage(error, "Не удалось создать документ."));
+        setCustomTableError(getApiErrorMessage(error, "Документти түзүү мүмкүн болгон жок."));
       }
       return;
     }
@@ -2148,7 +2156,7 @@ export default function Library({ data, onBack, onRefresh, onSubmissionCreated }
       closeLessonPeriodDialog();
     } catch (error) {
       setLessonPeriodError(
-        getApiErrorMessage(error, "Не удалось добавить неделю.")
+        getApiErrorMessage(error, "Жуманы кошуу мүмкүн болгон жок.")
       );
     } finally {
       setIsCreatingLessonPeriod(false);
@@ -2171,7 +2179,7 @@ export default function Library({ data, onBack, onRefresh, onSubmissionCreated }
         await updateLibraryPeriod(activePeriodContainerId, period.id, {title});
         if (onRefresh) await onRefresh();
       } catch (error) {
-        setTableNotice(getApiErrorMessage(error, "Не удалось изменить название."));
+        setTableNotice(getApiErrorMessage(error, "Аталышын өзгөртүү мүмкүн болгон жок."));
       }
       return;
     }
@@ -2211,7 +2219,7 @@ export default function Library({ data, onBack, onRefresh, onSubmissionCreated }
         if (selectedPeriodId === period.id) setSelectedPeriodId(null);
         if (onRefresh) await onRefresh();
       } catch (error) {
-        setTableNotice(getApiErrorMessage(error, "Не удалось удалить документ."));
+        setTableNotice(getApiErrorMessage(error, "Документти өчүрүү мүмкүн болгон жок."));
       } finally {
         setDeletingLessonPeriodId(null);
       }
@@ -2294,7 +2302,7 @@ export default function Library({ data, onBack, onRefresh, onSubmissionCreated }
       tableActionStorageKey,
     });
     setTableStatus("saved");
-    setTableNotice("Таблица сохранена.");
+    setTableNotice("Таблица сакталды.");
 
     if (data?.autoSubmitOnSave && currentUser?.role === "outpost") {
       setIsSubmittingThematicAccount(true);
@@ -2310,10 +2318,10 @@ export default function Library({ data, onBack, onRefresh, onSubmissionCreated }
           submission,
           ...items.filter((item) => item.id !== submission.id),
         ]);
-        setTableNotice("Заполнено. Журнал сохранён и отправлен.");
+        setTableNotice("Толтурулду. Журнал сакталды жана жөнөтүлдү.");
       } catch (error) {
         setTableNotice(
-          getApiErrorMessage(error, "Журнал сохранён локально, но отправить его не удалось.")
+          getApiErrorMessage(error, "Журнал жергиликтүү сакталды, бирок жөнөтүү мүмкүн болгон жок.")
         );
       } finally {
         setIsSubmittingThematicAccount(false);
@@ -2324,7 +2332,7 @@ export default function Library({ data, onBack, onRefresh, onSubmissionCreated }
   const markCurrentTableSubmitted = () => {
     persistCurrentTable("submitted");
     setTableStatus("submitted");
-    setTableNotice("Таблица отправлена.");
+    setTableNotice("Таблица жөнөтүлдү.");
   };
 
   const resetCurrentTableToDefaults = () => {
@@ -2366,7 +2374,7 @@ export default function Library({ data, onBack, onRefresh, onSubmissionCreated }
     setCellColors({});
     setActiveCellColor("");
     setTableStatus("editing");
-    setTableNotice("Таблица отправлена и очищена.");
+    setTableNotice("Таблица жөнөтүлдү жана тазаланды.");
   };
 
   const completeCurrentTableSubmission = () => {
@@ -2426,7 +2434,7 @@ export default function Library({ data, onBack, onRefresh, onSubmissionCreated }
         setTableNotice("Журнал обновлён и сохранён.");
         onSubmissionCreated?.(submission);
       } catch (error) {
-        setTableNotice(getApiErrorMessage(error, "Не удалось обновить журнал."));
+        setTableNotice(getApiErrorMessage(error, "Журналды жаңыртуу мүмкүн болгон жок."));
       } finally {
         setIsSubmittingThematicAccount(false);
       }
@@ -2570,7 +2578,7 @@ export default function Library({ data, onBack, onRefresh, onSubmissionCreated }
   const handleTableEdit = () => {
     persistCurrentTable("editing");
     setTableStatus("editing");
-    setTableNotice("Редактирование включено.");
+    setTableNotice("Өзгөртүү режими күйгүзүлдү.");
   };
 
   const handleTableBack = () => {
@@ -2780,10 +2788,10 @@ export default function Library({ data, onBack, onRefresh, onSubmissionCreated }
   const renderTableActions = () => (
     <div className="module-table-actions module-table-actions--top">
       <button disabled={!isTableEditing || !tableHistory.canUndo} onClick={tableHistory.undo} type="button">
-        ↶ Назад
+        ↶ Артка
       </button>
       <button disabled={!isTableEditing || !tableHistory.canRedo} onClick={tableHistory.redo} type="button">
-        ↷ Вперёд
+        ↷ Алдыга
       </button>
       <button disabled={!isTableEditing} onClick={handleAddTableRow} type="button">
         + Сап кошуу
@@ -2803,7 +2811,7 @@ export default function Library({ data, onBack, onRefresh, onSubmissionCreated }
         </>
       )}
       <button disabled={!isTableEditing || editableRows.length === 0} onClick={handleDeleteTableRow} type="button">
-        - удалить строку
+        Сапты өчүрүү
       </button>
       {thematicMonthOptions.length > 0 ? (
         <button
@@ -2811,7 +2819,7 @@ export default function Library({ data, onBack, onRefresh, onSubmissionCreated }
           onClick={handleDeleteThematicMonth}
           type="button"
         >
-          - Удалить месяц
+          - Айды өчүрүү
         </button>
       ) : null}
       {data?.allowThematicMonthDeletion &&
@@ -2821,19 +2829,19 @@ export default function Library({ data, onBack, onRefresh, onSubmissionCreated }
           onClick={handleAddThematicMonths}
           type="button"
         >
-          + Добавить месяц
+          + Ай кошуу
         </button>
       ) : null}
       <button disabled={!isTableEditing || isSubmittingThematicAccount} onClick={handleTableSave} type="button">
-        Сохранить
+        Сактоо
       </button>
       {!data?.autoSubmitOnSave && !data?.hideSubmit && (
         <button disabled={isSubmitDisabled} onClick={handleTableSend} type="button">
-          {data?.submissionActionLabel || "Отправить"}
+          {data?.submissionActionLabel || "Жөнөтүү"}
         </button>
       )}
       <button disabled={isTableEditing} onClick={handleTableEdit} type="button">
-        Изменить
+        Өзгөртүү
       </button>
     </div>
   );
@@ -2886,7 +2894,7 @@ export default function Library({ data, onBack, onRefresh, onSubmissionCreated }
           submission={submission}
         />
         <button onClick={() => setForwardingSubmission(submission)} type="button">
-          Отправить
+          Жөнөтүү
         </button>
         <button
           disabled={deletingSubmissionId === submission.id}
@@ -2923,13 +2931,13 @@ export default function Library({ data, onBack, onRefresh, onSubmissionCreated }
             </div>
             <h2 id="thematic-month-dialog-title">
               {thematicMonthDialog.mode === "delete"
-                ? "Удалить месяцы"
-                : "Добавить месяцы"}
+                ? "Айларды өчүрүү"
+                : "Айларды кошуу"}
             </h2>
             <p>
               {thematicMonthDialog.mode === "delete"
-                ? `Укажите количество колонок для удаления. Доступно: ${thematicMonthOptions.length}.`
-                : "Укажите, сколько новых колонок месяцев добавить."}
+                ? `Өчүрүлө турган мамычалардын санын көрсөтүңүз. Жеткиликтүү: ${thematicMonthOptions.length}.`
+                : "Кошула турган жаңы ай мамычаларынын санын көрсөтүңүз."}
             </p>
             <label>
               Количество месяцев
@@ -2964,12 +2972,12 @@ export default function Library({ data, onBack, onRefresh, onSubmissionCreated }
                 onClick={() => setThematicMonthDialog(null)}
                 type="button"
               >
-                Отмена
+                Жокко чыгаруу
               </button>
               <button className="thematic-month-dialog__confirm" type="submit">
                 {thematicMonthDialog.mode === "delete"
-                  ? "Удалить"
-                  : "Добавить"}
+                  ? "Өчүрүү"
+                  : "Кошуу"}
               </button>
             </div>
           </form>
@@ -2977,7 +2985,13 @@ export default function Library({ data, onBack, onRefresh, onSubmissionCreated }
       ) : null}
       <header>
         <h1>{data?.title || "Сабактардын тематикасынын эсеби жана жүгүртмөсү"}</h1>
-        <p>{data?.description || `Доступные документы для ${data?.scope || "текущей роли"}.`}</p>
+        <p>
+          {data?.description || (
+            data?.scope
+              ? `${data.scope}нын аскер бөлүгү үчүн уруксат документтер`
+              : "Учурдагы рол үчүн уруксат документтер"
+          )}
+        </p>
       </header>
       {selectedTable ? (
         <div
@@ -2996,7 +3010,7 @@ export default function Library({ data, onBack, onRefresh, onSubmissionCreated }
           )}
           {isLessonScheduleTable && renderLessonScheduleTopHeader()}
           <textarea
-            aria-label="Название таблицы"
+            aria-label="Таблицанын аталышы"
             className="module-table-title module-table-title-input"
             disabled={!isTableEditing}
             onChange={handleTitleChange}
@@ -3213,10 +3227,10 @@ export default function Library({ data, onBack, onRefresh, onSubmissionCreated }
           </div>
           {!isViewingSubmission && <div className="module-table-actions">
             <button disabled={!isTableEditing || !tableHistory.canUndo} onClick={tableHistory.undo} type="button">
-              ↶ Назад
+              ↶ Артка
             </button>
             <button disabled={!isTableEditing || !tableHistory.canRedo} onClick={tableHistory.redo} type="button">
-              ↷ Вперёд
+              ↷ Алдыга
             </button>
             <button disabled={!isTableEditing} onClick={handleAddTableRow} type="button">
               + Сап кошуу
@@ -3236,7 +3250,7 @@ export default function Library({ data, onBack, onRefresh, onSubmissionCreated }
               </>
             )}
             <button disabled={!isTableEditing || editableRows.length === 0} onClick={handleDeleteTableRow} type="button">
-              - удалить строку
+              Сапты өчүрүү
             </button>
             {thematicMonthOptions.length > 0 ? (
               <button
@@ -3244,7 +3258,7 @@ export default function Library({ data, onBack, onRefresh, onSubmissionCreated }
                 onClick={handleDeleteThematicMonth}
                 type="button"
               >
-                - Удалить месяц
+                - Айды өчүрүү
               </button>
             ) : null}
             {data?.allowThematicMonthDeletion &&
@@ -3254,19 +3268,19 @@ export default function Library({ data, onBack, onRefresh, onSubmissionCreated }
                 onClick={handleAddThematicMonths}
                 type="button"
               >
-                + Добавить месяц
+                + Ай кошуу
               </button>
             ) : null}
             <button disabled={!isTableEditing || isSubmittingThematicAccount} onClick={handleTableSave} type="button">
-              Сохранить
+              Сактоо
             </button>
             {!data?.autoSubmitOnSave && !data?.hideSubmit && (
               <button disabled={isSubmitDisabled} onClick={handleTableSend} type="button">
-                {data?.submissionActionLabel || "Отправить"}
+                {data?.submissionActionLabel || "Жөнөтүү"}
               </button>
             )}
             <button disabled={isTableEditing} onClick={handleTableEdit} type="button">
-              Изменить
+              Өзгөртүү
             </button>
           </div>}
           {tableNotice && <p className="module-table-status">{tableNotice}</p>}
@@ -3416,7 +3430,7 @@ export default function Library({ data, onBack, onRefresh, onSubmissionCreated }
             )}
             {isWeeklyScheduleSection ? (
               <div className="module-submission-list">
-                <h3>Аскер бөлүгүнөн администраторго жөнөтүү</h3>
+                <h3>Аскер бөлүктүн администраторго жөнөтүү</h3>
                 <WeeklySubmissionStatus
                   now={weeklyStatusNow}
                   submission={latestRegionalWeeklySubmission}
@@ -3477,12 +3491,12 @@ export default function Library({ data, onBack, onRefresh, onSubmissionCreated }
                 />
               ) : null}
               <div className="module-submission-list">
-                <h3>Аскер бөлүгүнөн жөнөтүлгөн документтер</h3>
+                <h3>Аскер бөлүктөн жөнөтүлгөн документтер</h3>
                 {adminMilitaryUnitSubmissions.length > 0 ? (
                   adminMilitaryUnitSubmissions.map(renderAdminSubmissionRow)
                 ) : (
                   <p className="module-submission-list__empty">
-                    Аскер бөлүгүнөн жөнөтүлгөн документтер азырынча жок.
+                    Аскер бөлүктөн жөнөтүлгөн документтер азырынча жок.
                   </p>
                 )}
                 <h3>Заставалар</h3>
@@ -3564,7 +3578,7 @@ export default function Library({ data, onBack, onRefresh, onSubmissionCreated }
               <div className="module-submission-list">
                 <h3>
                   {currentUser?.role === "outpost"
-                    ? "Заставадан аскер бөлүгүнө жөнөтүү"
+                    ? "Заставадан аскер бөлүккө жөнөтүү"
                     : "Аскер бөлүгүнөн администраторго жөнөтүү"}
                 </h3>
                 <WeeklySubmissionStatus
@@ -3642,7 +3656,7 @@ export default function Library({ data, onBack, onRefresh, onSubmissionCreated }
                           />
                           {currentUser?.role === "regional" && submission.senderRole === "outpost" ? (
                             <button onClick={() => setForwardingSubmission(submission)} type="button">
-                              Отправить
+                              Жөнөтүү
                             </button>
                           ) : null}
                           <button
@@ -3656,7 +3670,7 @@ export default function Library({ data, onBack, onRefresh, onSubmissionCreated }
                     </div>
                   ))
                 ) : (
-                  <p className="module-submission-list__empty">Отправленных документов пока нет.</p>
+                  <p className="module-submission-list__empty">Жөнөтүлгөн документтер азырынча жок.</p>
                 )}</>
                 ) : null}
                 {submissionListError && (
@@ -3722,7 +3736,7 @@ export default function Library({ data, onBack, onRefresh, onSubmissionCreated }
               <tr>
                 <th>Документ</th>
                 <th>Тип</th>
-                <th>Обновлен</th>
+                <th>Жаңыртылды</th>
               </tr>
             </thead>
             <tbody>
@@ -3776,16 +3790,16 @@ export default function Library({ data, onBack, onRefresh, onSubmissionCreated }
                 onClick={() => setSubmissionDialogOpen(false)}
                 type="button"
               >
-                Отмена
+                Жокко чыгаруу
               </button>
               <button disabled={isSubmittingThematicAccount} type="submit">
                 {isDirectSubmissionUpdate && data?.requestSubmissionTitleOnUpdate
                   ? isSubmittingThematicAccount
-                    ? "Обновление..."
-                    : "Обновить"
+                    ? "Жаңыртылууда..."
+                    : "Жаңылоо"
                   : isSubmittingThematicAccount
-                    ? "Отправка..."
-                    : "Отправить"}
+                    ? "Жөнөтүлүүдө..."
+                    : "Жөнөтүү"}
               </button>
             </div>
           </form>
@@ -3797,9 +3811,9 @@ export default function Library({ data, onBack, onRefresh, onSubmissionCreated }
             event.preventDefault();
             handleCreateCustomTable();
           }}>
-            <h2 id="custom-table-dialog-title">{customPeriodConfig?.promptLabel || "Название"}</h2>
+            <h2 id="custom-table-dialog-title">{customPeriodConfig?.promptLabel || "Аталышы"}</h2>
             <label className="module-inline-field">
-              <span>Название</span>
+              <span>Аталышы</span>
               <input
                 autoFocus
                 onChange={(event) => {
@@ -3811,7 +3825,7 @@ export default function Library({ data, onBack, onRefresh, onSubmissionCreated }
                       currentUser,
                       activePeriodContainerId === COMMAND_THEMATIC_ACCOUNT_SECTION_ID
                     )
-                  : "Введите название"}
+                  : "Аталышын жазыңыз"}
                 type="text"
                 value={customTableTitle}
               />
@@ -3819,10 +3833,10 @@ export default function Library({ data, onBack, onRefresh, onSubmissionCreated }
             {customTableError && <p className="lesson-period-dialog__error">{customTableError}</p>}
             <div className="lesson-period-dialog__actions">
               <button onClick={closeCustomTableDialog} type="button">
-                Отмена
+                Жокко чыгаруу
               </button>
               <button type="submit">
-                Создать
+                Кошуу
               </button>
             </div>
           </form>

@@ -7,9 +7,24 @@ from dotenv import load_dotenv
 BASE_DIR = Path(__file__).resolve().parent.parent
 load_dotenv(BASE_DIR / ".env")
 
+def env_list(name, default=""):
+    return [value.strip() for value in os.getenv(name, default).split(",") if value.strip()]
+
+
 SECRET_KEY = os.getenv("DJANGO_SECRET_KEY", "dev-secret-key-change-in-production")
 DEBUG = os.getenv("DJANGO_DEBUG", "1") == "1"
-ALLOWED_HOSTS = os.getenv("DJANGO_ALLOWED_HOSTS", "localhost,127.0.0.1").split(",")
+
+# ============================================================
+# ? ИСПРАВЛЕНО: ALLOWED_HOSTS с доменами для продакшена
+# ============================================================
+ALLOWED_HOSTS = [
+    'localhost',
+    '127.0.0.1',
+    'kutbilim.gps.gov.kg',
+    'www.kutbilim.gps.gov.kg',
+    'elkitep.gps.gov.kg',
+    '10.3.14.11',
+]
 
 INSTALLED_APPS = [
     "django.contrib.admin",
@@ -88,7 +103,8 @@ TIME_ZONE = "Asia/Bishkek"
 USE_I18N = True
 USE_TZ = True
 
-STATIC_URL = "static/"
+STATIC_URL = "/static/"
+STATIC_ROOT = BASE_DIR / "staticfiles"
 MEDIA_URL = "/media/"
 MEDIA_ROOT = BASE_DIR / "media"
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
@@ -108,9 +124,31 @@ SIMPLE_JWT = {
     "AUTH_HEADER_TYPES": ("Bearer",),
 }
 
-CORS_ALLOWED_ORIGINS = os.getenv(
-    "CORS_ALLOWED_ORIGINS", "http://localhost:5173,http://127.0.0.1:5173"
-).split(",")
+# ============================================================
+# ? ИСПРАВЛЕНО: CORS и CSRF настройки для продакшена
+# ============================================================
+CORS_ALLOWED_ORIGINS = [
+    "https://kutbilim.gps.gov.kg",
+    "https://www.kutbilim.gps.gov.kg",
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
+]
+
+CSRF_TRUSTED_ORIGINS = [
+    "https://kutbilim.gps.gov.kg",
+    "https://www.kutbilim.gps.gov.kg",
+]
+
+CORS_ALLOW_CREDENTIALS = True
+
+# Nginx terminates HTTPS and forwards the original protocol.
+SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
+SESSION_COOKIE_SECURE = not DEBUG
+CSRF_COOKIE_SECURE = not DEBUG
+SECURE_SSL_REDIRECT = os.getenv("DJANGO_SECURE_SSL_REDIRECT", "0") == "1"
+SECURE_HSTS_SECONDS = int(os.getenv("DJANGO_SECURE_HSTS_SECONDS", "0"))
+SECURE_HSTS_INCLUDE_SUBDOMAINS = SECURE_HSTS_SECONDS > 0
+SECURE_HSTS_PRELOAD = False
 
 EMAIL_BACKEND = os.getenv(
     "DJANGO_EMAIL_BACKEND", "django.core.mail.backends.console.EmailBackend"

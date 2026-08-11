@@ -51,7 +51,7 @@ export default function SubmissionForwardDialog({ onClose, onForward, submission
         <div className="lesson-period-dialog__actions">
           <button disabled={isSending} onClick={onClose} type="button">Жокко чыгаруу</button>
           <button disabled={isSending} type="submit">
-            {isSending ? "Жөнөтүлүүдө..." : "Отправить"}
+            {isSending ? "Жөнөтүлүүдө..." : "Жөнөтүү"}
           </button>
         </div>
       </form>

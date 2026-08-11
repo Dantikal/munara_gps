@@ -49,7 +49,7 @@ export default function App() {
       return <OutpostDashboard />;
     }
 
-    return <section className="panel">Для вашей роли dashboard не настроен.</section>;
+    return <section className="panel">Сиздин ролуңуз үчүн башкаруу панели жөндөлгөн эмес.</section>;
   };
 
   const renderAuthPage = () => (
@@ -57,7 +57,7 @@ export default function App() {
       <div className={`auth-card auth-card--${page}`}>
         <header className="auth-brand">
           <BorderServiceLogo large />
-          <h1>КУТ БИЛИМ</h1>
+          <h1>КҮЖҮРМӨН АСКЕР 1.0</h1>
           <p>Күжүрмөн даярдоо санарип платформасы</p>
         </header>
         <nav className="auth-tabs">
@@ -65,13 +65,13 @@ export default function App() {
             className={page === "login" ? "is-active" : ""}
             onClick={() => setPage("login")}
           >
-            Вход
+            Кирүү
           </button>
           <button
             className={page === "register" ? "is-active" : ""}
             onClick={() => setPage("register")}
           >
-            Регистрация
+            Каттоо
           </button>
         </nav>
         {page === "login" && <LoginPage onLoggedIn={() => setPage("dashboard")} />}
@@ -89,7 +89,7 @@ export default function App() {
       <header className="topbar">
         <div className="brand-lockup">
           <div>
-            <strong>КУТ БИЛИМ</strong>
+            <strong>КҮЖҮРМӨН АСКЕР 1.0</strong>
             <span>Күжүрмөн даярдоо санарип платформасы</span>
           </div>
         </div>
@@ -97,9 +97,9 @@ export default function App() {
           <BorderServiceLogo large />
         </div>
         <nav>
-          {!user && <button onClick={() => setPage("register")}>Регистрация</button>}
-          {!user && <button onClick={() => setPage("login")}>Вход</button>}
-          {user && <button onClick={signOut}>Выйти</button>}
+          {!user && <button onClick={() => setPage("register")}>Каттоо</button>}
+          {!user && <button onClick={() => setPage("login")}>Кирүү</button>}
+          {user && <button onClick={signOut}>Чыгуу</button>}
         </nav>
       </header>
 

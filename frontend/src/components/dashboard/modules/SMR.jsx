@@ -53,7 +53,7 @@ export default function SMR({
       })
       .catch(() => {
         if (isCurrent) {
-          setError("Не удалось загрузить список материалов.");
+          setError("Материалдардын тизмесин жүктөө мүмкүн болгон жок.");
         }
       });
 
@@ -90,7 +90,7 @@ export default function SMR({
         if (isCurrent) setDocuments(items);
       })
       .catch(() => {
-        if (isCurrent) setError("Не удалось загрузить список документов.");
+        if (isCurrent) setError("Документтердин тизмесин жүктөө мүмкүн болгон жок.");
       })
       .finally(() => {
         if (isCurrent) setDocumentsLoading(false);
@@ -111,7 +111,7 @@ export default function SMR({
     const title = newTitle.trim();
 
     if (!title) {
-      setError("Укажите название предмета.");
+      setError("Предметтин аталышын көрсөтүңүз.");
       return;
     }
 
@@ -126,9 +126,9 @@ export default function SMR({
       });
       setSubjects((currentSubjects) => [...currentSubjects, createdSubject]);
       setNewTitle("");
-      setNotice("Предмет создан.");
+      setNotice("Предмет түзүлдү.");
     } catch {
-      setError("Не удалось создать предмет.");
+      setError("Предметти түзүү мүмкүн болгон жок.");
     } finally {
       setIsSubmitting(false);
     }
@@ -149,7 +149,7 @@ export default function SMR({
     const title = editingTitle.trim();
 
     if (!title) {
-      setError("Укажите название предмета.");
+      setError("Предметтин аталышын көрсөтүңүз.");
       return;
     }
 
@@ -165,9 +165,9 @@ export default function SMR({
       );
       setEditingId(null);
       setEditingTitle("");
-      setNotice("Предмет изменен.");
+      setNotice("Предмет өзгөртүлдү.");
     } catch {
-      setError("Не удалось изменить предмет.");
+      setError("Предметти өзгөртүү мүмкүн болгон жок.");
     } finally {
       setIsSubmitting(false);
     }
@@ -182,9 +182,9 @@ export default function SMR({
       setSubjects((currentSubjects) =>
         currentSubjects.filter((currentSubject) => currentSubject.id !== subject.id)
       );
-      setNotice("Предмет удален.");
+      setNotice("Предмет өчүрүлдү.");
     } catch {
-      setError("Не удалось удалить предмет.");
+      setError("Предметти өчүрүү мүмкүн болгон жок.");
     } finally {
       setIsSubmitting(false);
     }
@@ -204,8 +204,8 @@ export default function SMR({
     if (!title || (materialMode === "text" ? !documentText.trim() : !documentFile)) {
       setError(
         materialMode === "text"
-          ? "Укажите название и введите текст материала."
-          : "Укажите название и выберите файл."
+          ? "Аталышын көрсөтүп, материалдын текстин жазыңыз."
+          : "Аталышын көрсөтүп, файлды тандаңыз."
       );
       return;
     }
@@ -224,12 +224,12 @@ export default function SMR({
       const createdDocument = await createMethodicalDocument(selectedSubject.id, payload);
       setDocuments((currentDocuments) => [createdDocument, ...currentDocuments]);
       closeCreateDialog();
-      setNotice("Документ создан.");
+      setNotice("Документ түзүлдү.");
     } catch (requestError) {
       const fileError = requestError.response?.data?.file;
       setError(
         (Array.isArray(fileError) ? fileError[0] : fileError) ||
-          "Не удалось загрузить документ. Проверьте файл и повторите попытку."
+          "Документти жүктөө мүмкүн болгон жок. Файлды текшерип, кайра аракет кылыңыз."
       );
     } finally {
       setIsSubmitting(false);
@@ -245,9 +245,9 @@ export default function SMR({
         currentDocuments.filter((currentDocument) => currentDocument.id !== document.id)
       );
       if (activeDocument?.id === document.id) setActiveDocument(null);
-      setNotice("Документ удален.");
+      setNotice("Документ өчүрүлдү.");
     } catch {
-      setError("Не удалось удалить документ.");
+      setError("Документти өчүрүү мүмкүн болгон жок.");
     } finally {
       setIsSubmitting(false);
     }
@@ -270,7 +270,7 @@ export default function SMR({
         link.remove();
         URL.revokeObjectURL(objectUrl);
       } catch {
-        setError("Не удалось скачать материал.");
+        setError("Материалды жүктөп алуу мүмкүн болгон жок.");
       }
       return;
     }
@@ -322,7 +322,7 @@ export default function SMR({
       return (
         <video className="methodical-media methodical-media--video" controls preload="metadata">
           <source src={activeDocument.fileUrl} />
-          Ваш браузер не поддерживает воспроизведение видео.
+          Браузериңиз видеону ойнотууну колдобойт.
         </video>
       );
     }
@@ -330,15 +330,15 @@ export default function SMR({
       return (
         <audio className="methodical-media methodical-media--audio" controls preload="metadata">
           <source src={activeDocument.fileUrl} />
-          Ваш браузер не поддерживает воспроизведение аудио.
+          Браузериңиз аудиону ойнотууну колдобойт.
         </audio>
       );
     }
     return (
       <div className="methodical-file-download">
-        <p>Этот файл можно открыть или скачать.</p>
+        <p>Бул файлды ачууга же жүктөп алууга болот.</p>
         <a href={activeDocument.fileUrl} rel="noreferrer" target="_blank">
-          Открыть файл
+          Файлды ачуу
         </a>
       </div>
     );
@@ -364,7 +364,7 @@ export default function SMR({
             onClick={() => handleMaterialDownload(activeDocument)}
             type="button"
           >
-            Скачать
+            Жүктөп алуу
           </button>
         </header>
         {renderActiveMaterial()}
@@ -390,7 +390,7 @@ export default function SMR({
             {isAdmin && (
               <div className="methodical-document-toolbar">
                 <button onClick={() => setIsCreateDialogOpen(true)} type="button">
-                  Создать
+                  Кошуу
                 </button>
               </div>
             )}
@@ -399,7 +399,7 @@ export default function SMR({
             {error && <p className="dashboard-error">{error}</p>}
 
             {documentsLoading ? (
-              <p className="dashboard-state">Документы загружаются...</p>
+              <p className="dashboard-state">Документтер жүктөлүүдө...</p>
             ) : documents.length > 0 ? (
               <div className="methodical-document-list">
                 {documents.map((document) => (
@@ -421,7 +421,7 @@ export default function SMR({
                         onClick={() => handleMaterialDownload(document)}
                         type="button"
                       >
-                        Скачать
+                        Жүктөп алуу
                       </button>
                       {isAdmin && (
                         <button
@@ -430,7 +430,7 @@ export default function SMR({
                           onClick={() => handleDocumentDelete(document)}
                           type="button"
                         >
-                          Удалить
+                          Өчүрүү
                         </button>
                       )}
                     </div>
@@ -438,15 +438,15 @@ export default function SMR({
                 ))}
               </div>
             ) : (
-              <p className="dashboard-state">Документов пока нет.</p>
+              <p className="dashboard-state">Документтер азырынча жок.</p>
             )}
 
             {isCreateDialogOpen && (
               <div className="combat-journal-dialog" role="dialog" aria-modal="true">
                 <form className="combat-journal-dialog__panel" onSubmit={handleDocumentCreate}>
-                  <h2>Добавить материал</h2>
+                  <h2>Материал кошуу</h2>
                   <label>
-                    Название
+                    Аталышы
                     <input
                       autoFocus
                       disabled={isSubmitting}
@@ -456,7 +456,7 @@ export default function SMR({
                     />
                   </label>
                   <label>
-                    Тип материала
+                    Материалдын түрү
                     <select
                       disabled={isSubmitting}
                       onChange={(event) => {
@@ -467,12 +467,12 @@ export default function SMR({
                       value={materialMode}
                     >
                       {allowTextMaterials ? <option value="text">Текст</option> : null}
-                      <option value="file">Файл, PDF, фото, видео и другое</option>
+                      <option value="file">Файл, PDF, сүрөт, видео жана башкалар</option>
                     </select>
                   </label>
                   {materialMode === "text" ? (
                     <label>
-                      Текст материала
+                      Материалдын тексти
                       <textarea
                         disabled={isSubmitting}
                         onChange={(event) => setDocumentText(event.target.value)}
@@ -495,10 +495,10 @@ export default function SMR({
                   )}
                   <div className="combat-journal-dialog__actions">
                     <button disabled={isSubmitting} onClick={closeCreateDialog} type="button">
-                      Отмена
+                      Жокко чыгаруу
                     </button>
                     <button disabled={isSubmitting} type="submit">
-                      {isSubmitting ? "Загрузка..." : "Создать"}
+                      {isSubmitting ? "Жүктөлүүдө..." : "Кошуу"}
                     </button>
                   </div>
                 </form>
@@ -523,7 +523,7 @@ export default function SMR({
       {isAdmin && (
         <form className="methodical-subject-form" onSubmit={handleCreate}>
           <label>
-            Название предмета
+            Предметтин аталышы
             <input
               disabled={isSubmitting}
               onChange={(event) => setNewTitle(event.target.value)}
@@ -531,7 +531,7 @@ export default function SMR({
             />
           </label>
           <button disabled={isSubmitting} type="submit">
-            Создать
+            Кошуу
           </button>
         </form>
       )}
@@ -571,14 +571,14 @@ export default function SMR({
                           onClick={() => handleUpdate(subject)}
                           type="button"
                         >
-                          Сохранить
+                          Сактоо
                         </button>
                         <button
                           disabled={isSubmitting}
                           onClick={handleEditCancel}
                           type="button"
                         >
-                          Отмена
+                          Жокко чыгаруу
                         </button>
                       </>
                     ) : (
@@ -588,14 +588,14 @@ export default function SMR({
                           onClick={() => handleEditStart(subject)}
                           type="button"
                         >
-                          Изменить
+                          Өзгөртүү
                         </button>
                         <button
                           disabled={isSubmitting}
                           onClick={() => handleDelete(subject)}
                           type="button"
                         >
-                          Удалить
+                          Өчүрүү
                         </button>
                       </>
                     )}
@@ -606,7 +606,7 @@ export default function SMR({
           })}
         </div>
       ) : (
-        <p className="dashboard-state">Предметов пока нет.</p>
+        <p className="dashboard-state">Предметтер азырынча жок.</p>
       )}
     </section>
   );

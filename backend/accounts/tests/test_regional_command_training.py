@@ -36,7 +36,7 @@ class RegionalCommandTrainingGroupsTests(SimpleTestCase):
         self.assertIsNot(groups[0]["sections"], groups[1]["sections"])
 
     def test_adds_two_typical_week_groups(self):
-        sections = [{"id": "typical-week", "title": "Типовая неделя"}]
+        sections = [{"id": "typical-week", "title": "Типтүү жумасы"}]
 
         result = add_regional_typical_week_groups(sections)
 
@@ -45,11 +45,11 @@ class RegionalCommandTrainingGroupsTests(SimpleTestCase):
             [
                 {
                     "id": "typical-week-subunits",
-                    "title": "Бөлүкчөлөрдүн типовая неделясы",
+                    "title": "Бөлүкчөлөрдүн типтуу жумасы",
                 },
                 {
                     "id": "typical-week-military-unit",
-                    "title": "Аскер бөлүктүн типовая неделясы",
+                    "title": "Аскер бөлүктүн типтуу жумасы",
                 },
             ],
         )

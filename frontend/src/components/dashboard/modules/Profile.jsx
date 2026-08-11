@@ -12,18 +12,33 @@ const roleLabels = {
 };
 
 const statusLabels = {
-  active: "Активен",
-  pending: "Ожидает",
-  rejected: "Отклонен",
+  active: "Активдүү",
+  pending: "Күтүүдө",
+  rejected: "Четке кагылган",
 };
 
 const unitLabels = {
   regional_department: "Аскер бөлүгү",
   outpost: "Застава",
+  detachment: "Отряд",
+  group: "Топ",
+  company: "Рота",
+  platoon: "Взвод",
+  institution: "Мекеме",
 };
 
+const namedSubunitLabels = {
+  detachment: "Отрядтын аталышы",
+  group: "Топтун аталышы",
+  company: "Ротанын аталышы",
+  platoon: "Взводдун аталышы",
+};
+
+const getDisplayedRole = (user) =>
+  unitLabels[user?.unit_type] || roleLabels[user?.role] || user?.role;
+
 const getInitials = (user) => {
-  const source = user?.full_name || user?.email || "Пользователь";
+  const source = user?.full_name || user?.email || "Колдонуучу";
   return source
     .split(/\s|@/)
     .filter(Boolean)
@@ -37,20 +52,23 @@ export default function Profile({ user }) {
   const [uploading, setUploading] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
-  const avatarSrc = user?.avatar || user?.photo_face;
+  const avatarSrc = user?.photo_face || user?.avatar;
 
   const registrationRows = [
-    ["ФИО", user?.full_name],
-    ["Воинское звание", user?.military_rank],
-    ["Должность", user?.position],
-    ["Подразделение", unitLabels[user?.unit_type] || user?.unit_type],
+    ["Аты-жөнү", user?.full_name],
+    ["Аскердик наамы", user?.military_rank],
+    ["Кызматы", user?.position],
+    ["Бөлүкчө", unitLabels[user?.unit_type] || user?.unit_type],
     ["Аскер бөлүк", user?.region],
-    ["Застава", user?.outpost_name],
-    ["Телефон", user?.phone],
-    ["Email", user?.email],
-    ["Роль", roleLabels[user?.role] || user?.role],
-    ["Статус", statusLabels[user?.status] || user?.status],
-    ["Дата регистрации", user?.date_joined],
+    [
+      namedSubunitLabels[user?.unit_type] || "Застава",
+      user?.outpost_name,
+    ],
+    ["Телефон номери", user?.phone],
+    ["Электрондук почтасы", user?.email],
+    ["Ролу", getDisplayedRole(user)],
+    ["Статусу", statusLabels[user?.status] || user?.status],
+    ["Каттоо датасы", user?.date_joined],
   ].filter(([, value]) => value);
 
   const uploadAvatar = async (event) => {
@@ -58,7 +76,7 @@ export default function Profile({ user }) {
     if (!file) return;
 
     const payload = new FormData();
-    payload.append("avatar", file);
+    payload.append("photo_face", file);
     setUploading(true);
     setMessage("");
     setError("");
@@ -66,9 +84,9 @@ export default function Profile({ user }) {
     try {
       const { data } = await api.patch("/auth/me/", payload);
       dispatch(updateUser(data));
-      setMessage("Аватарка обновлена.");
+      setMessage("Сүрөт жаңыртылды.");
     } catch (err) {
-      setError(getApiErrorMessage(err, "Не удалось обновить аватарку."));
+      setError(getApiErrorMessage(err, "Сүрөттү жаңыртуу мүмкүн болгон жок."));
     } finally {
       setUploading(false);
       event.target.value = "";
@@ -78,8 +96,8 @@ export default function Profile({ user }) {
   return (
     <section className="module-panel profile-panel">
       <header>
-        <h1>Мой профиль</h1>
-        <p>Информация текущего пользователя системы.</p>
+        <h1>Жеке кабинетим</h1>
+        <p>Системанын учурдагы колдонуучусунун маалыматы.</p>
       </header>
       <div className="profile-layout">
         <div className="profile-avatar profile-avatar--large">
@@ -92,11 +110,11 @@ export default function Profile({ user }) {
         <div className="profile-main">
           <label className="avatar-upload">
             <input accept="image/*" type="file" onChange={uploadAvatar} />
-            <span>{uploading ? "Загрузка..." : "Поставить аватарку"}</span>
+            <span>{uploading ? "Жүктөлүүдө..." : "Сүрөт коюу"}</span>
           </label>
           {message && <p className="success">{message}</p>}
           {error && <p className="error">{error}</p>}
-          <h2 className="profile-section-title">Поля регистрации</h2>
+          <h2 className="profile-section-title">Каттоо талаасы</h2>
           <dl className="profile-details">
             {registrationRows.map(([label, value]) => (
               <div key={label}>
@@ -108,23 +126,15 @@ export default function Profile({ user }) {
         </div>
       </div>
       <section className="profile-documents">
-        <h2>Файлы регистрации</h2>
+        <h2>Каттоо файлдары</h2>
         <div className="profile-documents__grid">
           <figure>
-            {user?.photo_military_id ? (
-              <img alt="Фото военного билета" src={user.photo_military_id} />
-            ) : (
-              <div className="profile-document-placeholder">Файл не загружен</div>
-            )}
-            <figcaption>Фото военного билета</figcaption>
-          </figure>
-          <figure>
             {user?.photo_face ? (
-              <img alt="Фото лица при регистрации" src={user.photo_face} />
+              <img alt="Каттоодогу колдонуучунун сүрөтү" src={user.photo_face} />
             ) : (
-              <div className="profile-document-placeholder">Файл не загружен</div>
+              <div className="profile-document-placeholder">Файл жүктөлгөн жок</div>
             )}
-            <figcaption>Фото лица</figcaption>
+            <figcaption>Колдонуучунун сүрөтү</figcaption>
           </figure>
         </div>
       </section>

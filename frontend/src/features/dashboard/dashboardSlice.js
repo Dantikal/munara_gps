@@ -10,7 +10,7 @@ export const fetchDashboard = createAsyncThunk(
       return await getDashboardData(role);
     } catch (error) {
       return rejectWithValue(
-        getApiErrorMessage(error, "Не удалось загрузить dashboard.")
+        getApiErrorMessage(error, "Башкаруу панелин жүктөө мүмкүн болгон жок.")
       );
     }
   }
@@ -46,7 +46,7 @@ const dashboardSlice = createSlice({
       .addCase(fetchDashboard.rejected, (state, action) => {
         state.loading = false;
         state.error =
-          action.payload || action.error?.message || "Не удалось загрузить dashboard.";
+          action.payload || action.error?.message || "Башкаруу панелин жүктөө мүмкүн болгон жок.";
       });
   },
 });

@@ -47,7 +47,7 @@ from .serializers import (
 
 User = get_user_model()
 
-NORMATIVE_LEGAL_ACTS_TITLE = "Нормативные правовые акты"
+NORMATIVE_LEGAL_ACTS_TITLE = "Ченемдик укуктук актылар"
 
 ADMIN_MILITARY_UNIT_NUMBERS = [
     "2021",
@@ -342,11 +342,11 @@ def add_regional_typical_week_groups(sections):
     typical_week["sections"] = [
         {
             "id": "typical-week-subunits",
-            "title": "Бөлүкчөлөрдүн типовая неделясы",
+            "title": "Бөлүкчөлөрдүн типтуу жумасы",
         },
         {
             "id": "typical-week-military-unit",
-            "title": "Аскер бөлүктүн типовая неделясы",
+            "title": "Аскер бөлүктүн типтуу жумасы",
             **military_unit_content,
         },
     ]
@@ -425,11 +425,11 @@ def chat_unread_count_for_user(user):
 
 
 def build_modules_payload(user):
-    scope = "всей системы"
+    scope = "бүтүндөй система"
     if user.role == User.Role.REGIONAL:
-        scope = user.region or "области"
+        scope = user.region or "облус"
     if user.role == User.Role.OUTPOST:
-        scope = user.outpost_name or "заставы"
+        scope = user.outpost_name or "застава"
 
     unit_numbers = list(ADMIN_MILITARY_UNIT_NUMBERS) if user.role == User.Role.ADMIN else []
 
@@ -673,9 +673,13 @@ def build_modules_payload(user):
             },
             {
                 "id": "typical-week",
-                "title": "Типовая неделя",
+                "title": "Типтүү жумасы",
             },
         ]
+
+    for section in library_sections:
+        if section.get("id") == "typical-week":
+            section["title"] = "Типтүү жумасы"
 
     if user.role == User.Role.REGIONAL:
         library_sections = add_regional_command_training_groups(library_sections)

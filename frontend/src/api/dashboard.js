@@ -10,7 +10,7 @@ export const getDashboardData = async (role) => {
   const endpoint = dashboardEndpoints[role];
 
   if (!endpoint) {
-    throw new Error("Для этой роли dashboard не настроен.");
+    throw new Error("Бул роль үчүн башкаруу панели жөндөлгөн эмес.");
   }
 
   const { data } = await api.get(endpoint);

@@ -17,16 +17,16 @@ const getSavedTables = () => {
 
 const formatSavedAt = (savedAt) => {
   if (!savedAt) {
-    return "Дата сохранения не указана";
+    return "Сакталган дата көрсөтүлгөн эмес";
   }
 
   const date = new Date(savedAt);
 
   if (Number.isNaN(date.getTime())) {
-    return "Дата сохранения не указана";
+    return "Сакталган дата көрсөтүлгөн эмес";
   }
 
-  return date.toLocaleString("ru-RU", {
+  return date.toLocaleString("ky-KG", {
     day: "2-digit",
     hour: "2-digit",
     minute: "2-digit",
@@ -51,7 +51,7 @@ export default function SavedTables() {
     return (
       <Library
         data={{
-          description: "Сохраненная таблица. В этом разделе можно изменить таблицу, отправка недоступна.",
+          description: "Сакталган таблица. Бул бөлүмдө таблицаны өзгөртүүгө болот, жөнөтүү жеткиликсиз.",
           disableSubmit: true,
           headerStorageKey: selectedTable.headerStorageKey,
           id: selectedTable.id,
@@ -59,7 +59,7 @@ export default function SavedTables() {
           table: selectedTable.table,
           tableActionStorageKey: selectedTable.tableActionStorageKey,
           tableStorageKey: selectedTable.tableStorageKey,
-          title: "Сохранение",
+          title: "Сактоо",
         }}
         onBack={() => {
           setSelectedTable(null);
@@ -72,8 +72,8 @@ export default function SavedTables() {
   return (
     <section className="module-panel">
       <header>
-        <h1>Сохранение</h1>
-        <p>Сохраненные таблицы с датой последнего сохранения.</p>
+        <h1>Сактоо</h1>
+        <p>Акыркы сакталган датасы көрсөтүлгөн таблицалар.</p>
       </header>
       {savedTables.length > 0 ? (
         <div className="saved-table-list">
@@ -85,12 +85,12 @@ export default function SavedTables() {
               type="button"
             >
               <strong>{table.title || "Таблица"}</strong>
-              <span>Сохранено: {formatSavedAt(table.savedAt)}</span>
+              <span>Сакталды: {formatSavedAt(table.savedAt)}</span>
             </button>
           ))}
         </div>
       ) : (
-        <p className="dashboard-state">Сохраненных таблиц пока нет.</p>
+        <p className="dashboard-state">Сакталган таблицалар азырынча жок.</p>
       )}
     </section>
   );

@@ -31,52 +31,52 @@ const MEETING_SECTIONS = [
   { id: "meeting-analysis", title: "Жыйындын талдоосу" },
 ];
 const PERSONNEL_JOURNAL_TITLE =
-  "Өздүк курамдын күжүрмөн даярдоосун каттоо журналы";
+  "Өздүк курамдын күжүрмөн даярдоосунун каттоо журналы";
 
 const OBSERVATION_TEMPLATE_OPTIONS = [
   {
     id: "tpv",
-    title: "ТПВ",
+    title: "Чек ара аскерлеринин тактикасы",
     createTable: createCustomTable,
   },
   {
     id: "ogp",
-    title: "ОГП",
+    title: "Коомдук мамлекеттик даярдоо",
     createTable: createCustomTable,
   },
   {
     id: "fp",
-    title: "ФП",
+    title: "Дене тарбиялык даярдоо",
     createTable: createPhysicalTrainingTable,
   },
   {
     id: "spec",
-    title: "СПЕЦ",
+    title: "Атайын даярдоо",
     createTable: createCustomTable,
   },
   {
     id: "tp",
-    title: "ТП",
+    title: "Тактикалык даярдоо",
     createTable: createCustomTable,
   },
   {
     id: "op",
-    title: "ОП",
+    title: "Ок атуу даярдыгы",
     createTable: createShootingTrainingTable,
   },
   {
     id: "stp",
-    title: "СТП",
+    title: "Саптык даярдоо",
     createTable: createLineTrainingTable,
   },
   {
     id: "ovu",
-    title: "ОВУ",
+    title: "Жалпы аскердик устав",
     createTable: createCustomTable,
   },
   {
     id: "koj",
-    title: "КОЖ",
+    title: "Күжүрмөн ок атуулардын жыйынтыгы",
     createTable: createKojTable,
   },
 ];
@@ -389,7 +389,7 @@ export default function Meetings({
       ),
       "lesson-schedule": buildLessonScheduleLikePhoto(lessonScheduleSource),
       "combat-training-journal": buildSubjectJournalTable(
-        "Өздүк курамдын күжүрмөн даярдоосун каттоо журналы",
+        "Өздүк курамдын күжүрмөн даярдоосунун каттоо журналы",
         {
           enableCellColoring: true,
           hideDate: true,
@@ -496,7 +496,7 @@ export default function Meetings({
   };
 
   const handleDeleteJournalRevision = async (submissionId, revision) => {
-    if (!window.confirm("Удалить это обновление из истории?")) return;
+    if (!window.confirm("Бул жаңыртуу тарыхтан өчүрүлсүнбү?")) return;
 
     setDeletingJournalRevisionId(revision.id);
     try {
@@ -514,7 +514,7 @@ export default function Meetings({
         )
       );
     } catch {
-      window.alert("Обновление журнала удалить не удалось.");
+      window.alert("Журналдын жаңыртуусун өчүрүү мүмкүн болгон жок.");
     } finally {
       setDeletingJournalRevisionId(null);
     }
@@ -560,7 +560,7 @@ export default function Meetings({
                         Жөнөтүлдү:{" "}
                         {new Date(
                           submission.updatedAt || submission.createdAt
-                        ).toLocaleString("ru-RU")}
+                        ).toLocaleString("ky-KG")}
                       </small>
                     </span>
                   </div>
@@ -569,7 +569,7 @@ export default function Meetings({
                       onClick={() => handleDeleteOutgoingSubmission(submission)}
                       type="button"
                     >
-                      Удалить
+                      Өчүрүү
                     </button>
                   </div>
                 </div>
@@ -583,7 +583,7 @@ export default function Meetings({
         </>
       ) : (
         <>
-          <h3>История обновлений</h3>
+          <h3>Жаңыртуулардын тарыхы</h3>
           {ownSectionSubmissions.some(
             (submission) => (submission.revisions || []).length > 0
           ) ? (
@@ -599,7 +599,7 @@ export default function Meetings({
                       <span className="module-submission-card__content">
                         <strong>{revision.documentTitle}</strong>
                         <small>
-                          {new Date(revision.createdAt).toLocaleString("ru-RU")}
+                          {new Date(revision.createdAt).toLocaleString("ky-KG")}
                         </small>
                       </span>
                     </div>
@@ -612,8 +612,8 @@ export default function Meetings({
                         type="button"
                       >
                         {deletingJournalRevisionId === revision.id
-                          ? "Удаление..."
-                          : "Удалить"}
+                          ? "Өчүрүлүүдө..."
+                          : "Өчүрүү"}
                       </button>
                     </div>
                   </div>
@@ -621,7 +621,7 @@ export default function Meetings({
               )}
             </div>
           ) : (
-            <p className="dashboard-state">Обновлений пока нет.</p>
+            <p className="dashboard-state">Азырынча жаңылоолор жок.</p>
           )}
         </>
       )}
@@ -824,10 +824,10 @@ export default function Meetings({
                     <strong>{subjectIndex + 1}. {subject.title}</strong>
                     <span>
                       {submission
-                        ? `Последнее обновление: ${new Date(
+                        ? `Акыркы жаңыртуу: ${new Date(
                             submission.updatedAt || submission.createdAt
-                          ).toLocaleString("ru-RU")}`
-                        : "Обновлений пока нет"}
+                          ).toLocaleString("ky-KG")}`
+                        : "Азырынча жаңылоолор жок"}
                     </span>
                   </button>
                 );
@@ -843,7 +843,7 @@ export default function Meetings({
           ) : null}
 
           <div className="combat-journal-subject-header">
-            <h2>История обновлений</h2>
+            <h2>Жаңыртуулардын тарыхы</h2>
           </div>
           {journalUpdates.length > 0 ? (
             <div className="module-period-list">
@@ -867,7 +867,7 @@ export default function Meetings({
                     <span className="module-submission-card__content">
                       <strong>{revision.documentTitle}</strong>
                       <small>
-                        {new Date(revision.createdAt).toLocaleString("ru-RU")}
+                        {new Date(revision.createdAt).toLocaleString("ky-KG")}
                       </small>
                     </span>
                   </button>
@@ -883,15 +883,15 @@ export default function Meetings({
                       type="button"
                     >
                       {deletingJournalRevisionId === revision.id
-                        ? "Удаление..."
-                        : "Удалить"}
+                        ? "Өчүрүлүүдө..."
+                        : "Өчүрүү"}
                     </button>
                   </div>
                 </div>
               ))}
             </div>
           ) : (
-            <p className="dashboard-state">Обновлений пока нет.</p>
+            <p className="dashboard-state">Азырынча жаңылоолор жок.</p>
           )}
         </section>
       );
@@ -924,7 +924,7 @@ export default function Meetings({
                     <small>
                       {new Date(
                         submission.updatedAt || submission.createdAt
-                      ).toLocaleString("ru-RU")}
+                      ).toLocaleString("ky-KG")}
                     </small>
                   </span>
                 </button>
@@ -1142,7 +1142,7 @@ export default function Meetings({
           ),
           submissionActionLabel:
             activeDocument.sectionId === "combat-training-journal"
-              ? "Обновить"
+              ? "Жаңылоо"
               : undefined,
           table,
           title: activeDocument.title,
@@ -1244,7 +1244,7 @@ export default function Meetings({
             onClick={() => openCreateDialog(selectedSection.id)}
             type="button"
           >
-            + Создать
+            + Кошуу
           </button>
         </div>
         {sectionDocuments.length > 0 ? (
@@ -1271,7 +1271,7 @@ export default function Meetings({
                     <strong>{document.title}</strong>
                     {document.sectionId === "observation" ? (
                       <small>
-                        Таблица как{" "}
+                        Таблица катары{" "}
                         {getObservationTemplate(document.templateId).title}
                       </small>
                     ) : null}
@@ -1284,7 +1284,7 @@ export default function Meetings({
                         onClick={() => handleRenameDocument(document)}
                         type="button"
                       >
-                        Изменить
+                        Өзгөртүү
                       </button>
                   ) : null}
                   <button
@@ -1295,7 +1295,7 @@ export default function Meetings({
                     }
                     type="button"
                   >
-                    Удалить
+                    Өчүрүү
                   </button>
                 </div>
                     </>
@@ -1321,7 +1321,7 @@ export default function Meetings({
             >
               <h2 id="meetings-create-title">{selectedSection.title}</h2>
               <label>
-                Название
+                Аталышы
                 <input
                   autoFocus
                   className="lesson-period-dialog__input"
@@ -1341,7 +1341,7 @@ export default function Meetings({
                   >
                     {OBSERVATION_TEMPLATE_OPTIONS.map((option) => (
                       <option key={option.id} value={option.id}>
-                        Таблица как {option.title}
+                        Таблица катары {option.title}
                       </option>
                     ))}
                   </select>
@@ -1352,9 +1352,9 @@ export default function Meetings({
               ) : null}
               <div className="lesson-period-dialog__actions">
                 <button onClick={() => setCreateSectionId(null)} type="button">
-                  Отмена
+                  Жокко чыгаруу
                 </button>
-                <button type="submit">Создать</button>
+                <button type="submit">Кошуу</button>
               </div>
             </form>
           </div>

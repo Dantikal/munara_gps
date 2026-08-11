@@ -332,7 +332,7 @@ class ThematicAccountSubmissionApiTests(APITestCase):
                 "documentTitle": "Бөлүкчөнүн типовая неделясы",
                 "sectionId": "typical-week",
                 "periodId": "custom-week",
-                "table": {"title": "Типовая неделя", "columns": [], "rows": []},
+                "table": {"title": "Типтүү жумасы", "columns": [], "rows": []},
             },
             format="json",
         )
@@ -544,7 +544,7 @@ class ThematicAccountSubmissionApiTests(APITestCase):
                 "periodId": "",
                 "table": {
                     "subsectionId": "inspection-summary-1",
-                    "subsectionTitle": "Сводная ведомость за учебный год",
+                    "subsectionTitle": "Окуу жылына карата жыйынтык ведомосту",
                     "periodId": "inspection-summary-1-period-1",
                     "periodTitle": "1-ай",
                     "table": {"title": "Сводная ведомость", "columns": [], "rows": []},

@@ -7,6 +7,18 @@ import { getApiErrorMessage } from "../../api/errors.js";
 const unitLabels = {
   regional_department: "Аскер бөлүгү",
   outpost: "Застава",
+  detachment: "Отряд",
+  group: "Топ",
+  company: "Рота",
+  platoon: "Взвод",
+  institution: "Мекеме",
+};
+
+const namedSubunitLabels = {
+  detachment: "Отрядтын аталышы",
+  group: "Топтун аталышы",
+  company: "Ротанын аталышы",
+  platoon: "Взводдун аталышы",
 };
 
 const hasValue = (value) =>
@@ -14,14 +26,17 @@ const hasValue = (value) =>
 
 const getRegistrationRows = (request) =>
   [
-    ["ФИО", request.full_name],
+    ["Аты-жөнү", request.full_name],
     ["Email", request.email],
     ["Телефон", request.phone],
-    ["Звание", request.military_rank],
-    ["Должность", request.position],
-    ["Подразделение", unitLabels[request.unit_type] || request.unit_type],
+    ["Аскердик наамы", request.military_rank],
+    ["Кызматы", request.position],
+    ["Бөлүкчө", unitLabels[request.unit_type] || request.unit_type],
     ["Аскер бөлүк", request.region],
-    ["Застава", request.outpost_name],
+    [
+      namedSubunitLabels[request.unit_type] || "Застава",
+      request.outpost_name,
+    ],
   ].filter(([, value]) => hasValue(value));
 
 const isAlreadyProcessedError = (error) =>
@@ -48,7 +63,7 @@ export default function AdminRequestsPage() {
 
   useEffect(() => {
     loadRequests().catch((err) =>
-      setError(getApiErrorMessage(err, "Не удалось загрузить заявки."))
+      setError(getApiErrorMessage(err, "Өтүнмөлөрдү жүктөө мүмкүн болгон жок."))
     );
   }, []);
 
@@ -57,7 +72,7 @@ export default function AdminRequestsPage() {
 
     if (decision === "reject" && !reason.trim()) {
       setMessage("");
-      setError("Укажите причину отклонения.");
+      setError("Четке кагуунун себебин көрсөтүңүз.");
       return;
     }
 
@@ -73,18 +88,18 @@ export default function AdminRequestsPage() {
       });
       setMessage(
         decision === "approve"
-          ? "Заявка одобрена."
-          : "Заявка отклонена, email-уведомление отправлено."
+          ? "Өтүнмө жактырылды."
+          : "Өтүнмө четке кагылды, электрондук почта билдирүүсү жөнөтүлдү."
       );
       setReason("");
       await loadRequests();
     } catch (err) {
       if (isAlreadyProcessedError(err)) {
-        setMessage("Эта заявка уже обработана. Список заявок обновлен.");
+        setMessage("Бул өтүнмө иштетилген. Өтүнмөлөрдүн тизмеси жаңыртылды.");
         setReason("");
         await loadRequests();
       } else {
-        setError(getApiErrorMessage(err, "Не удалось обработать заявку."));
+        setError(getApiErrorMessage(err, "Өтүнмөнү иштетүү мүмкүн болгон жок."));
       }
     } finally {
       moderationInFlight.current = false;
@@ -95,8 +110,8 @@ export default function AdminRequestsPage() {
   return (
     <section className="admin-layout">
       <aside className="panel">
-        <h1>Новые заявки</h1>
-        {requests.length === 0 && <p>Нет заявок на рассмотрении.</p>}
+        <h1>Жаңы өтүнмөлөр</h1>
+        {requests.length === 0 && <p>Каралуучу өтүнмөлөр жок.</p>}
         <div className="request-list">
           {requests.map((item) => (
             <button
@@ -112,7 +127,7 @@ export default function AdminRequestsPage() {
       </aside>
 
       <article className="panel">
-        {!selected && <p>Выберите заявку.</p>}
+        {!selected && <p>Өтүнмөнү тандаңыз.</p>}
         {selected && (
           <>
             <h2>{selected.full_name}</h2>
@@ -129,44 +144,29 @@ export default function AdminRequestsPage() {
                 <button
                   className="photo-preview-button"
                   onClick={() =>
-                    setPreview({ src: selected.photo_face, alt: "Фото лица" })
+                    setPreview({ src: selected.photo_face, alt: "Колдонуучунун сүрөтү" })
                   }
                   type="button"
                 >
-                  <img src={selected.photo_face} alt="Фото лица" />
+                  <img src={selected.photo_face} alt="Колдонуучунун сүрөтү" />
                 </button>
-                <figcaption>Фото лица</figcaption>
-              </figure>
-              <figure>
-                <button
-                  className="photo-preview-button"
-                  onClick={() =>
-                    setPreview({
-                      src: selected.photo_military_id,
-                      alt: "Военный билет",
-                    })
-                  }
-                  type="button"
-                >
-                  <img src={selected.photo_military_id} alt="Военный билет" />
-                </button>
-                <figcaption>Военный билет</figcaption>
+                <figcaption>Колдонуучунун сүрөтү</figcaption>
               </figure>
             </div>
             <label>
-              Причина отклонения
+              Четке кагуунун себеби
               <textarea value={reason} onChange={(event) => setReason(event.target.value)} />
             </label>
             <div className="actions">
               <button disabled={actionLoading} onClick={() => moderate("approve")}>
-                {actionLoading ? "Обработка..." : "Подтвердить"}
+                {actionLoading ? "Иштетилүүдө..." : "Ырастоо"}
               </button>
               <button
                 className="danger"
                 disabled={actionLoading}
                 onClick={() => moderate("reject")}
               >
-                Отклонить
+                Четке кагуу
               </button>
             </div>
           </>
@@ -176,12 +176,12 @@ export default function AdminRequestsPage() {
         {preview && (
           <div className="photo-lightbox" onClick={() => setPreview(null)}>
             <button
-              aria-label="Закрыть"
+              aria-label="Жабуу"
               className="photo-lightbox__close"
               onClick={() => setPreview(null)}
               type="button"
             >
-              Закрыть
+              Жабуу
             </button>
             <img
               alt={preview.alt}

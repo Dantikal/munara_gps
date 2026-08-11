@@ -20,7 +20,13 @@ const initialForm = {
   region: "",
   outpost_name: "",
   photo_face: null,
-  photo_military_id: null,
+};
+
+const namedSubunitLabels = {
+  detachment: "Отрядтын аталышы",
+  group: "Топтун аталышы",
+  company: "Ротанын аталышы",
+  platoon: "Взводдун аталышы",
 };
 
 export default function RegistrationForm() {
@@ -28,6 +34,8 @@ export default function RegistrationForm() {
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
+  const namedSubunitLabel = namedSubunitLabels[form.unit_type];
+  const isNamedSubunit = Boolean(namedSubunitLabel);
 
   const updateField = (event) => {
     const { name, value, files } = event.target;
@@ -42,7 +50,10 @@ export default function RegistrationForm() {
         nextForm.outpost_name = "";
       }
 
-      if (name === "region" && current.unit_type === "outpost") {
+      if (
+        name === "region" &&
+        ["outpost", ...Object.keys(namedSubunitLabels)].includes(current.unit_type)
+      ) {
         nextForm.outpost_name = "";
       }
 
@@ -70,7 +81,7 @@ export default function RegistrationForm() {
       setForm(initialForm);
       formElement.reset();
     } catch (err) {
-      setError(JSON.stringify(err.response?.data || "Ошибка регистрации"));
+      setError(JSON.stringify(err.response?.data || "Каттоо катасы"));
     } finally {
       setLoading(false);
     }
@@ -78,31 +89,36 @@ export default function RegistrationForm() {
 
   return (
     <section className="panel">
-      <h1>Регистрация доступа</h1>
+      <h1>Кирүү мүмкүнчүлүгүнө каттоо</h1>
       <form className="form-grid" onSubmit={submit}>
         <label>
-          ФИО
+          Аты-жөнү
           <input name="full_name" required onChange={updateField} />
         </label>
         <label>
-          Воинское звание
+          Аскердик наамы
           <input name="military_rank" required onChange={updateField} />
         </label>
         <label>
-          Должность
+          Кызматы
           <input name="position" required onChange={updateField} />
         </label>
         <label>
-          Подразделение
+          Бөлүкчө
           <select
             name="unit_type"
             required
             value={form.unit_type}
             onChange={updateField}
           >
-            <option value="">Выберите подразделение</option>
+            <option value="">Бөлүкчөнү тандаңыз</option>
             <option value="outpost">Застава</option>
             <option value="regional_department">Аскер бөлүгү</option>
+            <option value="detachment">Отряд</option>
+            <option value="group">Топ</option>
+            <option value="company">Рота</option>
+            <option value="platoon">Взвод</option>
+            <option value="institution">Мекеме</option>
           </select>
         </label>
         {form.unit_type === "outpost" && (
@@ -146,7 +162,7 @@ export default function RegistrationForm() {
             </label>
           </>
         )}
-        {form.unit_type === "regional_department" && (
+        {["regional_department", "institution"].includes(form.unit_type) && (
           <label>
             Аскер бөлүгүнүн номери
             <select
@@ -165,6 +181,38 @@ export default function RegistrationForm() {
             </select>
           </label>
         )}
+        {isNamedSubunit && (
+          <>
+            <label>
+              Аскер бөлүгүнүн номери
+              <select
+                className={!form.region ? "form-select-placeholder" : undefined}
+                name="region"
+                required
+                value={form.region}
+                onChange={updateField}
+              >
+                <option disabled value="">Аскер бөлүгүнүн номерин тандаңыз</option>
+                {MILITARY_UNIT_OPTIONS.map((unit) => (
+                  <option key={unit} value={unit}>
+                    {/^[0-9]+$/.test(unit) ? `${unit} аскер бөлүгү` : unit}
+                  </option>
+                ))}
+              </select>
+            </label>
+            {form.region && (
+              <label>
+                {namedSubunitLabel}
+                <input
+                  name="outpost_name"
+                  required
+                  value={form.outpost_name}
+                  onChange={updateField}
+                />
+              </label>
+            )}
+          </>
+        )}
         <label>
           Телефон
           <input
@@ -175,11 +223,11 @@ export default function RegistrationForm() {
           />
         </label>
         <label>
-          Email
+          Электрондук почтасы
           <input name="email" type="email" required onChange={updateField} />
         </label>
         <label>
-          Пароль
+          Сырсөз
           <input
             name="password"
             type="password"
@@ -189,17 +237,7 @@ export default function RegistrationForm() {
           />
         </label>
         <label>
-          Фото военного билета
-          <input
-            name="photo_military_id"
-            type="file"
-            accept="image/*"
-            required
-            onChange={updateField}
-          />
-        </label>
-        <label>
-          Фото лица
+          Колдонуучунун сүрөтү
           <input
             name="photo_face"
             type="file"
@@ -209,7 +247,7 @@ export default function RegistrationForm() {
           />
         </label>
         <button disabled={loading} type="submit">
-          {loading ? "Отправка..." : "Отправить заявку"}
+          {loading ? "Жөнөтүлүүдө..." : "Өтүнмө жөнөтүү"}
         </button>
       </form>
       {message && <p className="success">{message}</p>}

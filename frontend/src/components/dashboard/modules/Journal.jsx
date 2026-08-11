@@ -5,15 +5,15 @@ export default function Journal({ data }) {
     <section className="module-panel">
       <header>
         <h1>{data?.title || "Уюштуруу"}</h1>
-        <p>Оперативные записи и события службы.</p>
+        <p>Кызматтын ыкчам жазуулары жана окуялары.</p>
       </header>
       <div className="table-wrap">
         <table>
           <thead>
             <tr>
-              <th>Дата</th>
-              <th>Событие</th>
-              <th>Статус</th>
+              <th>Күнү</th>
+              <th>Окуя</th>
+              <th>Статусу</th>
             </tr>
           </thead>
           <tbody>

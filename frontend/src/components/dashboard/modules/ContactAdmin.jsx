@@ -78,7 +78,7 @@ const formatTime = (value) => {
     return "";
   }
 
-  return new Intl.DateTimeFormat("ru-RU", {
+  return new Intl.DateTimeFormat("ky-KG", {
     day: "2-digit",
     month: "2-digit",
     hour: "2-digit",
@@ -86,7 +86,7 @@ const formatTime = (value) => {
   }).format(date);
 };
 
-const getDisplayName = (item) => item?.full_name || item?.email || `Пользователь #${item?.id || ""}`;
+const getDisplayName = (item) => item?.full_name || item?.email || `Колдонуучу #${item?.id || ""}`;
 
 const getInitials = (item) =>
   getDisplayName(item)
@@ -96,7 +96,7 @@ const getInitials = (item) =>
     .map((part) => part[0]?.toUpperCase())
     .join("") || "А";
 
-const getAvatarSource = (item) => item?.avatar || item?.photo_face || "";
+const getAvatarSource = (item) => item?.photo_face || item?.avatar || "";
 
 const Icon = ({ children, size = 18 }) => (
   <svg
@@ -306,7 +306,7 @@ export default function ContactAdmin({ user, onRefresh }) {
       }
       onRefresh?.();
     } catch (requestError) {
-      setError(requestError?.response?.data?.detail || "Не удалось загрузить сообщения.");
+      setError(requestError?.response?.data?.detail || "Билдирмелерди жүктөө мүмкүн болгон жок.");
     } finally {
       setLoading(false);
     }
@@ -415,7 +415,7 @@ export default function ContactAdmin({ user, onRefresh }) {
     const trimmed = body.trim();
 
     if (!trimmed && !file) {
-      setError("Введите текст или добавьте вложение.");
+      setError("Текст жазыңыз же тиркеме кошуңуз.");
       return;
     }
 
@@ -425,7 +425,7 @@ export default function ContactAdmin({ user, onRefresh }) {
     }
 
     if (!selectedUserId) {
-      setError("Выберите пользователя.");
+      setError("Колдонуучуну тандаңыз.");
       return;
     }
 
@@ -460,7 +460,7 @@ export default function ContactAdmin({ user, onRefresh }) {
         responseError?.body?.[0] ||
         responseError?.recipientId?.[0] ||
         responseError?.detail ||
-        "Не удалось отправить сообщение.";
+        "Билдирүүнү жөнөтүү мүмкүн болгон жок.";
       setError(firstError);
     } finally {
       setSending(false);
@@ -499,11 +499,11 @@ export default function ContactAdmin({ user, onRefresh }) {
         <div className="admin-chat__page-heading">
           <span className="admin-chat__page-icon"><ChatIcon /></span>
           <div>
-          <p>{isAdmin ? "Переписка с пользователями" : "Байланыш"}</p>
+          <p>{isAdmin ? "Колдонуучулар менен кат алышуу" : "Байланыш"}</p>
           <h1>Администратор менен байланыш</h1>
           <span className="admin-chat__subtitle">
             {isAdmin
-              ? "Выберите пользователя слева и пишите сообщение справа."
+              ? "Сол жактан колдонуучуну тандап, оң жакка билдирүү жазыңыз."
               : "Адресатты тандап, текст, фото, видео жана документ жөнөтсөңүз болот."}
           </span>
           </div>
@@ -515,7 +515,7 @@ export default function ContactAdmin({ user, onRefresh }) {
         {(
           <aside className="admin-chat__sidebar">
             <strong className="admin-chat__sidebar-title">
-              <UsersIcon /> {isOutpost ? "Кимге жазуу" : "Пользователи"}
+              <UsersIcon /> {isOutpost ? "Кимге жазуу" : "Колдонуучулар"}
             </strong>
             {isAdmin ? (
               <div className="admin-chat__recipient-sections">
@@ -531,20 +531,6 @@ export default function ContactAdmin({ user, onRefresh }) {
                   Аскер бөлүгү
                   {adminGroupUnreadCounts.regional > 0 ? (
                     <em>{adminGroupUnreadCounts.regional}</em>
-                  ) : null}
-                </button>
-                <button
-                  className={selectedAdminGroup === "outpost" ? "is-active" : ""}
-                  onClick={() => {
-                    setSelectedAdminGroup("outpost");
-                    const firstOutpost = users.find((item) => item.role === "outpost");
-                    setSelectedUserId(firstOutpost ? String(firstOutpost.id) : "");
-                  }}
-                  type="button"
-                >
-                  Застава
-                  {adminGroupUnreadCounts.outpost > 0 ? (
-                    <em>{adminGroupUnreadCounts.outpost}</em>
                   ) : null}
                 </button>
               </div>
@@ -608,7 +594,7 @@ export default function ContactAdmin({ user, onRefresh }) {
                 <span>
                   {selectedPartner
                     ? selectedPartner.email || selectedPartner.region
-                    : "Выберите человека слева"}
+                    : "Сол жактан адамды тандаңыз"}
                 </span>
               </div>
             </div>
@@ -616,9 +602,9 @@ export default function ContactAdmin({ user, onRefresh }) {
 
           <div className="admin-chat__messages" ref={messagesContainerRef}>
             {loading ? (
-              <div className="admin-chat__empty">Загрузка сообщений...</div>
+              <div className="admin-chat__empty">Билдирмелер жүктөлүүдө...</div>
             ) : visibleMessages.length === 0 ? (
-              <div className="admin-chat__empty">Сообщений пока нет.</div>
+              <div className="admin-chat__empty">Билдирүүлөр азырынча жок.</div>
             ) : (
               visibleMessages.map((message) => {
                 const isOwn = String(message.sender?.id) === String(user?.id);
@@ -729,7 +715,7 @@ export default function ContactAdmin({ user, onRefresh }) {
                   type="button"
                 >
                   <SmileIcon />
-                  <span>Эмодзи</span>
+                  <span>Быйтыкчалар</span>
                 </button>
                 {isEmojiPickerOpen ? (
                   <div className="admin-chat__emoji-picker">
@@ -773,7 +759,7 @@ export default function ContactAdmin({ user, onRefresh }) {
               </button>
             </div>
             <textarea
-              placeholder="Напишите сообщение..."
+              placeholder="Билдирүүлөрдү жазыңыз"
               ref={messageInputRef}
               value={body}
               onChange={(event) => setBody(event.target.value)}

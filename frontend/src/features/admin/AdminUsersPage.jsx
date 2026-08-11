@@ -14,10 +14,27 @@ const roleLabels = {
   outpost: "Застава",
 };
 
+const unitLabels = {
+  regional_department: "Аскер бөлүгү",
+  outpost: "Застава",
+  detachment: "Отряд",
+  group: "Топ",
+  company: "Рота",
+  platoon: "Взвод",
+  institution: "Мекеме",
+};
+
+const namedSubunitLabels = {
+  detachment: "Отрядтын аталышы",
+  group: "Топтун аталышы",
+  company: "Ротанын аталышы",
+  platoon: "Взводдун аталышы",
+};
+
 const statusLabels = {
-  active: "Активен",
-  pending: "Ожидает",
-  rejected: "Отклонен",
+  active: "Активдүү",
+  pending: "Күтүүдө",
+  rejected: "Четке кагылган",
 };
 
 const createEmptyForm = (role = "outpost") => ({
@@ -34,13 +51,12 @@ const createEmptyForm = (role = "outpost") => ({
   role,
   status: "active",
   photo_face: null,
-  photo_military_id: null,
 });
 
 const formatDate = (value) => {
   if (!value) return "-";
   const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? value : date.toLocaleDateString("ru-RU");
+  return Number.isNaN(date.getTime()) ? value : date.toLocaleDateString("ky-KG");
 };
 
 const getInitials = (user) =>
@@ -52,8 +68,10 @@ const getInitials = (user) =>
     .join("");
 
 const getUnitName = (user) => {
-  if (user?.role === "outpost") return user.outpost_name || "Застава не указана";
-  if (!user?.region) return "Номер части не указан";
+  if (user?.role === "outpost") {
+    return user.outpost_name || unitLabels[user.unit_type] || "Застава көрсөтүлгөн эмес";
+  }
+  if (!user?.region) return "Аскер бөлүгүнүн номери көрсөтүлгөн эмес";
   return /^[0-9]+$/.test(user.region) ? `${user.region} аскер бөлүгү` : user.region;
 };
 
@@ -67,16 +85,22 @@ const toForm = (user) => ({
   unit_type: user.unit_type || (user.role === "regional" ? "regional_department" : "outpost"),
   phone: user.phone || "",
   region: user.region || "",
-  outpost_name: user.role === "outpost" ? formatOutpostName(user.outpost_name) : "",
+  outpost_name:
+    user.unit_type === "outpost"
+      ? formatOutpostName(user.outpost_name)
+      : user.role === "outpost"
+        ? user.outpost_name || ""
+        : "",
   role: user.role,
   status: user.status || "active",
   photo_face: null,
-  photo_military_id: null,
 });
 
 const buildPayload = (form, editing) => {
   const payload = new FormData();
-  const role = form.unit_type === "regional_department" ? "regional" : "outpost";
+  const role = ["regional_department", "institution"].includes(form.unit_type)
+    ? "regional"
+    : "outpost";
   const values = {
     email: form.email.trim(),
     full_name: form.full_name.trim(),
@@ -93,7 +117,6 @@ const buildPayload = (form, editing) => {
   Object.entries(values).forEach(([key, value]) => payload.append(key, value));
   if (!editing || form.password.trim()) payload.append("password", form.password);
   if (form.photo_face) payload.append("photo_face", form.photo_face);
-  if (form.photo_military_id) payload.append("photo_military_id", form.photo_military_id);
   return { payload, role };
 };
 
@@ -140,7 +163,7 @@ export default function AdminUsersPage() {
       const { data } = await api.get("/auth/admin/users/");
       setUsers(data);
     } catch (requestError) {
-      setError(getApiErrorMessage(requestError, "Не удалось загрузить пользователей."));
+      setError(getApiErrorMessage(requestError, "Колдонуучуларды жүктөө мүмкүн болгон жок."));
     } finally {
       setLoading(false);
     }
@@ -155,11 +178,16 @@ export default function AdminUsersPage() {
     setForm((current) => {
       const next = { ...current, [name]: files ? files[0] || null : value };
       if (name === "unit_type") {
-        next.role = value === "regional_department" ? "regional" : "outpost";
+        next.role = ["regional_department", "institution"].includes(value)
+          ? "regional"
+          : "outpost";
         next.region = "";
         next.outpost_name = "";
       }
-      if (name === "region" && current.unit_type === "outpost") {
+      if (
+        name === "region" &&
+        ["outpost", ...Object.keys(namedSubunitLabels)].includes(current.unit_type)
+      ) {
         next.outpost_name = "";
       }
       return next;
@@ -198,34 +226,34 @@ export default function AdminUsersPage() {
       const { payload, role } = buildPayload(form, editing);
       if (editing) {
         await api.patch(`/auth/admin/users/${form.id}/`, payload);
-        setMessage("Пользователь обновлён.");
+        setMessage("Колдонуучу жаңыртылды.");
       } else {
         await api.post("/auth/admin/users/", payload);
-        setMessage("Пользователь добавлен.");
+        setMessage("Колдонуучу кошулду.");
       }
       setActiveGroup(role);
       setForm(createEmptyForm(role));
       setIsFormOpen(false);
       await loadUsers();
     } catch (requestError) {
-      setError(getApiErrorMessage(requestError, "Не удалось сохранить пользователя."));
+      setError(getApiErrorMessage(requestError, "Колдонуучуну сактоо мүмкүн болгон жок."));
     } finally {
       setSaving(false);
     }
   };
 
   const deleteUser = async (user) => {
-    if (!window.confirm(`Удалить пользователя ${user.full_name || user.email}?`)) return;
+    if (!window.confirm(`${user.full_name || user.email} колдонуучусу өчүрүлсүнбү?`)) return;
     setSaving(true);
     setMessage("");
     setError("");
     try {
       await api.delete(`/auth/admin/users/${user.id}/`);
       setSelectedUser(null);
-      setMessage("Пользователь удалён.");
+      setMessage("Колдонуучу өчүрүлдү.");
       await loadUsers();
     } catch (requestError) {
-      setError(getApiErrorMessage(requestError, "Не удалось удалить пользователя."));
+      setError(getApiErrorMessage(requestError, "Колдонуучуну өчүрүү мүмкүн болгон жок."));
     } finally {
       setSaving(false);
     }
@@ -252,18 +280,21 @@ export default function AdminUsersPage() {
 
   if (selectedUser) {
     const details = [
-      ["ФИО", selectedUser.full_name],
-      ["Воинское звание", selectedUser.military_rank],
-      ["Должность", selectedUser.position],
-      ["Подразделение", roleLabels[selectedUser.role]],
+      ["Аты-жөнү", selectedUser.full_name],
+      ["Аскердик наамы", selectedUser.military_rank],
+      ["Кызматы", selectedUser.position],
+      ["Бөлүкчө", unitLabels[selectedUser.unit_type] || roleLabels[selectedUser.role]],
       ["Аскер бөлүгүнүн номери", selectedUser.region],
-      ["Заставанын аталышы", selectedUser.outpost_name],
+      [
+        namedSubunitLabels[selectedUser.unit_type] || "Заставанын аталышы",
+        selectedUser.outpost_name,
+      ],
       ["Телефон", selectedUser.phone],
       ["Email", selectedUser.email],
-      ["Статус", statusLabels[selectedUser.status] || selectedUser.status],
-      ["Дата регистрации", formatDate(selectedUser.date_joined)],
+      ["Статусу", statusLabels[selectedUser.status] || selectedUser.status],
+      ["Каттоо датасы", formatDate(selectedUser.date_joined)],
     ].filter(([, value]) => value);
-    const avatar = selectedUser.avatar || selectedUser.photo_face;
+    const avatar = selectedUser.photo_face || selectedUser.avatar;
 
     return (
       <section className="module-panel admin-user-detail">
@@ -278,9 +309,9 @@ export default function AdminUsersPage() {
             <h1>{selectedUser.full_name || selectedUser.email}</h1>
             <p>{getUnitName(selectedUser)}</p>
             <div className="table-actions">
-              <button onClick={() => editUser(selectedUser)} type="button">Изменить</button>
+              <button onClick={() => editUser(selectedUser)} type="button">Өзгөртүү</button>
               <button className="danger" disabled={saving} onClick={() => deleteUser(selectedUser)} type="button">
-                Удалить
+                Өчүрүү
               </button>
             </div>
           </div>
@@ -291,19 +322,13 @@ export default function AdminUsersPage() {
           ))}
         </dl>
         <section className="profile-documents">
-          <h2>Файлы регистрации</h2>
+          <h2>Каттоо файлдары</h2>
           <div className="profile-documents__grid">
             <figure>
-              {selectedUser.photo_military_id ? (
-                <img alt="Фото военного билета" src={selectedUser.photo_military_id} />
-              ) : <div className="profile-document-placeholder">Файл не загружен</div>}
-              <figcaption>Фото военного билета</figcaption>
-            </figure>
-            <figure>
               {selectedUser.photo_face ? (
-                <img alt="Фото лица" src={selectedUser.photo_face} />
-              ) : <div className="profile-document-placeholder">Файл не загружен</div>}
-              <figcaption>Фото лица</figcaption>
+                <img alt="Колдонуучунун сүрөтү" src={selectedUser.photo_face} />
+              ) : <div className="profile-document-placeholder">Файл жүктөлгөн жок</div>}
+              <figcaption>Колдонуучунун сүрөтү</figcaption>
             </figure>
           </div>
         </section>
@@ -342,7 +367,7 @@ export default function AdminUsersPage() {
           <div>
             <h1>{selectedRegionalUnit.region} аскер бөлүгү</h1>
             <p>
-              {regionalAccount?.email || selectedRegionalUnit.email} · Пользователей:{" "}
+              {regionalAccount?.email || selectedRegionalUnit.email} · Колдонуучулар:{" "}
               {unitUsers.length}
             </p>
           </div>
@@ -352,7 +377,7 @@ export default function AdminUsersPage() {
         {unitUsers.length > 0 ? (
           <div className="module-period-list">
             {unitUsers.map((unitUser) => {
-              const avatar = unitUser.avatar || unitUser.photo_face;
+              const avatar = unitUser.photo_face || unitUser.avatar;
               return (
                 <div className="module-period-row" key={unitUser.id}>
                   <button
@@ -387,7 +412,7 @@ export default function AdminUsersPage() {
                       onClick={() => deleteUser(unitUser)}
                       type="button"
                     >
-                      Удалить
+                      Өчүрүү
                     </button>
                   </div>
                 </div>
@@ -396,7 +421,7 @@ export default function AdminUsersPage() {
           </div>
         ) : (
           <p className="dashboard-state">
-            Пользователей с номером {selectedRegionalUnit.region} не найдено.
+            {selectedRegionalUnit.region} номериндеги колдонуучулар табылган жок.
           </p>
         )}
       </section>
@@ -406,26 +431,31 @@ export default function AdminUsersPage() {
   return (
     <section className="module-panel admin-users-page">
       <header className="admin-users-page__header">
-        <div><h1>Пользователи</h1><p>Заставы и аскер бөлүктөрү.</p></div>
-        <button onClick={openCreateForm} type="button">Добавить</button>
+        <div><h1>Колдонуучулар</h1><p>Заставалар жана аскер бөлүктөрү.</p></div>
+        <button onClick={openCreateForm} type="button">Кошуу</button>
       </header>
 
-      <div className="admin-users-page__tabs" role="tablist" aria-label="Тип пользователя">
+      <div className="admin-users-page__tabs" role="tablist" aria-label="Колдонуучунун түрү">
         <button aria-selected={activeGroup === "outpost"} className={activeGroup === "outpost" ? "active" : ""} onClick={() => selectGroup("outpost")} role="tab" type="button">Застава</button>
         <button aria-selected={activeGroup === "regional"} className={activeGroup === "regional" ? "active" : ""} onClick={() => selectGroup("regional")} role="tab" type="button">Аскер бөлүгү</button>
       </div>
 
       {isFormOpen && (
         <form className="admin-user-form admin-user-registration-form" encType="multipart/form-data" onSubmit={submit}>
-          <h2>{editing ? "Изменить пользователя" : "Добавить пользователя"}</h2>
-          <label>ФИО<input name="full_name" required value={form.full_name} onChange={updateField} /></label>
-          <label>Воинское звание<input name="military_rank" required value={form.military_rank} onChange={updateField} /></label>
-          <label>Должность<input name="position" required value={form.position} onChange={updateField} /></label>
+          <h2>{editing ? "Колдонуучуну өзгөртүү" : "Колдонуучуну кошуу"}</h2>
+          <label>Аты-жөнү<input name="full_name" required value={form.full_name} onChange={updateField} /></label>
+          <label>Аскердик наамы<input name="military_rank" required value={form.military_rank} onChange={updateField} /></label>
+          <label>Кызматы<input name="position" required value={form.position} onChange={updateField} /></label>
           <label>
-            Подразделение
+            Бөлүкчө
             <select name="unit_type" required value={form.unit_type} onChange={updateField}>
               <option value="outpost">Застава</option>
               <option value="regional_department">Аскер бөлүгү</option>
+              <option value="detachment">Отряд</option>
+              <option value="group">Топ</option>
+              <option value="company">Рота</option>
+              <option value="platoon">Взвод</option>
+              <option value="institution">Мекеме</option>
             </select>
           </label>
           <label>
@@ -459,78 +489,85 @@ export default function AdminUsersPage() {
               </select>
             </label>
           )}
+          {namedSubunitLabels[form.unit_type] && form.region && (
+            <label>
+              {namedSubunitLabels[form.unit_type]}
+              <input
+                name="outpost_name"
+                required
+                value={form.outpost_name}
+                onChange={updateField}
+              />
+            </label>
+          )}
           <label>Телефон<input name="phone" pattern="^\+996\d{9}$" placeholder="+996XXXXXXXXX" required value={form.phone} onChange={updateField} /></label>
           <label>Email<input name="email" required type="email" value={form.email} onChange={updateField} /></label>
           <label>
-            Пароль
+            Сырсөз
             <input name="password" minLength={8} required={!editing} type="password" value={form.password} onChange={updateField} />
-            {editing && <small>Оставьте пустым, чтобы не менять пароль.</small>}
+            {editing && <small>Сырсөздү өзгөртпөө үчүн бош калтырыңыз.</small>}
           </label>
           <label>
-            Фото военного билета
-            <input accept="image/*" name="photo_military_id" required={!editing} type="file" onChange={updateField} />
-          </label>
-          <label>
-            Фото лица
+            Колдонуучунун сүрөтү
             <input accept="image/*" name="photo_face" required={!editing} type="file" onChange={updateField} />
           </label>
           {editing && (
-            <label>Статус<select name="status" value={form.status} onChange={updateField}><option value="active">Активен</option><option value="pending">Ожидает</option><option value="rejected">Отклонен</option></select></label>
+            <label>Статусу<select name="status" value={form.status} onChange={updateField}><option value="active">Активдүү</option><option value="pending">Күтүүдө</option><option value="rejected">Четке кагылган</option></select></label>
           )}
           <div className="admin-user-form__actions">
-            <button disabled={saving} type="submit">{saving ? "Сохранение..." : editing ? "Сохранить" : "Добавить"}</button>
-            <button disabled={saving} onClick={closeForm} type="button">Отмена</button>
+            <button disabled={saving} type="submit">{saving ? "Сакталууда..." : editing ? "Сактоо" : "Кошуу"}</button>
+            <button disabled={saving} onClick={closeForm} type="button">Жокко чыгаруу</button>
           </div>
         </form>
       )}
 
       <div className="admin-user-search-filters">
         <label className="admin-user-search-filters__search">
-          <span>Поиск</span>
+          <span>Издөө</span>
           <input
-            aria-label="Поиск пользователей"
+            aria-label="Колдонуучуларды издөө"
             onChange={(event) => setSearchQuery(event.target.value)}
-            placeholder="ФИО, email, телефон, звание, застава..."
+            placeholder="Аты-жөнү, электрондук почта, телефон, наам, застава..."
             type="search"
             value={searchQuery}
           />
         </label>
         <label>
-          <span>Статус</span>
+          <span>Статусу</span>
           <select onChange={(event) => setStatusFilter(event.target.value)} value={statusFilter}>
-            <option value="">Все статусы</option>
-            <option value="active">Активные</option>
-            <option value="pending">Ожидающие</option>
-            <option value="rejected">Отклонённые</option>
+            <option value="">Бардык статустар</option>
+            <option value="active">Активдүү</option>
+            <option value="pending">Күтүүдө</option>
+            <option value="rejected">Четке кагылган</option>
           </select>
         </label>
         <label>
           <span>Аскер бөлүгүнүн номери</span>
           <select onChange={(event) => setUnitFilter(event.target.value)} value={unitFilter}>
-            <option value="">Все части</option>
+            <option value="">Бардык аскер бөлүктөр</option>
             {availableUnitNumbers.map((unit) => <option key={unit} value={unit}>{unit}</option>)}
           </select>
         </label>
         {(searchQuery || statusFilter || unitFilter) && (
-          <button onClick={resetFilters} type="button">Сбросить</button>
+          <button onClick={resetFilters} type="button">Тазалоо</button>
         )}
       </div>
 
       {message && <p className="dashboard-notice">{message}</p>}
       {error && <p className="dashboard-error">{error}</p>}
-      {loading && <p className="dashboard-state">Загрузка пользователей...</p>}
+      {loading && <p className="dashboard-state">Колдонуучулар жүктөлүүдө...</p>}
       {!loading && !error && filteredUsers.length === 0 && (
         <p className="dashboard-state">
-          {groupUsers.length === 0 ? "Пользователей пока нет." : "По заданным условиям пользователи не найдены."}
+          {groupUsers.length === 0 ? "Колдонуучулар азырынча жок." : "Берилген шарттар боюнча колдонуучулар табылган жок."}
         </p>
       )}
       {!loading && !error && filteredUsers.length > 0 && (
-        <p className="admin-user-search-result">Найдено: {filteredUsers.length}</p>
+        <p className="admin-user-search-result">Табылды: {filteredUsers.length}</p>
       )}
       {!loading && filteredUsers.length > 0 && (
         <div className="admin-user-card-list">
           {filteredUsers.map((user) => {
-            const avatar = user.avatar || user.photo_face;
+            const avatar = user.photo_face || user.avatar;
             return (
               <button
                 className="admin-user-list-card"

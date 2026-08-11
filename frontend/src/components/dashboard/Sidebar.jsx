@@ -32,8 +32,15 @@ const roleLabels = {
   outpost: "Застава",
 };
 
+const unitLabels = {
+  regional_department: "Аскер бөлүгү",
+  outpost: "Застава",
+  detachment: "Отряд",
+  group: "Топ",
+};
+
 const getInitials = (user) => {
-  const source = user?.full_name || user?.email || "Пользователь";
+  const source = user?.full_name || user?.email || "Колдонуучу";
   return source
     .split(/\s|@/)
     .filter(Boolean)
@@ -61,10 +68,9 @@ const getAdminSections = (pendingCount) => [
     id: "admin",
     title: "Админ",
     items: [
-      { id: "users", label: "Пользователи" },
-      { id: "requests", label: `Заявки (${pendingCount})` },
-      { id: "submissionEditRequests", label: "Запросы на разрешение" },
-      { id: "drafts", label: "Черновик" },
+      { id: "users", label: "Колдонуучулар" },
+      { id: "requests", label: `Өтүнмөлөр (${pendingCount})` },
+      { id: "submissionEditRequests", label: "Уруксат сурамдары" },
     ],
   },
 ];
@@ -96,9 +102,9 @@ export default function Sidebar({
   onNavigate,
   onOpenRequests,
 }) {
-  const avatarSrc = user?.avatar || user?.photo_face;
+  const avatarSrc = user?.photo_face || user?.avatar;
   const isAdminChildActive =
-    activeItem === "users" || activeItem === "requests" || activeItem === "submissionEditRequests" || activeItem === "drafts";
+    activeItem === "users" || activeItem === "requests" || activeItem === "submissionEditRequests";
   const [adminOpen, setAdminOpen] = useState(isAdminChildActive);
   const [newsUnreadCount, setNewsUnreadCount] = useState(0);
   const [planUnreadCount, setPlanUnreadCount] = useState(0);
@@ -224,15 +230,17 @@ export default function Sidebar({
           )}
         </div>
         <div>
-          <strong>{user?.full_name || user?.email || "Пользователь"}</strong>
-          <span>{roleLabels[user?.role] || roleLabels[role]}</span>
+          <strong>{user?.full_name || user?.email || "Колдонуучу"}</strong>
+          <span>
+            {unitLabels[user?.unit_type] || roleLabels[user?.role] || roleLabels[role]}
+          </span>
         </div>
         <button
           className={activeItem === "profile" ? "is-active profile-open-button" : "profile-open-button"}
           onClick={() => onNavigate("profile")}
           type="button"
         >
-          Мой профиль
+          Жеке кабинетим
         </button>
       </div>
       <nav className="dashboard-sidebar__nav">

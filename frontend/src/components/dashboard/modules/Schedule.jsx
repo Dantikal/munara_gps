@@ -5,16 +5,16 @@ export default function Schedule({ data }) {
     <section className="module-panel">
       <header>
         <h1>{data?.title || "Пландоо"}</h1>
-        <p>План смен, нарядов и дежурств.</p>
+        <p>Нөөмөттөрдүн, наряддардын жана кезметтердин планы.</p>
       </header>
       <div className="table-wrap">
         <table>
           <thead>
             <tr>
-              <th>Дата</th>
-              <th>Время</th>
+              <th>Күнү</th>
+              <th>Убакыт</th>
               <th>Наряд</th>
-              <th>Статус</th>
+              <th>Статусу</th>
             </tr>
           </thead>
           <tbody>

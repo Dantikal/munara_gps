@@ -31,10 +31,10 @@ export default function LoginPage({ onLoggedIn }) {
 
   return (
     <section className="panel narrow">
-      <h1>Вход</h1>
+      <h1>Кирүү</h1>
       <form className="form-grid single-column" onSubmit={submit}>
         <label>
-          Email
+          Электрондук почта
           <input
             autoComplete="email"
             name="email"
@@ -45,7 +45,7 @@ export default function LoginPage({ onLoggedIn }) {
           />
         </label>
         <label>
-          Пароль
+          Сырсөз
           <input
             autoComplete="current-password"
             name="password"
@@ -56,7 +56,7 @@ export default function LoginPage({ onLoggedIn }) {
           />
         </label>
         <button disabled={loading} type="submit">
-          {loading ? "Вход..." : "Войти"}
+          {loading ? "Кирүүдө..." : "Кирүү"}
         </button>
       </form>
       {error && <p className="error">{error}</p>}

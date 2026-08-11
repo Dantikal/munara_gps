@@ -13,10 +13,10 @@ export default function SubmissionEditPermissionButton({ submission, onUpdated }
   if (!isOwner) return null;
 
   if (submission.canEdit || submission.editRequestStatus === "approved") {
-    return <span className="submission-edit-status submission-edit-status--approved">Можно изменить</span>;
+    return <span className="submission-edit-status submission-edit-status--approved">Өзгөртүүгө болот</span>;
   }
   if (submission.editRequestStatus === "pending") {
-    return <span className="submission-edit-status submission-edit-status--pending">Запрос отправлен</span>;
+    return <span className="submission-edit-status submission-edit-status--pending">Сурам жөнөтүлдү</span>;
   }
 
   const requestPermission = async () => {
@@ -26,7 +26,7 @@ export default function SubmissionEditPermissionButton({ submission, onUpdated }
       const result = await requestSubmissionEditPermission(submission.id);
       onUpdated?.({ ...submission, editRequestStatus: result.status, canEdit: false });
     } catch (requestError) {
-      setError(getApiErrorMessage(requestError, "Не удалось отправить запрос."));
+      setError(getApiErrorMessage(requestError, "Сурамды жөнөтүү мүмкүн болгон жок."));
     } finally {
       setLoading(false);
     }
@@ -35,7 +35,7 @@ export default function SubmissionEditPermissionButton({ submission, onUpdated }
   return (
     <>
       <button disabled={loading} onClick={requestPermission} type="button">
-        {loading ? "Отправка..." : "Запросить разрешение на исправление"}
+        {loading ? "Жөнөтүлүүдө..." : "Оңдоого уруксат суроо"}
       </button>
       {error ? <small className="dashboard-error">{error}</small> : null}
     </>

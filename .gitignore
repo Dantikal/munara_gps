@@ -24,6 +24,12 @@ frontend/.env
 frontend/.env.local
 frontend/.env.*.local
 
+# TLS private keys must never be committed
+2026/*.key
+deploy/certificates/*.key
+munara-release.zip
+server-upload/
+
 # Node
 frontend/node_modules/
 frontend/dist/

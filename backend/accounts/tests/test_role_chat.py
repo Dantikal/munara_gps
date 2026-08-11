@@ -47,7 +47,7 @@ class RoleChatApiTests(APITestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(
             {item["id"] for item in response.data},
-            {self.admin.id, self.regional.id},
+            {self.regional.id},
         )
 
         response = self.client.post(
@@ -73,6 +73,39 @@ class RoleChatApiTests(APITestCase):
         )
         self.assertEqual(response.status_code, 201)
         self.assertEqual(response.data["recipient"]["id"], self.outpost.id)
+
+        response = self.client.post(
+            self.messages_url,
+            {"recipientId": self.admin.id, "body": "Администраторго билдирүү"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.data["recipient"]["id"], self.admin.id)
+
+    def test_outpost_cannot_message_admin_directly(self):
+        self.client.force_authenticate(self.outpost)
+        response = self.client.post(
+            self.messages_url,
+            {"recipientId": self.admin.id, "body": "Түз билдирүү"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 400)
+
+    def test_admin_can_only_choose_military_units(self):
+        self.client.force_authenticate(self.admin)
+        response = self.client.get(self.partners_url)
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            {item["id"] for item in response.data},
+            {self.regional.id, self.other_regional.id},
+        )
+
+        response = self.client.post(
+            self.messages_url,
+            {"recipientId": self.outpost.id, "body": "Түз билдирүү"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 400)
 
     def test_other_unit_cannot_message_foreign_outpost(self):
         self.client.force_authenticate(self.other_regional)

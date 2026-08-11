@@ -1,4 +1,4 @@
-const fallbackMessage = "Не удалось выполнить запрос.";
+const fallbackMessage = "Сурамды аткаруу мүмкүн болгон жок.";
 
 const normalizeApiMessage = (value) => {
   if (!value) {

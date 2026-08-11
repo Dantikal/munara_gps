@@ -333,7 +333,11 @@ class AdminChatMessageAdmin(admin.ModelAdmin):
 
 @admin.register(User)
 class CustomUserAdmin(UserAdmin):
-    actions = ("approve_requests", "reject_requests")
+    actions = (
+        "make_administrators",
+        "approve_requests",
+        "reject_requests",
+    )
     list_display = (
         "email",
         "full_name",
@@ -375,7 +379,6 @@ class CustomUserAdmin(UserAdmin):
         "reviewed_at",
         "reviewed_by",
         "photo_face_preview",
-        "photo_military_id_preview",
     )
 
     fieldsets = UserAdmin.fieldsets + (
@@ -394,8 +397,6 @@ class CustomUserAdmin(UserAdmin):
                     "status",
                     "photo_face",
                     "photo_face_preview",
-                    "photo_military_id",
-                    "photo_military_id_preview",
                     "rejection_reason",
                     "reviewed_by",
                     "reviewed_at",
@@ -421,7 +422,6 @@ class CustomUserAdmin(UserAdmin):
                     "role",
                     "status",
                     "photo_face",
-                    "photo_military_id",
                 ),
             },
         ),
@@ -464,6 +464,28 @@ class CustomUserAdmin(UserAdmin):
 
         super().delete_queryset(request, queryset)
 
+    @admin.action(description="Назначить выбранных пользователей администраторами")
+    def make_administrators(self, request, queryset):
+        if not request.user.is_superuser:
+            self.message_user(
+                request,
+                "Назначать администраторов может только суперпользователь.",
+                level=messages.ERROR,
+            )
+            return
+
+        updated = 0
+        for user in queryset.exclude(role=User.Role.ADMIN):
+            user.role = User.Role.ADMIN
+            user.status = User.Status.ACTIVE
+            user.save()
+            updated += 1
+
+        self.message_user(
+            request,
+            f"Назначено администраторов: {updated}.",
+        )
+
     @admin.action(description="Подтвердить выбранные заявки")
     def approve_requests(self, request, queryset):
         updated = 0
@@ -492,10 +514,6 @@ class CustomUserAdmin(UserAdmin):
     @admin.display(description="Фото лица")
     def photo_face_preview(self, obj):
         return self._image_preview(obj.photo_face)
-
-    @admin.display(description="Фото военного билета")
-    def photo_military_id_preview(self, obj):
-        return self._image_preview(obj.photo_military_id)
 
     def _image_preview(self, image):
         if not image:

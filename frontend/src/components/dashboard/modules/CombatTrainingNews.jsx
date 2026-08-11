@@ -25,7 +25,7 @@ const formatDate = (value) => {
   if (!value) return "";
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return "";
-  return date.toLocaleString("ru-RU", {
+  return date.toLocaleString("ky-KG", {
     day: "2-digit",
     hour: "2-digit",
     minute: "2-digit",
@@ -59,7 +59,7 @@ export default function CombatTrainingNews({ user }) {
       await markAllCombatTrainingNewsRead();
       window.dispatchEvent(new CustomEvent("combat-training-news-read"));
     } catch (requestError) {
-      setError(getApiErrorMessage(requestError, "Не удалось загрузить публикации."));
+      setError(getApiErrorMessage(requestError, "Жарыяларды жүктөө мүмкүн болгон жок."));
     } finally {
       setLoading(false);
     }
@@ -120,14 +120,14 @@ export default function CombatTrainingNews({ user }) {
       closeEditor();
       setNotice(draft.id ? "Публикация изменена." : "Публикация добавлена.");
     } catch (requestError) {
-      setError(getApiErrorMessage(requestError, "Не удалось сохранить публикацию."));
+      setError(getApiErrorMessage(requestError, "Жарыяны сактоо мүмкүн болгон жок."));
     } finally {
       setSubmitting(false);
     }
   };
 
   const handleDelete = async (news) => {
-    if (!window.confirm(`Удалить публикацию «${news.title}»?`)) return;
+    if (!window.confirm(`«${news.title}» жарыясы өчүрүлсүнбү?`)) return;
     setError("");
     setNotice("");
     try {
@@ -135,7 +135,7 @@ export default function CombatTrainingNews({ user }) {
       setNewsItems((currentItems) => currentItems.filter((item) => item.id !== news.id));
       setNotice("Публикация удалена.");
     } catch (requestError) {
-      setError(getApiErrorMessage(requestError, "Не удалось удалить публикацию."));
+      setError(getApiErrorMessage(requestError, "Жарыяны өчүрүү мүмкүн болгон жок."));
     }
   };
 
@@ -148,7 +148,7 @@ export default function CombatTrainingNews({ user }) {
         )
       );
     } catch (requestError) {
-      setError(getApiErrorMessage(requestError, "Не удалось изменить отметку."));
+      setError(getApiErrorMessage(requestError, "Белгини өзгөртүү мүмкүн болгон жок."));
     }
   };
 
@@ -170,7 +170,7 @@ export default function CombatTrainingNews({ user }) {
       <header className="module-header combat-news__header">
         <h1>Күжүрмөн даярдоонун маалыматтары</h1>
         {isAdmin && (
-          <button onClick={openCreate} type="button">+ Добавить информацию</button>
+          <button onClick={openCreate} type="button">+ Маалымат кошуу</button>
         )}
       </header>
 
@@ -178,9 +178,9 @@ export default function CombatTrainingNews({ user }) {
       {error && <p className="dashboard-error">{error}</p>}
 
       {loading ? (
-        <p className="dashboard-state">Загрузка публикаций...</p>
+        <p className="dashboard-state">Жарыялар жүктөлүүдө...</p>
       ) : newsItems.length === 0 ? (
-        <p className="dashboard-state">Публикаций пока нет.</p>
+        <p className="dashboard-state">Жарыялар азырынча жок.</p>
       ) : (
         <div className="combat-news__feed">
           {newsItems.map((news) => (
@@ -192,8 +192,8 @@ export default function CombatTrainingNews({ user }) {
                 </div>
                 {isAdmin && (
                   <div className="combat-news-card__admin-actions">
-                    <button onClick={() => openEdit(news)} type="button">Изменить</button>
-                    <button onClick={() => handleDelete(news)} type="button">Удалить</button>
+                    <button onClick={() => openEdit(news)} type="button">Өзгөртүү</button>
+                    <button onClick={() => handleDelete(news)} type="button">Өчүрүү</button>
                   </div>
                 )}
               </header>
@@ -242,9 +242,9 @@ export default function CombatTrainingNews({ user }) {
       {isEditorOpen && (
         <div className="combat-journal-dialog" role="dialog" aria-modal="true">
           <form className="combat-journal-dialog__panel combat-news-editor" onSubmit={handleSubmit}>
-            <h2>{draft.id ? "Изменить публикацию" : "Добавить информацию"}</h2>
+            <h2>{draft.id ? "Жарыялоону өзгөртүү" : "Маалымат кошуу"}</h2>
             <label>
-              Заголовок
+              Аталышы
               <input
                 autoFocus
                 disabled={submitting}
@@ -265,7 +265,7 @@ export default function CombatTrainingNews({ user }) {
             </label>
             {editedNews?.attachments?.length > 0 && (
               <div className="combat-news-editor__existing-files">
-                <strong>Загруженные файлы</strong>
+                <strong>Жүктөлгөн файлдар</strong>
                 {editedNews.attachments.map((attachment) => (
                   <label key={attachment.id}>
                     <input
@@ -273,25 +273,30 @@ export default function CombatTrainingNews({ user }) {
                       onChange={() => toggleAttachmentRemoval(attachment.id)}
                       type="checkbox"
                     />
-                    Удалить {attachment.originalName}
+                    Өчүрүү {attachment.originalName}
                   </label>
                 ))}
               </div>
             )}
             <label>
-              Файлы (до 10 файлов, каждый до 100 МБ)
+              Файлдар (10 файлга чейин, ар бири 100 МБ чейин)
+              <span className="combat-news-editor__file-picker">
+                Файлды тандоо
+                {draft.files.length > 0 ? ` (${draft.files.length})` : ""}
+              </span>
               <input
                 accept={ACCEPTED_FILES}
                 disabled={submitting}
                 multiple
                 onChange={(event) => setDraft((current) => ({ ...current, files: Array.from(event.target.files || []) }))}
+                style={{ display: "none" }}
                 type="file"
               />
             </label>
             <div className="combat-journal-dialog__actions">
-              <button disabled={submitting} onClick={closeEditor} type="button">Отмена</button>
+              <button disabled={submitting} onClick={closeEditor} type="button">Жокко чыгаруу</button>
               <button disabled={submitting || !draft.title.trim()} type="submit">
-                {submitting ? "Сохранение..." : "Опубликовать"}
+                {submitting ? "Сакталууда..." : "Жүктөө"}
               </button>
             </div>
           </form>

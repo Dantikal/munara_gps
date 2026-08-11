@@ -36,11 +36,11 @@ const COMBAT_TRAINING_JOURNAL_TITLE =
 const JOURNAL_CATEGORIES = [
   {
     id: "personnel-training",
-    title: "Өздүк курамдын күжүрмөн даярдоосун каттоо журналы",
+    title: "Өздүк курамдын күжүрмөн даярдоосунун каттоо журналы",
   },
   {
     id: "command-training",
-    title: "Командирдик даярдоо боюнча күжүрмөн даярдоону каттоо журналы",
+    title: "Командирдик даярдоо боюнча күжүрмөн даярдоосунун каттоо журналы",
   },
 ];
 const ADMIN_SUBJECT_LIST_CATEGORY = {
@@ -315,7 +315,7 @@ const formatCreatedAt = (createdAt) => {
     return "";
   }
 
-  return date.toLocaleString("ru-RU", {
+  return date.toLocaleString("ky-KG", {
     day: "2-digit",
     hour: "2-digit",
     minute: "2-digit",
@@ -393,12 +393,12 @@ const JournalDailyStatus = ({ updatedAt, now }) => {
           isUpdated ? "updated" : "missing"
         }`}
       >
-        {isUpdated ? "Обновлено" : "Еще не обновлено"}
+        {isUpdated ? "Жаңыланды" : "Жаңыланган жок"}
       </span>
       <span className="combat-journal-daily-countdown">
         {isUpdated && countdown
           ? `До следующего обновления: ${countdown}`
-          : "Нужно обновить сейчас"}
+          : "Азыр жаңылоо керек"}
       </span>
     </span>
   );
@@ -593,7 +593,7 @@ export default function CombatTrainingJournal({ data, methodicalSubjects = [], u
       .catch(() => {
         if (isMounted) {
           setAvailableSubjects([]);
-          setSubjectLoadError("Не удалось загрузить список предметов.");
+          setSubjectLoadError("Предметтердин тизмесин жүктөө мүмкүн болгон жок.");
         }
       });
     return () => {
@@ -749,7 +749,7 @@ export default function CombatTrainingJournal({ data, methodicalSubjects = [], u
       submissionSectionId: journalSubmissionSectionId,
       autoSubmitOnSave: false,
       directSubmissionUpdate: canUpdateSubmission,
-      submissionActionLabel: canUpdateSubmission ? "Обновить" : undefined,
+      submissionActionLabel: canUpdateSubmission ? "Жаңылоо" : undefined,
       submissionDocumentTitle: subjectJournalTitle,
     };
   }, [
@@ -966,7 +966,7 @@ export default function CombatTrainingJournal({ data, methodicalSubjects = [], u
       setSubjectLoadError("");
       setIsSubjectCreateOpen(false);
     } catch {
-      setSubjectLoadError("Не удалось добавить предмет. Проверьте название и повторите попытку.");
+      setSubjectLoadError("Предметти кошуу мүмкүн болгон жок. Аталышын текшерип, кайра аракет кылыңыз.");
     }
   };
 
@@ -1004,7 +1004,7 @@ export default function CombatTrainingJournal({ data, methodicalSubjects = [], u
       setSubjectEditDraft(null);
       setSubjectLoadError("");
     } catch {
-      setSubjectLoadError("Не удалось изменить название предмета.");
+      setSubjectLoadError("Предметтин аталышын өзгөртүү мүмкүн болгон жок.");
     }
   };
 
@@ -1025,7 +1025,7 @@ export default function CombatTrainingJournal({ data, methodicalSubjects = [], u
       setSubjects(removeSubject);
       setSubjectLoadError("");
     } catch {
-      setSubjectLoadError("Не удалось удалить предмет.");
+      setSubjectLoadError("Предметти өчүрүү мүмкүн болгон жок.");
     } finally {
       setDeletingSubjectId(null);
     }
@@ -1226,7 +1226,7 @@ export default function CombatTrainingJournal({ data, methodicalSubjects = [], u
                 <strong>{subjectIndex + 1}. {getJournalSubjectTitle(subject)}</strong>
                 {getSubjectLastUpdatedAt(subject) ? (
                   <span>
-                    Последнее обновление: {formatCreatedAt(getSubjectLastUpdatedAt(subject))}
+                    Акыркы жаңыртуу: {formatCreatedAt(getSubjectLastUpdatedAt(subject))}
                   </span>
                 ) : null}
                 <JournalDailyStatus
@@ -1241,11 +1241,11 @@ export default function CombatTrainingJournal({ data, methodicalSubjects = [], u
           </div>
         ) : (
           <p className="dashboard-state">
-            {"\u0421\u043e\u0437\u0434\u0430\u043d\u043d\u044b\u0445 \u043f\u0440\u0435\u0434\u043c\u0435\u0442\u043e\u0432 \u043f\u043e\u043a\u0430 \u043d\u0435\u0442."}
+            {"Түзүлгөн предметтер азырынча жок."}
           </p>
         )}
         <div className="combat-journal-subject-header">
-          <h2>Обновления журнала</h2>
+          <h2>Журналды жаңыртуу</h2>
         </div>
         {journalUpdates.length > 0 ? (
           <div className="saved-table-list">
@@ -1262,7 +1262,7 @@ export default function CombatTrainingJournal({ data, methodicalSubjects = [], u
                 tabIndex={0}
               >
                 <strong>{revision.subjectTitle}</strong>
-                <span>Обновлено: {formatCreatedAt(revision.createdAt)}</span>
+                <span>Жаңыртылды: {formatCreatedAt(revision.createdAt)}</span>
                 <span>Нажмите, чтобы посмотреть сохранённую версию</span>
                 <div
                   className="saved-table-card__actions"
@@ -1274,14 +1274,14 @@ export default function CombatTrainingJournal({ data, methodicalSubjects = [], u
                     onClick={() => handleDeleteJournalRevision(revision)}
                     type="button"
                   >
-                    {deletingRevisionId === revision.id ? "Удаление..." : "Удалить"}
+                    {deletingRevisionId === revision.id ? "Өчүрүлүүдө..." : "Өчүрүү"}
                   </button>
                 </div>
               </article>
             ))}
           </div>
         ) : (
-          <p className="dashboard-state">Обновлений пока нет.</p>
+          <p className="dashboard-state">Азырынча жаңылоолор жок.</p>
         )}
       </section>
     );
@@ -1307,7 +1307,7 @@ export default function CombatTrainingJournal({ data, methodicalSubjects = [], u
   };
 
   async function handleDeleteJournalRevision(revision) {
-    if (!window.confirm("Удалить это обновление из своей истории?")) {
+    if (!window.confirm("Бул жаңыртуу жеке тарыхыңыздан өчүрүлсүнбү?")) {
       return;
     }
 
@@ -1328,7 +1328,7 @@ export default function CombatTrainingJournal({ data, methodicalSubjects = [], u
       setJournalSubmissions(removeRevisionFromState);
       setJournalNotificationSubmissions(removeRevisionFromState);
     } catch {
-      setJournalSubmissionError("Не удалось удалить обновление журнала.");
+      setJournalSubmissionError("Журналдын жаңыртуусун өчүрүү мүмкүн болгон жок.");
     } finally {
       setDeletingRevisionId(null);
     }
@@ -1398,7 +1398,7 @@ export default function CombatTrainingJournal({ data, methodicalSubjects = [], u
                 <input
                   autoFocus
                   onChange={(event) => setManualSubjectTitle(event.target.value)}
-                  placeholder="Название предмета"
+                  placeholder="Предметтин аталышы"
                   type="text"
                   value={manualSubjectTitle}
                 />
@@ -1417,7 +1417,7 @@ export default function CombatTrainingJournal({ data, methodicalSubjects = [], u
                   }}
                   type="button"
                 >
-                  Отмена
+                  Жокко чыгаруу
                 </button>
               </div>
             </form>
@@ -1438,14 +1438,14 @@ export default function CombatTrainingJournal({ data, methodicalSubjects = [], u
                     onClick={() => openSubjectEditDialog(subject)}
                     type="button"
                   >
-                    Изменить
+                    Өзгөртүү
                   </button>
                   <button
                     disabled={deletingSubjectId === subject.id}
                     onClick={() => handleDeleteSubject(subject)}
                     type="button"
                   >
-                    {deletingSubjectId === subject.id ? "Удаление..." : "Удалить"}
+                    {deletingSubjectId === subject.id ? "Өчүрүлүүдө..." : "Өчүрүү"}
                   </button>
                 </div>
               </article>
@@ -1479,7 +1479,7 @@ export default function CombatTrainingJournal({ data, methodicalSubjects = [], u
       >
         <strong>{submission.documentTitle}</strong>
         <span>{getSubmissionSenderLabel(submission)}</span>
-        <span>Заполнено</span>
+        <span>Толтурулду</span>
         <JournalDailyStatus
           now={dailyStatusNow}
           updatedAt={submission.updatedAt || submission.createdAt}
@@ -1495,7 +1495,7 @@ export default function CombatTrainingJournal({ data, methodicalSubjects = [], u
           />
           {canForward ? (
             <button onClick={() => setForwardingSubmission(submission)} type="button">
-              Отправить
+              Жөнөтүү
             </button>
           ) : null}
           <button
@@ -1615,7 +1615,7 @@ export default function CombatTrainingJournal({ data, methodicalSubjects = [], u
                   />
                   {getUpdatedSubjectCount(outpostName) > 0 ? (
                     <span
-                      aria-label={`Обновлено предметов: ${getUpdatedSubjectCount(outpostName)}`}
+                      aria-label={`Жаңыртылган предметтер: ${getUpdatedSubjectCount(outpostName)}`}
                       className="combat-journal-notification-badge"
                     >
                       {getUpdatedSubjectCount(outpostName)}
@@ -1677,8 +1677,8 @@ export default function CombatTrainingJournal({ data, methodicalSubjects = [], u
                   <strong>{subjectIndex + 1}. {subject.title}</strong>
                   <span>
                     {submission
-                      ? `Последнее обновление: ${formatCreatedAt(submission.updatedAt || submission.createdAt)}`
-                      : "Обновлений пока нет"}
+                      ? `Акыркы жаңыртуу: ${formatCreatedAt(submission.updatedAt || submission.createdAt)}`
+                      : "Азырынча жаңылоолор жок"}
                   </span>
                   <JournalDailyStatus
                     now={dailyStatusNow}
@@ -1691,7 +1691,7 @@ export default function CombatTrainingJournal({ data, methodicalSubjects = [], u
           {emptySubjectNotice ? (
             <p className="dashboard-state">{emptySubjectNotice}</p>
           ) : null}
-          <h3>Обновления журнала</h3>
+          <h3>Журналды жаңыртуу</h3>
           {outpostUpdates.length > 0 ? (
             <div className="saved-table-list">
               {outpostUpdates.map((revision) => (
@@ -1707,7 +1707,7 @@ export default function CombatTrainingJournal({ data, methodicalSubjects = [], u
                   tabIndex={0}
                 >
                   <strong>{revision.subjectTitle}</strong>
-                  <span>Обновлено: {formatCreatedAt(revision.createdAt)}</span>
+                  <span>Жаңыртылды: {formatCreatedAt(revision.createdAt)}</span>
                   <div
                     className="saved-table-card__actions"
                     onClick={(event) => event.stopPropagation()}
@@ -1718,7 +1718,7 @@ export default function CombatTrainingJournal({ data, methodicalSubjects = [], u
                       onClick={() => handleDeleteJournalRevision(revision)}
                       type="button"
                     >
-                      {deletingRevisionId === revision.id ? "Удаление..." : "Удалить"}
+                      {deletingRevisionId === revision.id ? "Өчүрүлүүдө..." : "Өчүрүү"}
                     </button>
                   </div>
                 </article>
@@ -1865,8 +1865,8 @@ export default function CombatTrainingJournal({ data, methodicalSubjects = [], u
                     <strong>{subjectIndex + 1}. {subject.title}</strong>
                     <span>
                       {submission
-                        ? `Последнее обновление: ${formatCreatedAt(submission.updatedAt || submission.createdAt)}`
-                        : "Обновлений пока нет"}
+                        ? `Акыркы жаңыртуу: ${formatCreatedAt(submission.updatedAt || submission.createdAt)}`
+                        : "Азырынча жаңылоолор жок"}
                     </span>
                     <JournalDailyStatus
                       now={dailyStatusNow}
@@ -1879,7 +1879,7 @@ export default function CombatTrainingJournal({ data, methodicalSubjects = [], u
             {emptySubjectNotice ? (
               <p className="dashboard-state">{emptySubjectNotice}</p>
             ) : null}
-            <h3>Обновления журнала</h3>
+            <h3>Журналды жаңыртуу</h3>
             {adminOutpostUpdates.length > 0 ? (
               <div className="saved-table-list">
                 {adminOutpostUpdates.map((revision) => (
@@ -1895,7 +1895,7 @@ export default function CombatTrainingJournal({ data, methodicalSubjects = [], u
                     tabIndex={0}
                   >
                     <strong>{revision.subjectTitle}</strong>
-                    <span>Обновлено: {formatCreatedAt(revision.createdAt)}</span>
+                    <span>Жаңыртылды: {formatCreatedAt(revision.createdAt)}</span>
                     <div
                       className="saved-table-card__actions"
                       onClick={(event) => event.stopPropagation()}
@@ -1906,7 +1906,7 @@ export default function CombatTrainingJournal({ data, methodicalSubjects = [], u
                         onClick={() => handleDeleteJournalRevision(revision)}
                         type="button"
                       >
-                        {deletingRevisionId === revision.id ? "Удаление..." : "Удалить"}
+                        {deletingRevisionId === revision.id ? "Өчүрүлүүдө..." : "Өчүрүү"}
                       </button>
                     </div>
                   </article>
@@ -1948,8 +1948,8 @@ export default function CombatTrainingJournal({ data, methodicalSubjects = [], u
                     <strong>{subjectIndex + 1}. {subject.title}</strong>
                     <span>
                       {submission
-                        ? `Последнее обновление: ${formatCreatedAt(submission.updatedAt || submission.createdAt)}`
-                        : "Обновлений пока нет"}
+                        ? `Акыркы жаңыртуу: ${formatCreatedAt(submission.updatedAt || submission.createdAt)}`
+                        : "Азырынча жаңылоолор жок"}
                     </span>
                     <JournalDailyStatus
                       now={dailyStatusNow}
@@ -1962,7 +1962,7 @@ export default function CombatTrainingJournal({ data, methodicalSubjects = [], u
             {emptySubjectNotice ? (
               <p className="dashboard-state">{emptySubjectNotice}</p>
             ) : null}
-            <h3>Обновления журнала</h3>
+            <h3>Журналды жаңыртуу</h3>
             {adminUnitUpdates.length > 0 ? (
               <div className="saved-table-list">
                 {adminUnitUpdates.map((revision) => (
@@ -1978,7 +1978,7 @@ export default function CombatTrainingJournal({ data, methodicalSubjects = [], u
                     tabIndex={0}
                   >
                     <strong>{revision.subjectTitle}</strong>
-                    <span>Обновлено: {formatCreatedAt(revision.createdAt)}</span>
+                    <span>Жаңыртылды: {formatCreatedAt(revision.createdAt)}</span>
                     <div
                       className="saved-table-card__actions"
                       onClick={(event) => event.stopPropagation()}
@@ -1989,7 +1989,7 @@ export default function CombatTrainingJournal({ data, methodicalSubjects = [], u
                         onClick={() => handleDeleteJournalRevision(revision)}
                         type="button"
                       >
-                        {deletingRevisionId === revision.id ? "Удаление..." : "Удалить"}
+                        {deletingRevisionId === revision.id ? "Өчүрүлүүдө..." : "Өчүрүү"}
                       </button>
                     </div>
                   </article>
@@ -2065,7 +2065,7 @@ export default function CombatTrainingJournal({ data, methodicalSubjects = [], u
                   />
                   {getAdminOutpostUpdatedSubjectCount(outpostName) > 0 ? (
                     <span
-                      aria-label={`Обновлено предметов: ${getAdminOutpostUpdatedSubjectCount(outpostName)}`}
+                      aria-label={`Жаңыртылган предметтер: ${getAdminOutpostUpdatedSubjectCount(outpostName)}`}
                       className="combat-journal-notification-badge"
                     >
                       {getAdminOutpostUpdatedSubjectCount(outpostName)}
@@ -2100,7 +2100,7 @@ export default function CombatTrainingJournal({ data, methodicalSubjects = [], u
             ))}
           </div>
         ) : (
-          <p className="dashboard-state">Документов пока нет.</p>
+          <p className="dashboard-state">Документтер азырынча жок.</p>
         )}
         {user?.role === "regional" ? (
           <>

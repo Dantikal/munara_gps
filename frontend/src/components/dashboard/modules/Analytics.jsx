@@ -114,7 +114,7 @@ const MonthlyAnalysisSubmissionStatus = ({ submission, now }) => {
           isSubmitted ? "sent" : "missing"
         }`}
       >
-        {isSubmitted ? "Отправлено" : "Не отправлено"}
+        {isSubmitted ? "Аткарылды" : "Аткарылган эмес"}
       </span>
       <span className="analysis-monthly-countdown">
         До 28 числа: {formatMonthlyAnalysisCountdown(now)}
@@ -187,7 +187,7 @@ const PeriodAnalysisSubmissionStatus = ({ submission, now }) => {
           isSubmitted ? "sent" : "missing"
         }`}
       >
-        {isSubmitted ? "Отправлено" : "Не заполнено"}
+        {isSubmitted ? "Аткарылды" : "Толтурулган эмес"}
       </span>
       <span className="analysis-period-countdown">
         До 1 {cycle.nextMonthLabel}: {formatPeriodAnalysisCountdown(now)}
@@ -243,7 +243,7 @@ const YearAnalysisSubmissionStatus = ({ submission, now }) => {
           isSubmitted ? "sent" : "missing"
         }`}
       >
-        {isSubmitted ? "Отправлено" : "Не отправлено"}
+        {isSubmitted ? "Аткарылды" : "Аткарылган эмес"}
       </span>
       <span className="analysis-period-countdown">
         До 1 ноября: {formatYearAnalysisCountdown(now)}
@@ -259,7 +259,7 @@ const DEFAULT_ANALYTICS_SECTIONS = [
   },
   {
     id: "period-analysis",
-    title: "2026 - окуу жылынын жарым жылдык талдоосу",
+    title: "2026-окуу жылынын жарым жылдык талдоосу",
   },
   {
     id: "year-analysis",
@@ -1824,7 +1824,7 @@ export default function Analytics({ data, user }) {
             updateActiveMonthlyAnalysisDocument({ commanderName: nextValue });
             persistMonthlyAnalysisDraft({ commanderName: nextValue });
           }}
-          placeholder="ФИО"
+          placeholder="Аты-жөнү"
           readOnly={isMonthlyAnalysisSent}
           style={{
             backgroundColor: "transparent",
@@ -1855,7 +1855,7 @@ export default function Analytics({ data, user }) {
               type="button"
             >
               <span aria-hidden="true" className="module-document-icon" />
-              <strong>Бөлүкчолордун күжүрмөн даярдоонун талдоолору</strong>
+              <strong>Бөлүкчөлөрдүн күжүрмөн даярдоонун талдоолору</strong>
             </button>
           </article>
           <article className="analysis-section-card">
@@ -1899,7 +1899,7 @@ export default function Analytics({ data, user }) {
               onClick={analysisDocumentHistory.undo}
               type="button"
             >
-              ↶ Назад
+              ↶ Артка
             </button>
           ) : null}
           {!selectedAnalysisSubmission && canEditAnalysis ? (
@@ -1909,7 +1909,7 @@ export default function Analytics({ data, user }) {
               onClick={analysisDocumentHistory.redo}
               type="button"
             >
-              ↷ Вперёд
+              ↷ Алдыга
             </button>
           ) : null}
           {!selectedAnalysisSubmission && canEditAnalysis ? (
@@ -1928,7 +1928,7 @@ export default function Analytics({ data, user }) {
               onClick={handleOpenMonthlyAnalysisPicker}
               type="button"
             >
-              Выбрать
+              Тандоо
             </button>
           ) : null}
           {!selectedAnalysisSubmission && (
@@ -1941,7 +1941,7 @@ export default function Analytics({ data, user }) {
               onClick={handleSendMonthlyAnalysis}
               type="button"
             >
-              Отправить
+              Жөнөтүү
             </button>
           ) : null}
           {!data?.directEditor && !selectedAnalysisSubmission && canEditAnalysis ? (
@@ -1951,7 +1951,7 @@ export default function Analytics({ data, user }) {
               onClick={() => handleDeleteMonthlyAnalysisDocument(activeMonthlyAnalysisDocumentId)}
               type="button"
             >
-              Удалить
+              Өчүрүү
             </button>
           ) : null}
           {!selectedAnalysisSubmission && canEditAnalysis ? (
@@ -1965,7 +1965,7 @@ export default function Analytics({ data, user }) {
             </button>
           ) : null}
           <button className="module-action-button" onClick={handlePrintMonthlyAnalysis} type="button">
-            Печать
+            Басып чыгаруу
           </button>
         </div>
         {isAnalysisSendDialogOpen ? (
@@ -2504,7 +2504,7 @@ export default function Analytics({ data, user }) {
                     onClick={handleCreateMonthlyAnalysis}
                     type="button"
                   >
-                    Жаратуу
+                    Түзүү
                   </button>
                 </div>
                 {currentAnalysisSectionDocuments.length > 0 ? (
@@ -2535,7 +2535,7 @@ export default function Analytics({ data, user }) {
                             }}
                             tabIndex={0}
                           >
-                            Удалить
+                            Өчүрүү
                           </span>
                         ) : null}
                       </button>
@@ -2672,7 +2672,7 @@ export default function Analytics({ data, user }) {
                             onClick={() => setForwardingSubmission(submission)}
                             type="button"
                           >
-                            Отправить
+                            Жөнөтүү
                           </button>
                           <button
                             disabled={deletingAnalysisSubmissionId === submission.id}
@@ -2722,7 +2722,7 @@ export default function Analytics({ data, user }) {
                             )}
                             {documentCount > 0 ? (
                               <span
-                                aria-label={`Документов: ${documentCount}`}
+                                aria-label={`Документтер: ${documentCount}`}
                                 className="combat-journal-notification-badge"
                               >
                                 {documentCount}
@@ -2815,7 +2815,7 @@ export default function Analytics({ data, user }) {
                   onClick={handleCreateMonthlyAnalysis}
                   type="button"
                 >
-                  Жаратуу
+                  Түзүү
                 </button>
               </div>
             ) : null}
@@ -2847,7 +2847,7 @@ export default function Analytics({ data, user }) {
                       }}
                       tabIndex={0}
                     >
-                      Удалить
+                      Өчүрүү
                     </span>
                   ) : null}
                 </button>
@@ -2908,7 +2908,7 @@ export default function Analytics({ data, user }) {
                           </button>
                           {isRegionalSubunitAnalysis ? (
                             <button onClick={() => setForwardingSubmission(submission)} type="button">
-                              Отправить
+                              Жөнөтүү
                             </button>
                           ) : null}
                         </div>
@@ -3063,7 +3063,7 @@ export default function Analytics({ data, user }) {
                 onClick={() => handleStartSectionEdit(section)}
                 type="button"
               >
-                Изменить
+                Өзгөртүү
               </button>
             ) : null}
           </article>
@@ -3072,7 +3072,7 @@ export default function Analytics({ data, user }) {
       {editingSectionId && (
         <div className="lesson-period-dialog" role="dialog" aria-modal="true" aria-labelledby="analysis-section-edit-title">
           <form className="lesson-period-dialog__panel" onSubmit={handleSaveSectionTitle}>
-            <h2 id="analysis-section-edit-title">Изменить название</h2>
+            <h2 id="analysis-section-edit-title">Аталышын өзгөртүү</h2>
             <input
               autoFocus
               className="lesson-period-dialog__input"
@@ -3088,9 +3088,9 @@ export default function Analytics({ data, user }) {
                 }}
                 type="button"
               >
-                Отмена
+                Жокко чыгаруу
               </button>
-              <button type="submit">Сохранить</button>
+              <button type="submit">Сактоо</button>
             </div>
           </form>
         </div>

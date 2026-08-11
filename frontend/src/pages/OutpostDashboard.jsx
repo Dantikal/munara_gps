@@ -18,11 +18,11 @@ export default function OutpostDashboard() {
   }, [dispatch, role, user?.role]);
 
   if (user?.role !== "outpost") {
-    return <section className="dashboard-state error">Нет доступа к личному кабинету заставы.</section>;
+    return <section className="dashboard-state error">Заставанын жеке кабинетине кирүүгө уруксат жок.</section>;
   }
 
   if (loading && !data) {
-    return <section className="dashboard-state">Загрузка...</section>;
+    return <section className="dashboard-state">Жүктөлүүдө...</section>;
   }
 
   if (error && !data) {

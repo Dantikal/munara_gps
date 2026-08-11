@@ -30,7 +30,6 @@ phone_validator = RegexValidator(
 class UserPublicSerializer(serializers.ModelSerializer):
     avatar = serializers.ImageField(read_only=True)
     photo_face = serializers.ImageField(read_only=True)
-    photo_military_id = serializers.ImageField(read_only=True)
     unreadChatCount = serializers.SerializerMethodField()
 
     def get_unreadChatCount(self, obj):
@@ -61,7 +60,6 @@ class UserPublicSerializer(serializers.ModelSerializer):
             "status",
             "avatar",
             "photo_face",
-            "photo_military_id",
             "rejection_reason",
             "reviewed_at",
             "unreadChatCount",
@@ -73,7 +71,6 @@ class UserPublicSerializer(serializers.ModelSerializer):
 class AdminUserSerializer(serializers.ModelSerializer):
     avatar = serializers.ImageField(read_only=True)
     photo_face = serializers.ImageField(required=False)
-    photo_military_id = serializers.ImageField(required=False)
     password = serializers.CharField(
         write_only=True, required=False, allow_blank=True, min_length=8
     )
@@ -100,7 +97,6 @@ class AdminUserSerializer(serializers.ModelSerializer):
             "status",
             "avatar",
             "photo_face",
-            "photo_military_id",
             "date_joined",
         ]
         read_only_fields = ["id", "username", "date_joined"]
@@ -138,13 +134,16 @@ class AdminUserSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError(
                 {"photo_face": "Загрузите фото лица."}
             )
-        if self.instance is None and not attrs.get("photo_military_id"):
-            raise serializers.ValidationError(
-                {"photo_military_id": "Загрузите фото военного билета."}
-            )
         unit_type = attrs.get("unit_type", getattr(self.instance, "unit_type", ""))
         region = attrs.get("region", getattr(self.instance, "region", ""))
         outpost_name = attrs.get("outpost_name", getattr(self.instance, "outpost_name", ""))
+        current_role = attrs.get("role", getattr(self.instance, "role", ""))
+        if current_role != User.Role.ADMIN:
+            attrs["role"] = (
+                User.Role.REGIONAL
+                if unit_type in (User.UnitType.REGIONAL, User.UnitType.INSTITUTION)
+                else User.Role.OUTPOST
+            )
         if unit_type == User.UnitType.OUTPOST:
             normalized_outpost_name = normalize_outpost_selection(region, outpost_name)
             if normalized_outpost_name:
@@ -153,6 +152,18 @@ class AdminUserSerializer(serializers.ModelSerializer):
                 raise serializers.ValidationError(
                     {"outpost_name": "Тандалган застава бул аскер бөлүгүнө кирбейт."}
                 )
+        named_subunit_labels = {
+            User.UnitType.DETACHMENT: "Отрядтын аталышын",
+            User.UnitType.GROUP: "Топтун аталышын",
+            User.UnitType.COMPANY: "Ротанын аталышын",
+            User.UnitType.PLATOON: "Взводдун аталышын",
+        }
+        if unit_type in named_subunit_labels and not outpost_name:
+            raise serializers.ValidationError(
+                {"outpost_name": f"{named_subunit_labels[unit_type]} жазыңыз."}
+            )
+        if unit_type == User.UnitType.INSTITUTION:
+            attrs["outpost_name"] = ""
         return attrs
 
     def create(self, validated_data):
@@ -491,9 +502,11 @@ class AdminChatMessageSerializer(serializers.ModelSerializer):
             if recipient.pk == request_user.pk:
                 raise serializers.ValidationError({"recipientId": "Нельзя отправить сообщение самому себе."})
 
-            is_allowed = request_user.role == User.Role.ADMIN
-            if request_user.role == User.Role.OUTPOST:
-                is_allowed = recipient.role == User.Role.ADMIN or (
+            is_allowed = False
+            if request_user.role == User.Role.ADMIN:
+                is_allowed = recipient.role == User.Role.REGIONAL
+            elif request_user.role == User.Role.OUTPOST:
+                is_allowed = (
                     recipient.role == User.Role.REGIONAL
                     and recipient.region == request_user.region
                 )
@@ -547,11 +560,11 @@ class AdminChatUserSerializer(serializers.ModelSerializer):
 
 
 class ProfileUpdateSerializer(serializers.ModelSerializer):
-    avatar = serializers.ImageField(required=False)
+    photo_face = serializers.ImageField(required=False)
 
     class Meta:
         model = User
-        fields = ["avatar"]
+        fields = ["photo_face"]
 
 
 class RegistrationSerializer(serializers.ModelSerializer):
@@ -564,7 +577,6 @@ class RegistrationSerializer(serializers.ModelSerializer):
     region = serializers.CharField(required=False, allow_blank=True)
     outpost_name = serializers.CharField(required=False, allow_blank=True)
     photo_face = serializers.ImageField(required=True)
-    photo_military_id = serializers.ImageField(required=True)
 
     class Meta:
         model = User
@@ -580,7 +592,6 @@ class RegistrationSerializer(serializers.ModelSerializer):
             "region",
             "outpost_name",
             "photo_face",
-            "photo_military_id",
         ]
         read_only_fields = ["id"]
 
@@ -595,7 +606,15 @@ class RegistrationSerializer(serializers.ModelSerializer):
         attrs["region"] = attrs.get("region", "").strip()
         attrs["outpost_name"] = attrs.get("outpost_name", "").strip()
 
-        if unit_type in (User.UnitType.REGIONAL, User.UnitType.OUTPOST) and not attrs["region"]:
+        if unit_type in (
+            User.UnitType.REGIONAL,
+            User.UnitType.OUTPOST,
+            User.UnitType.DETACHMENT,
+            User.UnitType.GROUP,
+            User.UnitType.COMPANY,
+            User.UnitType.PLATOON,
+            User.UnitType.INSTITUTION,
+        ) and not attrs["region"]:
             raise serializers.ValidationError(
                 {"region": "Аскер бөлүгүнүн номерин тандаңыз."}
             )
@@ -617,15 +636,30 @@ class RegistrationSerializer(serializers.ModelSerializer):
                     {"outpost_name": "Тандалган застава бул аскер бөлүгүнө кирбейт."}
                 )
             attrs["outpost_name"] = normalized_outpost_name
+        named_subunit_labels = {
+            User.UnitType.DETACHMENT: "Отрядтын аталышын",
+            User.UnitType.GROUP: "Топтун аталышын",
+            User.UnitType.COMPANY: "Ротанын аталышын",
+            User.UnitType.PLATOON: "Взводдун аталышын",
+        }
+        if unit_type in named_subunit_labels and not attrs["outpost_name"]:
+            raise serializers.ValidationError(
+                {"outpost_name": f"{named_subunit_labels[unit_type]} жазыңыз."}
+            )
+        if unit_type == User.UnitType.INSTITUTION:
+            attrs["outpost_name"] = ""
         return attrs
 
     def create(self, validated_data):
         password = validated_data.pop("password")
         email = validated_data["email"]
         role = (
-            User.Role.OUTPOST
-            if validated_data["unit_type"] == User.UnitType.OUTPOST
-            else User.Role.REGIONAL
+            User.Role.REGIONAL
+            if validated_data["unit_type"] in (
+                User.UnitType.REGIONAL,
+                User.UnitType.INSTITUTION,
+            )
+            else User.Role.OUTPOST
         )
         user = User(
             username=email,

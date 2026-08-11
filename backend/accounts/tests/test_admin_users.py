@@ -39,7 +39,7 @@ class AdminUsersApiTests(APITestCase):
         )
         self.client.force_authenticate(self.admin)
 
-    def test_admin_creates_user_with_registration_fields_and_photos(self):
+    def test_admin_creates_user_with_registration_fields_and_face_photo(self):
         response = self.client.post(
             reverse("admin-users"),
             {
@@ -55,7 +55,6 @@ class AdminUsersApiTests(APITestCase):
                 "role": User.Role.OUTPOST,
                 "status": User.Status.ACTIVE,
                 "photo_face": SimpleUploadedFile("face.png", PNG_BYTES, content_type="image/png"),
-                "photo_military_id": SimpleUploadedFile("id.png", PNG_BYTES, content_type="image/png"),
             },
             format="multipart",
         )
@@ -63,7 +62,7 @@ class AdminUsersApiTests(APITestCase):
         self.assertEqual(response.status_code, 201, response.data)
         self.assertEqual(response.data["outpost_name"], "Ак-Чечек чек ара заставасы")
         self.assertTrue(response.data["photo_face"])
-        self.assertTrue(response.data["photo_military_id"])
+        self.assertNotIn("photo_military_id", response.data)
 
     def test_registration_stores_full_outpost_name(self):
         response = self.client.post(
@@ -79,7 +78,6 @@ class AdminUsersApiTests(APITestCase):
                 "region": "2032",
                 "outpost_name": "Достук",
                 "photo_face": SimpleUploadedFile("face.png", PNG_BYTES, content_type="image/png"),
-                "photo_military_id": SimpleUploadedFile("id.png", PNG_BYTES, content_type="image/png"),
             },
             format="multipart",
         )
@@ -89,6 +87,64 @@ class AdminUsersApiTests(APITestCase):
             response.data["user"]["outpost_name"],
             "Достук чек ара заставасы",
         )
+
+    def test_registration_accepts_named_subunits(self):
+        for unit_type, unit_name in (
+            (User.UnitType.DETACHMENT, "Баткен отряды"),
+            (User.UnitType.GROUP, "Ыкчам топ"),
+            (User.UnitType.COMPANY, "Биринчи рота"),
+            (User.UnitType.PLATOON, "Экинчи взвод"),
+        ):
+            with self.subTest(unit_type=unit_type):
+                response = self.client.post(
+                    reverse("register"),
+                    {
+                        "email": f"{unit_type}@example.com",
+                        "password": "test-password",
+                        "full_name": "Жаңы колдонуучу",
+                        "military_rank": "капитан",
+                        "position": "башчы",
+                        "unit_type": unit_type,
+                        "phone": "+996123456789",
+                        "region": "2032",
+                        "outpost_name": unit_name,
+                        "photo_face": SimpleUploadedFile(
+                            "face.png", PNG_BYTES, content_type="image/png"
+                        ),
+                    },
+                    format="multipart",
+                )
+
+                self.assertEqual(response.status_code, 201, response.data)
+                self.assertEqual(response.data["user"]["unit_type"], unit_type)
+                self.assertEqual(response.data["user"]["region"], "2032")
+                self.assertEqual(response.data["user"]["outpost_name"], unit_name)
+                self.assertEqual(response.data["user"]["role"], User.Role.OUTPOST)
+
+    def test_registration_accepts_institution_with_only_military_unit_number(self):
+        response = self.client.post(
+            reverse("register"),
+            {
+                "email": "institution@example.com",
+                "password": "test-password",
+                "full_name": "Мекеме колдонуучусу",
+                "military_rank": "капитан",
+                "position": "башчы",
+                "unit_type": User.UnitType.INSTITUTION,
+                "phone": "+996123456789",
+                "region": "2032",
+                "photo_face": SimpleUploadedFile(
+                    "face.png", PNG_BYTES, content_type="image/png"
+                ),
+            },
+            format="multipart",
+        )
+
+        self.assertEqual(response.status_code, 201, response.data)
+        self.assertEqual(response.data["user"]["unit_type"], User.UnitType.INSTITUTION)
+        self.assertEqual(response.data["user"]["region"], "2032")
+        self.assertEqual(response.data["user"]["outpost_name"], "")
+        self.assertEqual(response.data["user"]["role"], User.Role.REGIONAL)
 
     def test_admin_deletes_user_with_related_submission_records(self):
         user = User.objects.create_user(

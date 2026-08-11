@@ -18,12 +18,21 @@ class User(AbstractUser):
     class UnitType(models.TextChoices):
         REGIONAL = "regional_department", "Войсковая часть №"
         OUTPOST = "outpost", "Застава"
+        DETACHMENT = "detachment", "Отряд"
+        GROUP = "group", "Топ"
+        COMPANY = "company", "Рота"
+        PLATOON = "platoon", "Взвод"
+        INSTITUTION = "institution", "Мекеме"
 
     email = models.EmailField("Email", unique=True)
     full_name = models.CharField("ФИО", max_length=255, blank=True)
     military_rank = models.CharField("Воинское звание", max_length=120, blank=True)
     position = models.CharField("Должность", max_length=160, blank=True)
-    unit_type = models.CharField("Подразделение", max_length=160)
+    unit_type = models.CharField(
+        "Подразделение",
+        max_length=160,
+        choices=UnitType.choices,
+    )
     phone = models.CharField("Телефон", max_length=20, blank=True)
     region = models.CharField("Область", max_length=120, blank=True)
     outpost_name = models.CharField("Название заставы", max_length=160, blank=True)

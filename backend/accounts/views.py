@@ -221,16 +221,16 @@ class ChatPartnerListView(generics.ListAPIView):
         user = self.request.user
         users = User.objects.filter(status=User.Status.ACTIVE).exclude(pk=user.pk)
         if user.role == User.Role.ADMIN:
-            return users.exclude(role=User.Role.ADMIN).order_by("region", "outpost_name", "full_name")
+            return users.filter(role=User.Role.REGIONAL).order_by("region", "full_name")
         if user.role == User.Role.REGIONAL:
             return users.filter(
                 Q(role=User.Role.OUTPOST, region=user.region) | Q(role=User.Role.ADMIN)
             ).order_by("role", "outpost_name", "full_name")
         if user.role == User.Role.OUTPOST:
             return users.filter(
-                Q(role=User.Role.ADMIN)
-                | Q(role=User.Role.REGIONAL, region=user.region)
-            ).order_by("role", "full_name")
+                role=User.Role.REGIONAL,
+                region=user.region,
+            ).order_by("full_name")
         return users.none()
 
 

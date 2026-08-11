@@ -620,7 +620,7 @@ export default function CombatTrainingPlan({ user, title = MODULE_TITLE, layout 
               onChange={(event) =>
                 updateSelectedSection({ commanderName: event.target.value })
               }
-              placeholder="ФИО"
+              placeholder="Аты-жөнү"
               readOnly={!isAdmin}
               value={selectedSection.commanderName || ""}
             />
@@ -684,7 +684,7 @@ export default function CombatTrainingPlan({ user, title = MODULE_TITLE, layout 
           ))}
         </div>
       ) : (
-        <p className="dashboard-state">Иш планы азырынча түзүлө элек.</p>
+        <p className="dashboard-state">Иш план азырынча түзүлө элек.</p>
       )}
 
       {isAdmin && isCreateDialogOpen && (

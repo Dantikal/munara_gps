@@ -16,7 +16,7 @@ export const login = createAsyncThunk(
       return data.user;
     } catch (error) {
       return rejectWithValue(
-        getApiErrorMessage(error, "Не удалось выполнить вход в систему.")
+        getApiErrorMessage(error, "Системага кирүү мүмкүн болгон жок.")
       );
     }
   }
@@ -59,7 +59,7 @@ const authSlice = createSlice({
         state.error =
           action.payload ||
           action.error?.message ||
-          "Не удалось выполнить вход в систему.";
+          "Системага кирүү мүмкүн болгон жок.";
       });
   },
 });

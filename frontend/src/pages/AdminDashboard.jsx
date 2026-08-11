@@ -3,7 +3,6 @@ import { useDispatch, useSelector } from "react-redux";
 
 import Sidebar from "../components/dashboard/Sidebar.jsx";
 import DashboardModuleView from "../components/dashboard/modules/DashboardModuleView.jsx";
-import CombatTrainingPlan from "../components/dashboard/modules/CombatTrainingPlan.jsx";
 import AdminRequestsPage from "../features/admin/AdminRequestsPage.jsx";
 import AdminUsersPage from "../features/admin/AdminUsersPage.jsx";
 import SubmissionEditRequestsPage from "../features/admin/SubmissionEditRequestsPage.jsx";
@@ -22,11 +21,11 @@ export default function AdminDashboard() {
   }, [dispatch, role, user?.role]);
 
   if (user?.role !== "admin") {
-    return <section className="dashboard-state error">Нет доступа к dashboard администратора.</section>;
+    return <section className="dashboard-state error">Администратордун башкаруу панелине кирүүгө уруксат жок.</section>;
   }
 
   if (loading && !data) {
-    return <section className="dashboard-state">Загрузка dashboard...</section>;
+    return <section className="dashboard-state">Башкаруу панели жүктөлүүдө...</section>;
   }
 
   if (error && !data) {
@@ -59,8 +58,6 @@ export default function AdminDashboard() {
           <SubmissionEditRequestsPage />
         ) : activeView === "users" ? (
           <AdminUsersPage />
-        ) : activeView === "drafts" ? (
-          <CombatTrainingPlan layout="draft" title="Черновик" user={user} />
         ) : (
           <DashboardModuleView
             activeModule={activeView}

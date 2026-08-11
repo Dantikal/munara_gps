@@ -18,11 +18,11 @@ export default function RegionalDashboard() {
   }, [data, dispatch, role, user?.role]);
 
   if (user?.role !== "regional") {
-    return <section className="dashboard-state error">Нет доступа к панели областного управления.</section>;
+    return <section className="dashboard-state error">Облустук башкаруу панелине кирүүгө уруксат жок.</section>;
   }
 
   if (loading && !data) {
-    return <section className="dashboard-state">Загрузка данных...</section>;
+    return <section className="dashboard-state">Маалымат жүктөлүүдө...</section>;
   }
 
   if (error && !data) {

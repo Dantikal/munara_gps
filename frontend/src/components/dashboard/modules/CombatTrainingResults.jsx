@@ -108,7 +108,7 @@ const ObservationMonthlySubmissionStatus = ({ submission, now }) => {
           isSubmitted ? "sent" : "missing"
         }`}
       >
-        {isSubmitted ? "Отправлено" : "Не отправлено"}
+        {isSubmitted ? "Аткарылды" : "Аткарылган эмес"}
       </span>
       <span className="results-monthly-countdown">
         До 29 числа: {formatObservationMonthlyCountdown(now)}
@@ -181,7 +181,7 @@ const InspectionReportingStatus = ({ submission, now }) => {
           isSubmitted ? "sent" : "missing"
         }`}
       >
-        {isSubmitted ? "Отправлено" : "Не заполнено"}
+        {isSubmitted ? "Аткарылды" : "Толтурулган эмес"}
       </span>
       <span className="results-cycle-countdown">
         До 1 {cycle.nextMonthLabel}: {formatInspectionCycleCountdown(now)}
@@ -218,9 +218,9 @@ const DEFAULT_TABLE_FOOTER = `Жалпы тапшыргандар: __ адам _
 
 const INSPECTION_SECOND_SUMMARY_FOOTER = `-
 
-- күжүрмөн даярдоо боюнча «эң жакшы» баа аттан бөлүкчө жана бөлүмчө - жок
+- күжүрмөн даярдоо боюнча «эң жакшы» баа алган бөлүкчө жана бөлүкчө - жок
 
-- күжүрмөн даярдоо боюнча «канааттандырарлык эмес» баа алган бөлүмчө – 1 бөлүмчө, бөлүмчө командири
+- күжүрмөн даярдоо боюнча «канааттандырарлык эмес» баа алган бөлүкчө – 1 бөлүкчө, бөлүкчө командири
 сержант Асанов А.А.`;
 
 const INSPECTION_BP_FIRST_FOOTER = `20___ аскер бөлүгүнүн ______ чаз башчысы
@@ -328,7 +328,7 @@ const createInspectionSummarySectionRow = (sectionTitle) => ({
 
 const createInspectionSummaryRows = () => [
   ...Array.from({ length: 5 }, (_, index) => createEmptyInspectionSummaryRow(index + 1)),
-  createInspectionSummarySectionRow("Чаз башкармалыгыүчүн:"),
+  createInspectionSummarySectionRow("Чаз башкармалыгы үчүн:"),
   ...Array.from({ length: 8 }, (_, index) => createEmptyInspectionSummaryRow(index + 6)),
   createInspectionSummarySectionRow("1-бөлүмчө үчүн:"),
   ...Array.from({ length: 8 }, (_, index) => createEmptyInspectionSummaryRow(index + 14)),
@@ -370,9 +370,9 @@ const inspectionSecondSummaryColumns = [
   { key: "satisfactory", label: "канат", width: 55 },
   { key: "unsatisfactory", label: "канат\nэмес", width: 60 },
   { key: "bestDetachment", label: "Эң жакшы\nбөлүк-\nчө", width: 70 },
-  { key: "bestDepartment", label: "Эң жакшы\nбөлүм-\nчө", width: 70 },
+  { key: "bestDepartment", label: "Эң жакшы\nбөлүк-\nчө", width: 70 },
   { key: "badDetachment", label: "Канат эмес\nбөлүк-\nчө", width: 70 },
-  { key: "badDepartment", label: "Канат эмес\nбөлүм-\nчө", width: 70 },
+  { key: "badDepartment", label: "Канат эмес\nбөлүк-\nчө", width: 70 },
   { key: "officer", label: "оф.", width: 50 },
   { key: "ensign", label: "пр-к", width: 55 },
   { key: "sergeant", label: "серж-\nнт", width: 58 },
@@ -411,12 +411,12 @@ const createCenteredSectionRow = (sectionTitle = "Негизги бөлүкчө�
 });
 
 const createInspectionSecondSummaryRows = () => [
-  createEmptyInspectionSecondSummaryRow("1.", "Башкар-к"),
+  createEmptyInspectionSecondSummaryRow("1.", "Башкар-лык"),
   createEmptyInspectionSecondSummaryRow("", "Баары:"),
   createCenteredSectionRow("Негизги бөлүкчөлөр"),
-  createEmptyInspectionSecondSummaryRow("1.", "1-бөлүмчө"),
-  createEmptyInspectionSecondSummaryRow("2.", "2-бөлүмчө"),
-  createEmptyInspectionSecondSummaryRow("3.", "3-бөлүмчө"),
+  createEmptyInspectionSecondSummaryRow("1.", "1-бөлүкчө"),
+  createEmptyInspectionSecondSummaryRow("2.", "2-бөлүкчө"),
+  createEmptyInspectionSecondSummaryRow("3.", "3-бөлүкчө"),
   createEmptyInspectionSecondSummaryRow("", "Баары:"),
   { ...createEmptyInspectionSecondSummaryRow("", "Жыйынтыгы:"), __isSummary: true },
 ];
@@ -449,9 +449,9 @@ const createInspectionSecondSummaryTable = (title, rows = createInspectionSecond
     ],
     [
       { key: "bestDetachment", label: "бөлүк-\nчө" },
-      { key: "bestDepartment", label: "бөлүм-\nчө" },
+      { key: "bestDepartment", label: "бөлүк-\nчө" },
       { key: "badDetachment", label: "бөлүк-\nчө" },
-      { key: "badDepartment", label: "бөлүм-\nчө" },
+      { key: "badDepartment", label: "бөлүк-\nчө" },
       { key: "officer", label: "оф." },
       { key: "ensign", label: "пр-к" },
       { key: "sergeant", label: "серж-\nнт" },
@@ -528,9 +528,9 @@ const createBpFirstSummaryRows = () => [
   createEmptyBpFirstSummaryRow("1.", "Башкар-дык"),
   createEmptyBpFirstSummaryRow("", "Баары:"),
   createCenteredSectionRow("Негизги бөлүкчөлөр"),
-  createEmptyBpFirstSummaryRow("1.", "1-бөлүмчө"),
-  createEmptyBpFirstSummaryRow("2.", "2-бөлүмчө"),
-  createEmptyBpFirstSummaryRow("3.", "3-бөлүмчө"),
+  createEmptyBpFirstSummaryRow("1.", "1-бөлүкчө"),
+  createEmptyBpFirstSummaryRow("2.", "2-бөлүкчө"),
+  createEmptyBpFirstSummaryRow("3.", "3-бөлүкчө"),
   createEmptyBpFirstSummaryRow("", "Баары:"),
   { ...createEmptyBpFirstSummaryRow("", "Жыйынтыгы:"), __isSummary: true },
 ];
@@ -550,7 +550,7 @@ const createBpFirstSummaryTable = (title, rows = createBpFirstSummaryRows()) => 
     ],
     [
       { key: "bestUnit", label: "Мыкты\nбөлүкчө", colSpan: 3 },
-      { key: "bestCalculation", label: "Мыкты\nэсеп,\nбөлүмчө", colSpan: 3 },
+      { key: "bestCalculation", label: "Мыкты\nэсеп,\nбөлүкчө", colSpan: 3 },
       { key: "bestPrepared", label: "Мыктылар", colSpan: 15 },
       { key: "classSpecialists", label: "Класстык\nадистер", colSpan: 3 },
       { key: "bestSportsmen", label: "Мыкты\nспортчу", colSpan: 3 },
@@ -657,7 +657,7 @@ const createPhysicalSectionRow = (sectionTitle) => ({
 
 const createPhysicalTrainingRows = () => [
   ...Array.from({ length: 5 }, (_, index) => createEmptyPhysicalRow(index + 1)),
-  createPhysicalSectionRow("Чаз башкармалыгыүчүн:"),
+  createPhysicalSectionRow("Чаз башкармалыгы үчүн:"),
   ...Array.from({ length: 8 }, (_, index) => createEmptyPhysicalRow(index + 6)),
   createPhysicalSectionRow("1-бөлүмчө үчүн:"),
   ...Array.from({ length: 8 }, (_, index) => createEmptyPhysicalRow(index + 14)),
@@ -729,7 +729,7 @@ const createShootingSectionRow = (sectionTitle) => ({
 
 const createShootingTrainingRows = () => [
   ...Array.from({ length: 5 }, (_, index) => createEmptyShootingRow(index + 1)),
-  createShootingSectionRow("Чаз башкармалыгыүчүн:"),
+  createShootingSectionRow("Чаз башкармалыгы үчүн:"),
   ...Array.from({ length: 8 }, (_, index) => createEmptyShootingRow(index + 6)),
   createShootingSectionRow("1-бөлүмчө үчүн:"),
   ...Array.from({ length: 8 }, (_, index) => createEmptyShootingRow(index + 14)),
@@ -1699,12 +1699,12 @@ export default function CombatTrainingResults({ data, user }) {
       sections: [
         {
           id: "observation-tpv",
-          title: "ТПВ",
+          title: "Чек ара аскерлеринин тактикасы",
           periods: [],
         },
         {
           id: "observation-ogp",
-          title: "ОГП",
+          title: "Коомдук мамлекеттик даярдоо",
           periods: [
             {
               id: "observation-ogp-period-1",
@@ -1713,7 +1713,7 @@ export default function CombatTrainingResults({ data, user }) {
                 title: "ОГП - 1-ай",
                 columns: [
                   { key: "number", label: "№" },
-                  { key: "date", label: "Дата", type: "date" },
+                  { key: "date", label: "Күнү", type: "date" },
                   { key: "topic", label: "Сабактын темасы" },
                   { key: "place", label: "Өткөрүлгөн жер" },
                   { key: "participants", label: "Катышкандар" },
@@ -1735,12 +1735,12 @@ export default function CombatTrainingResults({ data, user }) {
         },
         {
           id: "observation-fp",
-          title: "ФП",
+          title: "Дене-тарбия даярдыгы",
           periods: [],
         },
         {
           id: "observation-spec",
-          title: "СПЕЦ",
+          title: "Атайын даярдоо",
           periods: [
             {
               id: "observation-spec-period-1",
@@ -1749,7 +1749,7 @@ export default function CombatTrainingResults({ data, user }) {
                 title: "СПЕЦ - 1-ай",
                 columns: [
                   { key: "number", label: "№" },
-                  { key: "date", label: "Дата", type: "date" },
+                  { key: "date", label: "Күнү", type: "date" },
                   { key: "topic", label: "Сабактын темасы" },
                   { key: "place", label: "Өткөрүлгөн жер" },
                   { key: "participants", label: "Катышкандар" },
@@ -1771,7 +1771,7 @@ export default function CombatTrainingResults({ data, user }) {
         },
         {
           id: "observation-tp",
-          title: "ТП",
+          title: "Тактикалык даярдоо",
           periods: [
             {
               id: "observation-tp-period-1",
@@ -1780,7 +1780,7 @@ export default function CombatTrainingResults({ data, user }) {
                 title: "ТП - 1-ай",
                 columns: [
                   { key: "number", label: "№" },
-                  { key: "date", label: "Дата", type: "date" },
+                  { key: "date", label: "Күнү", type: "date" },
                   { key: "topic", label: "Сабактын темасы" },
                   { key: "place", label: "Өткөрүлгөн жер" },
                   { key: "participants", label: "Катышкандар" },
@@ -1802,17 +1802,17 @@ export default function CombatTrainingResults({ data, user }) {
         },
         {
           id: "observation-op",
-          title: "ОП",
+          title: "Ок атуу даярдыгы",
           periods: [],
         },
         {
           id: "observation-stp",
-          title: "СТП",
+          title: "Саптык даярдоо",
           periods: [],
         },
         {
           id: "observation-ovu",
-          title: "ОВУ",
+          title: "Жалпы аскердик устав",
           periods: [
             {
               id: "observation-ovu-period-1",
@@ -1821,7 +1821,7 @@ export default function CombatTrainingResults({ data, user }) {
                 title: "ОВУ - 1-ай",
                 columns: [
                   { key: "number", label: "№" },
-                  { key: "date", label: "Дата", type: "date" },
+                  { key: "date", label: "Күнү", type: "date" },
                   { key: "topic", label: "Сабактын темасы" },
                   { key: "place", label: "Өткөрүлгөн жер" },
                   { key: "participants", label: "Катышкандар" },
@@ -1843,7 +1843,7 @@ export default function CombatTrainingResults({ data, user }) {
         },
         {
           id: "observation-koj",
-          title: "КОЖ",
+          title: "Күжүрмөн ок атуу (БСО, БСГ)",
           periods: [],
         },
       ],
@@ -1854,18 +1854,18 @@ export default function CombatTrainingResults({ data, user }) {
       sections: [
         {
           id: "inspection-summary-1",
-          title: "Сводная ведомость за учебный год",
+          title: "Окуу жылына карата жыйынтык ведомосту",
           periods: [
             {
               id: "inspection-summary-1-period-1",
               title: "1-ай",
-              table: createInspectionSummaryTable("Сводная ведомость за учебный год"),
+              table: createInspectionSummaryTable("Окуу жылына карата жыйынтык ведомосту"),
             },
           ],
         },
         {
           id: "inspection-summary-2",
-          title: "Итоги БП за учебный год",
+          title: "Окуу жылына карата күжүрмөн даярдоонун жыйынтыгы",
           periods: [
             {
               id: "inspection-summary-2-period-1",
@@ -2829,7 +2829,7 @@ export default function CombatTrainingResults({ data, user }) {
                     onClick={() => setForwardingSubmission(submission)}
                     type="button"
                   >
-                    Отправить
+                    Жөнөтүү
                   </button>
                   <button
                     disabled={deletingResultSubmissionId === submission.id}
@@ -2890,7 +2890,7 @@ export default function CombatTrainingResults({ data, user }) {
                     ) : null}
                     {documentCount > 0 ? (
                       <span
-                        aria-label={`Документов: ${documentCount}`}
+                        aria-label={`Документтер: ${documentCount}`}
                         className="combat-journal-notification-badge"
                       >
                         {documentCount}
@@ -3117,11 +3117,11 @@ export default function CombatTrainingResults({ data, user }) {
                   )}
                 />
               ) : null}
-              <h3>Аскер бөлүгүнөн жөнөтүлгөн документтер</h3>
+              <h3>Аскер бөлүктөн жөнөтүлгөн документтер</h3>
               {adminMilitaryUnitSubmissions.length > 0 ? (
                 adminMilitaryUnitSubmissions.map(renderAdminSubmissionRow)
               ) : (
-                <p className="dashboard-state">Аскер бөлүгүнөн жөнөтүлгөн документтер азырынча жок.</p>
+                <p className="dashboard-state">Аскер бөлүктөн жөнөтүлгөн документтер азырынча жок.</p>
               )}
               <h3>Заставалар</h3>
               {adminOutpostNames.length > 0 ? (
@@ -3210,7 +3210,7 @@ export default function CombatTrainingResults({ data, user }) {
                   </button>
                 </div>
               </div>
-            )) : <p className="dashboard-state">Документов пока нет.</p>}
+            )) : <p className="dashboard-state">Документтер азырынча жок.</p>}
           </div>
         </div>
       ) : user?.role === "regional" && selectedSectionId === "inspection" && !selectedInspectionGroupId ? (
@@ -3289,8 +3289,8 @@ export default function CombatTrainingResults({ data, user }) {
             <div className="module-submission-list">
               <h3>
                 {user?.role === "outpost"
-                  ? "Заставадан аскер бөлүгүнө жөнөтүү"
-                  : "Аскер бөлүгүнөн администраторго жөнөтүү"}
+                  ? "Заставадан аскер бөлүккө жөнөтүү"
+                  : "Аскер бөлүктүн администраторго жөнөтүү"}
               </h3>
               <ObservationMonthlySubmissionStatus
                 now={observationStatusNow}
@@ -3366,7 +3366,7 @@ export default function CombatTrainingResults({ data, user }) {
             onChange={handleTitleChange}
             style={compactTitleStyle}
             rows={isBpPreparedSummary ? 4 : isCompactSummaryTable ? 2 : 3}
-            placeholder="Введите название таблицы..."
+            placeholder="Таблицанын аталышын жазыңыз..."
           />
           
           <div style={wordTableStyles.actionsContainer}>
@@ -3377,7 +3377,7 @@ export default function CombatTrainingResults({ data, user }) {
                 style={wordTableStyles.button}
                 type="button"
               >
-                ↶ Назад
+                ↶ Артка
               </button>
               <button
                 disabled={!resultsTableHistory.canRedo}
@@ -3385,7 +3385,7 @@ export default function CombatTrainingResults({ data, user }) {
                 style={wordTableStyles.button}
                 type="button"
               >
-                ↷ Вперёд
+                ↷ Алдыга
               </button>
               <button style={wordTableStyles.button} onClick={handleAddRow} type="button">
                 + Сап кошуу
@@ -3396,10 +3396,10 @@ export default function CombatTrainingResults({ data, user }) {
                 type="button"
                 disabled={getEditableDataRowIndexes().length === 0}
               >
-                - удалить строку
+                Сапты өчүрүү
               </button>
               <button style={wordTableStyles.button} onClick={handleSaveTable} type="button">
-                Сохранить
+                Сактоо
               </button>
               {!data?.hideResultSubmissionActions && (
                 user?.role === "outpost" ||
@@ -3416,11 +3416,11 @@ export default function CombatTrainingResults({ data, user }) {
                   style={{...wordTableStyles.button, ...wordTableStyles.buttonSecondary}}
                   type="button"
                 >
-                  Отправить
+                  Жөнөтүү
                 </button>
               )}
               <button style={{...wordTableStyles.button, ...wordTableStyles.buttonSecondary}} type="button">
-                Изменить
+                Өзгөртүү
               </button>
             </div>
             <div style={wordTableStyles.actionsRight}>
@@ -3680,7 +3680,7 @@ export default function CombatTrainingResults({ data, user }) {
                 style={wordTableStyles.button}
                 type="button"
               >
-                + Добавить колонку
+                + Мамычаны кошуу
               </button>
             </div>
           )}
@@ -3729,7 +3729,7 @@ export default function CombatTrainingResults({ data, user }) {
             {/* Кнопка "+ Создать" для всех разделов из списка sectionsWithCreate */}
             {sectionsWithCreate.includes(selectedSubsectionId) && (
               <button className="module-period-add-button" onClick={handleCreateDocument} type="button">
-                + Создать
+                + Кошуу
               </button>
             )}
           </div>
@@ -3803,7 +3803,7 @@ export default function CombatTrainingResults({ data, user }) {
                 Жокко чыгаруу
               </button>
               <button disabled={isSendingResult} type="submit">
-                {isSendingResult ? "Отправка..." : "Отправить"}
+                {isSendingResult ? "Жөнөтүлүүдө..." : "Жөнөтүү"}
               </button>
             </div>
           </form>
@@ -3816,7 +3816,7 @@ export default function CombatTrainingResults({ data, user }) {
             event.preventDefault();
             handleSaveDocument();
           }}>
-            <h2 id="create-dialog-title">Создать документ</h2>
+            <h2 id="create-dialog-title">Документ түзүү</h2>
             {selectedSubsectionId !== "observation-koj" && (
               <div className="lesson-period-dialog__field">
                 <label htmlFor="month-input">Ай:</label>
@@ -3903,7 +3903,7 @@ export default function CombatTrainingResults({ data, user }) {
           />
           <div style={wordTableStyles.dialog} role="dialog" aria-modal="true">
             <h2 style={wordTableStyles.dialogTitle}>
-              {rowActionDialog === "add" ? "Добавить строку" : "Удалить строку"}
+              {rowActionDialog === "add" ? "Сап кошуу" : "Сап өчүрүү"}
             </h2>
             <div>
               <label style={wordTableStyles.dialogLabel}>
@@ -3958,7 +3958,7 @@ export default function CombatTrainingResults({ data, user }) {
                 style={{...wordTableStyles.dialogButton, ...wordTableStyles.dialogButtonSecondary}}
                 type="button"
               >
-                Отмена
+                Жокко чыгаруу
               </button>
               <button
                 onClick={handleConfirmRowAction}
@@ -3968,7 +3968,7 @@ export default function CombatTrainingResults({ data, user }) {
                 }}
                 type="button"
               >
-                {rowActionDialog === "add" ? "Добавить" : "Удалить"}
+                {rowActionDialog === "add" ? "Кошуу" : "Өчүрүү"}
               </button>
             </div>
           </div>

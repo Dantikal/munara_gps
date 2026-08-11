@@ -1760,6 +1760,17 @@ button.module-section-card:focus-visible {
   width: auto;
 }
 
+.combat-news-editor__file-picker {
+  align-self: flex-start;
+  background: var(--primary);
+  border-radius: 5px;
+  color: #fff;
+  cursor: pointer;
+  display: inline-flex;
+  margin-top: 6px;
+  padding: 9px 14px;
+}
+
 @media (max-width: 640px) {
   .analysis-section-card {
     align-items: stretch;
@@ -2746,6 +2757,10 @@ button.module-section-card:focus-visible {
 .results-monthly-status--missing,
 .results-cycle-status--missing {
   background: #c43d3d;
+}
+
+.results-monthly-status.results-monthly-status--missing {
+  color: #ffffff;
 }
 
 .library-weekly-countdown,
