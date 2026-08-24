@@ -4,8 +4,10 @@ from django.db import migrations
 LESSON_SCHEDULE_SECTION_SLUGS = ("lesson-schedule", "command-lesson-schedule")
 
 
-def build_lesson_schedule_period_title(week_number, month="__________"):
-    return f'Сабактардын жүгүртмөсү "{month} "айынын {week_number} жумасы'
+def build_lesson_schedule_period_title(week_number, month=""):
+    if month:
+        return f'Сабактардын жүгүртмөсү "{month} "айынын {week_number} жумасы'
+    return f'Сабактардын жүгүртмөсү {week_number} жумасы'
 
 
 def update_lesson_schedule_period_title(apps, schema_editor):

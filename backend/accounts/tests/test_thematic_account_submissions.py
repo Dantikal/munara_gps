@@ -1,7 +1,12 @@
 from django.urls import reverse
 from rest_framework.test import APITestCase
 
-from accounts.models import CombatTrainingJournalRevision, User
+from accounts.models import (
+    CombatTrainingJournalRevision,
+    ThematicAccountSubmission,
+    TrainingPeriod,
+    User,
+)
 
 
 class ThematicAccountSubmissionApiTests(APITestCase):
@@ -56,6 +61,121 @@ class ThematicAccountSubmissionApiTests(APITestCase):
         self.assertEqual(response.data[0]["unitNumber"], "2021")
         self.assertEqual(response.data[0]["name"], self.outpost.outpost_name)
 
+    def test_admin_rating_orders_regional_units_by_submitted_document_count(self):
+        ThematicAccountSubmission.objects.bulk_create([
+            ThematicAccountSubmission(
+                sender=self.regional,
+                unit_number="2021",
+                document_title="2021 document 1",
+                section_slug="thematic-account",
+            ),
+            ThematicAccountSubmission(
+                sender=self.regional,
+                unit_number="2021",
+                document_title="2021 document 2",
+                section_slug="thematic-account",
+            ),
+            ThematicAccountSubmission(
+                sender=self.regional,
+                unit_number="2021",
+                document_title="2021 document 3",
+                section_slug="lesson-schedule",
+            ),
+            ThematicAccountSubmission(
+                sender=self.other_regional,
+                unit_number="2022",
+                document_title="2022 document 1",
+                section_slug="thematic-account",
+            ),
+            ThematicAccountSubmission(
+                sender=self.outpost,
+                unit_number="2021",
+                outpost_name=self.outpost.outpost_name,
+                document_title="2021 outpost document",
+                section_slug="lesson-schedule",
+            ),
+        ])
+        admin = User.objects.create_user(
+            username="rating-admin@example.com",
+            email="rating-admin@example.com",
+            password="test-password",
+            role=User.Role.ADMIN,
+            status=User.Status.ACTIVE,
+        )
+        self.client.force_authenticate(admin)
+
+        response = self.client.get(reverse("regional-unit-ratings"))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            [item["unitNumber"] for item in response.data["results"][:2]],
+            ["2021", "2022"],
+        )
+        self.assertEqual(response.data["results"][0]["totalDocuments"], 4)
+        self.assertEqual(response.data["results"][0]["regionalDocuments"], 3)
+        self.assertEqual(response.data["results"][0]["outpostDocuments"], 1)
+        self.assertEqual(response.data["results"][1]["totalDocuments"], 1)
+        self.assertEqual(response.data["results"][0]["rank"], 1)
+
+    def test_regional_rating_contains_only_own_outposts_ordered_by_documents(self):
+        second_outpost = User.objects.create_user(
+            username="rating-outpost-2@example.com",
+            email="rating-outpost-2@example.com",
+            password="test-password",
+            role=User.Role.OUTPOST,
+            status=User.Status.ACTIVE,
+            region="2021",
+            outpost_name="Ак-Суу",
+        )
+        foreign_outpost = User.objects.create_user(
+            username="rating-outpost-foreign@example.com",
+            email="rating-outpost-foreign@example.com",
+            password="test-password",
+            role=User.Role.OUTPOST,
+            status=User.Status.ACTIVE,
+            region="2022",
+            outpost_name="Чарбак",
+        )
+        ThematicAccountSubmission.objects.bulk_create([
+            ThematicAccountSubmission(
+                sender=self.outpost,
+                unit_number="2021",
+                outpost_name=self.outpost.outpost_name,
+                document_title="Leader 1",
+            ),
+            ThematicAccountSubmission(
+                sender=self.outpost,
+                unit_number="2021",
+                outpost_name=self.outpost.outpost_name,
+                document_title="Leader 2",
+            ),
+            ThematicAccountSubmission(
+                sender=second_outpost,
+                unit_number="2021",
+                outpost_name=second_outpost.outpost_name,
+                document_title="Second 1",
+            ),
+            ThematicAccountSubmission(
+                sender=foreign_outpost,
+                unit_number="2022",
+                outpost_name=foreign_outpost.outpost_name,
+                document_title="Foreign 1",
+            ),
+        ])
+        self.client.force_authenticate(self.regional)
+
+        response = self.client.get(reverse("outpost-ratings"))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            [item["outpostName"] for item in response.data["results"]],
+            [self.outpost.outpost_name, "Ак-Суу чек ара заставасы"],
+        )
+        self.assertEqual(
+            [item["totalDocuments"] for item in response.data["results"]],
+            [2, 1],
+        )
+
     def test_outpost_submission_is_visible_only_to_matching_unit(self):
         self.client.force_authenticate(self.outpost)
         response = self.client.post(
@@ -79,6 +199,131 @@ class ThematicAccountSubmissionApiTests(APITestCase):
         self.client.force_authenticate(self.other_regional)
         response = self.client.get(self.url)
         self.assertEqual(response.data, [])
+
+    def test_sender_hides_document_only_from_own_account(self):
+        submission = ThematicAccountSubmission.objects.create(
+            sender=self.outpost,
+            unit_number="2021",
+            outpost_name=self.outpost.outpost_name,
+            document_title="Жеке тизмеден өчүрүлүүчү документ",
+            section_slug="thematic-account",
+            table_data={"columns": [], "rows": []},
+        )
+        self.client.force_authenticate(self.outpost)
+
+        hide_response = self.client.post(
+            reverse("thematic-account-submission-hide", kwargs={"pk": submission.id})
+        )
+
+        self.assertEqual(hide_response.status_code, 204)
+        self.assertTrue(ThematicAccountSubmission.objects.filter(pk=submission.id).exists())
+        self.assertEqual(self.client.get(self.url).data, [])
+        self.assertEqual(
+            self.client.get(reverse("dashboard-outpost")).data["home"]["sentDocuments"],
+            0,
+        )
+
+        self.client.force_authenticate(self.regional)
+        regional_documents = self.client.get(self.url).data
+        self.assertEqual(len(regional_documents), 1)
+        self.assertEqual(regional_documents[0]["id"], submission.id)
+
+    def test_memo_letter_follows_outpost_regional_admin_route(self):
+        admin = User.objects.create_user(
+            username="memo-admin@example.com",
+            email="memo-admin@example.com",
+            password="test-password",
+            role=User.Role.ADMIN,
+            status=User.Status.ACTIVE,
+        )
+        payload = {
+            "documentTitle": "Заставанын билдирме каты",
+            "sectionId": "memo-letter",
+            "periodId": "memo-outpost-1",
+            "table": {"sectionId": "monthly-analysis", "document": {"body": "Кат"}},
+        }
+
+        self.client.force_authenticate(self.outpost)
+        response = self.client.post(self.url, payload, format="json")
+        self.assertEqual(response.status_code, 201)
+        outpost_registration_number = response.data["registrationNumber"]
+        self.assertEqual(outpost_registration_number, response.data["id"])
+        outpost_registration_code = response.data["registrationCode"]
+        self.assertRegex(
+            outpost_registration_code,
+            rf'^"\d{{2}}"\d{{2}}"\d{{4}}-ж \d{{2}}/{outpost_registration_number}$',
+        )
+
+        self.client.force_authenticate(self.regional)
+        response = self.client.get(self.url)
+        self.assertEqual([item["documentTitle"] for item in response.data], [payload["documentTitle"]])
+
+        self.client.force_authenticate(admin)
+        response = self.client.get(self.url)
+        self.assertEqual(response.data, [])
+
+        self.client.force_authenticate(self.regional)
+        response = self.client.post(
+            self.url,
+            {
+                **payload,
+                "documentTitle": "Аскер бөлүгүнүн билдирме каты",
+                "periodId": "memo-regional-1",
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, 201)
+        regional_registration_number = response.data["registrationNumber"]
+        self.assertNotEqual(regional_registration_number, outpost_registration_number)
+
+        self.client.force_authenticate(admin)
+        response = self.client.get(self.url)
+        self.assertEqual(len(response.data), 1)
+        self.assertEqual(response.data[0]["senderRole"], User.Role.REGIONAL)
+
+        response = self.client.get(
+            self.url,
+            {"registrationNumber": outpost_registration_code},
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(len(response.data), 1)
+        self.assertEqual(response.data[0]["documentTitle"], payload["documentTitle"])
+
+    def test_sending_user_created_thematic_document_moves_it_out_of_periods(self):
+        library_period_url = reverse("library-period-list")
+
+        for user, section_slug in (
+            (self.outpost, "thematic-account"),
+            (self.regional, "command-thematic-account"),
+        ):
+            self.client.force_authenticate(user)
+            period_response = self.client.post(
+                library_period_url,
+                {"section": section_slug, "title": "Document to send"},
+                format="json",
+            )
+            self.assertEqual(period_response.status_code, 201)
+            period_slug = period_response.data["id"]
+
+            submission_response = self.client.post(
+                self.url,
+                {
+                    "documentTitle": "Sent document",
+                    "sectionId": section_slug,
+                    "periodId": period_slug,
+                    "table": {"title": "Sent document", "columns": [], "rows": []},
+                },
+                format="json",
+            )
+
+            self.assertEqual(submission_response.status_code, 201)
+            self.assertFalse(
+                TrainingPeriod.objects.filter(
+                    section__slug=section_slug,
+                    slug=period_slug,
+                ).exists()
+            )
+            self.assertEqual(submission_response.data["periodId"], period_slug)
 
     def test_regional_opening_outpost_submission_marks_notification_as_read(self):
         self.client.force_authenticate(self.outpost)
@@ -302,6 +547,7 @@ class ThematicAccountSubmissionApiTests(APITestCase):
             "young-soldier-combat-training-journal",
             "young-soldier-observation",
             "young-soldier-analysis",
+            "memo-letter",
         ]
 
         for section_id in section_ids:
@@ -710,3 +956,59 @@ class ThematicAccountSubmissionApiTests(APITestCase):
         response = self.client.get(self.url)
         self.assertEqual(response.data[0]["editRequestStatus"], "approved")
         self.assertTrue(response.data[0]["canEdit"])
+
+        response = self.client.patch(
+            reverse("thematic-account-submission-detail", kwargs={"pk": submission_id}),
+            {
+                "documentTitle": "Corrected document",
+                "table": {
+                    "title": "Corrected table",
+                    "columns": [{"key": "topic", "label": "Topic"}],
+                    "rows": [{"topic": "Corrected value"}],
+                },
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data["documentTitle"], "Corrected document")
+        self.assertEqual(response.data["table"]["rows"][0]["topic"], "Corrected value")
+        self.assertFalse(response.data["canEdit"])
+        self.assertIsNone(response.data["editRequestStatus"])
+
+    def test_admin_can_delete_only_processed_edit_requests(self):
+        self.client.force_authenticate(self.outpost)
+        submission = self.client.post(
+            self.url,
+            {
+                "documentTitle": "Request to remove",
+                "sectionId": "thematic-account",
+                "periodId": "period-1",
+                "table": {"title": "Table", "columns": [], "rows": []},
+            },
+            format="json",
+        )
+        edit_request = self.client.post(
+            reverse("submission-edit-request-create", kwargs={"pk": submission.data["id"]}),
+            {},
+            format="json",
+        )
+        request_url = reverse(
+            "submission-edit-request-decision",
+            kwargs={"pk": edit_request.data["id"]},
+        )
+        admin = User.objects.create_user(
+            username="delete-edit-request-admin@example.com",
+            email="delete-edit-request-admin@example.com",
+            password="test-password",
+            role=User.Role.ADMIN,
+            status=User.Status.ACTIVE,
+        )
+        self.client.force_authenticate(admin)
+
+        self.assertEqual(self.client.delete(request_url).status_code, 400)
+        self.assertEqual(
+            self.client.patch(request_url, {"status": "rejected"}, format="json").status_code,
+            200,
+        )
+        self.assertEqual(self.client.delete(request_url).status_code, 204)
+        self.assertEqual(self.client.get(reverse("submission-edit-request-list")).data, [])

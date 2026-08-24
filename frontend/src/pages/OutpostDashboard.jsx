@@ -9,7 +9,7 @@ export default function OutpostDashboard() {
   const dispatch = useDispatch();
   const { user } = useSelector((state) => state.auth);
   const { data, loading, error, role } = useSelector((state) => state.dashboard);
-  const [activeView, setActiveView] = useState("library");
+  const [activeView, setActiveView] = useState("home");
 
   useEffect(() => {
     if (user?.role === "outpost" && role !== "outpost") {
@@ -48,7 +48,9 @@ export default function OutpostDashboard() {
       <section className="dashboard-content">
         <DashboardModuleView
           activeModule={activeView}
+          dashboardData={data}
           modules={data.modules}
+          onNavigate={setActiveView}
           onRefresh={refreshDashboard}
           user={user}
         />

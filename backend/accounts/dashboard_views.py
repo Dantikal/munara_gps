@@ -5,7 +5,7 @@ from pathlib import Path
 
 from django.contrib.auth import get_user_model
 from django.db import OperationalError, ProgrammingError, transaction
-from django.db.models import Case, IntegerField, Max, Q, Value, When
+from django.db.models import Case, Count, IntegerField, Max, Q, Value, When
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from rest_framework import status
@@ -28,14 +28,18 @@ from .models import (
     CombatTrainingPlanRead,
     MethodicalManualDocument,
     MethodicalManualSubject,
+    ModuleBanner,
+    ModuleBannerMedia,
+    ModuleTemplate,
     SubmissionEditRequest,
     TrainingPeriod,
     TrainingSection,
     TrainingTable,
     ThematicAccountSubmission,
+    ThematicAccountSubmissionHidden,
     ThematicAccountSubmissionRead,
 )
-from .permissions import IsActiveUser, IsAdminRole
+from .permissions import IsActiveUser, IsAdminOrRegionalRole, IsAdminRole, IsPrimaryAdmin
 from .outposts import format_outpost_name
 from .serializers import (
     CombatTrainingJournalSerializer,
@@ -46,6 +50,222 @@ from .serializers import (
 )
 
 User = get_user_model()
+
+MODULE_TEMPLATE_KEYS = {
+    "library",
+    "combatTrainingJournal",
+    "combatTrainingResults",
+    "meetings",
+    "youngSoldierTrainingCourse",
+    "combatTrainingAnalytics",
+    "smr",
+    "combatTrainingPlan",
+    "combatTrainingReport",
+    "contactAdmin",
+}
+MODULE_TEMPLATE_PRIMARY_ONLY_KEYS = {"combatTrainingJournal", "smr"}
+MODULE_TEMPLATE_MAX_SIZE = 50 * 1024 * 1024
+MODULE_TEMPLATE_ALLOWED_EXTENSIONS = {".pdf", ".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp"}
+MODULE_TEMPLATE_IMAGE_EXTENSIONS = MODULE_TEMPLATE_ALLOWED_EXTENSIONS - {".pdf"}
+
+MODULE_BANNER_KEYS = {"home"}
+MODULE_BANNER_IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp"}
+MODULE_BANNER_VIDEO_EXTENSIONS = {".mp4", ".webm", ".mov", ".m4v", ".ogv"}
+MODULE_BANNER_ALLOWED_EXTENSIONS = MODULE_BANNER_IMAGE_EXTENSIONS | MODULE_BANNER_VIDEO_EXTENSIONS
+MODULE_BANNER_MAX_SIZE = 100 * 1024 * 1024
+MODULE_BANNER_MAX_COUNT = 3
+MODULE_BANNER_MAX_MEDIA_COUNT = 10
+
+
+def module_template_payload(item, request):
+    extension = Path(item.file.name).suffix.lower()
+    return {
+        "id": item.id,
+        "moduleKey": item.module_key,
+        "title": item.title,
+        "fileUrl": request.build_absolute_uri(item.file.url),
+        "kind": "image" if extension in MODULE_TEMPLATE_IMAGE_EXTENSIONS else "pdf",
+        "uploadedBy": item.uploaded_by.full_name if item.uploaded_by else "",
+        "createdAt": item.created_at,
+    }
+
+
+def module_banner_payload(item, request):
+    files = [item.file, *(media.file for media in item.additional_media.all())]
+    media = [
+        {
+            "id": "primary" if index == 0 else item.additional_media.all()[index - 1].id,
+            "fileUrl": request.build_absolute_uri(stored_file.url),
+            "kind": "video" if Path(stored_file.name).suffix.lower() in MODULE_BANNER_VIDEO_EXTENSIONS else "image",
+        }
+        for index, stored_file in enumerate(files)
+    ]
+    return {
+        "id": item.id,
+        "moduleKey": item.module_key,
+        "title": item.title,
+        "description": item.description,
+        "fileUrl": media[0]["fileUrl"],
+        "kind": media[0]["kind"],
+        "media": media,
+        "uploadedBy": item.uploaded_by.full_name if item.uploaded_by else "",
+        "createdAt": item.created_at,
+    }
+
+
+class ModuleBannerListCreateView(APIView):
+    permission_classes = [IsActiveUser]
+
+    def get_module_key(self, request):
+        module_key = str(
+            request.query_params.get("moduleKey") or request.data.get("moduleKey") or ""
+        ).strip()
+        if module_key not in MODULE_BANNER_KEYS:
+            raise ValidationError({"moduleKey": "Белгисиз бөлүм."})
+        return module_key
+
+    def get(self, request):
+        module_key = self.get_module_key(request)
+        items = ModuleBanner.objects.filter(module_key=module_key).select_related("uploaded_by").prefetch_related("additional_media")
+        return Response([module_banner_payload(item, request) for item in items])
+
+    @transaction.atomic
+    def post(self, request):
+        if request.user.role != User.Role.ADMIN:
+            raise PermissionDenied("Баннерди администратор гана жарыялай алат.")
+
+        module_key = self.get_module_key(request)
+        if ModuleBanner.objects.filter(module_key=module_key).count() >= MODULE_BANNER_MAX_COUNT:
+            raise ValidationError({"moduleKey": "Бир бөлүмгө эң көп дегенде 3 баннер жарыялоого болот."})
+        uploaded_files = request.FILES.getlist("files") or request.FILES.getlist("file")
+        if not uploaded_files:
+            raise ValidationError({"file": "Сүрөт же видео тандаңыз."})
+        if len(uploaded_files) > MODULE_BANNER_MAX_MEDIA_COUNT:
+            raise ValidationError({"file": "Бир баннерге эң көп дегенде 10 файл кошууга болот."})
+        for uploaded_file in uploaded_files:
+            extension = Path(uploaded_file.name).suffix.lower()
+            if extension not in MODULE_BANNER_ALLOWED_EXTENSIONS:
+                raise ValidationError({"file": "JPG, PNG, GIF, WEBP, BMP, MP4, WEBM, MOV, M4V же OGV файлдарын жүктөңүз."})
+            if uploaded_file.size > MODULE_BANNER_MAX_SIZE:
+                raise ValidationError({"file": "Ар бир файлдын көлөмү 100 МБдан ашпашы керек."})
+
+        title = str(request.data.get("title") or "").strip()
+        description = str(request.data.get("description") or "").strip()
+        if not title:
+            raise ValidationError({"title": "Баннердин аталышын жазыңыз."})
+
+        item = ModuleBanner.objects.create(
+            module_key=module_key,
+            title=title[:255],
+            description=description,
+            file=uploaded_files[0],
+            uploaded_by=request.user,
+        )
+        ModuleBannerMedia.objects.bulk_create([
+            ModuleBannerMedia(banner=item, file=uploaded_file)
+            for uploaded_file in uploaded_files[1:]
+        ])
+        return Response(module_banner_payload(item, request), status=status.HTTP_201_CREATED)
+
+
+class ModuleBannerDetailView(APIView):
+    permission_classes = [IsAdminRole]
+
+    @transaction.atomic
+    def patch(self, request, pk):
+        item = get_object_or_404(ModuleBanner.objects.prefetch_related("additional_media"), pk=pk)
+        title = str(request.data.get("title", item.title)).strip()
+        description = str(request.data.get("description", item.description)).strip()
+        if not title:
+            raise ValidationError({"title": "Баннердин аталышын жазыңыз."})
+
+        uploaded_files = request.FILES.getlist("files") or request.FILES.getlist("file")
+        current_count = 1 + item.additional_media.count()
+        if current_count + len(uploaded_files) > MODULE_BANNER_MAX_MEDIA_COUNT:
+            raise ValidationError({"file": "Бир баннерге эң көп дегенде 10 файл кошууга болот."})
+        for uploaded_file in uploaded_files:
+            if Path(uploaded_file.name).suffix.lower() not in MODULE_BANNER_ALLOWED_EXTENSIONS:
+                raise ValidationError({"file": "Сүрөт же видео форматындагы файлды тандаңыз."})
+            if uploaded_file.size > MODULE_BANNER_MAX_SIZE:
+                raise ValidationError({"file": "Ар бир файлдын көлөмү 100 МБдан ашпашы керек."})
+
+        item.title = title[:255]
+        item.description = description
+        item.save(update_fields=("title", "description"))
+        ModuleBannerMedia.objects.bulk_create([
+            ModuleBannerMedia(banner=item, file=uploaded_file)
+            for uploaded_file in uploaded_files
+        ])
+        item = ModuleBanner.objects.select_related("uploaded_by").prefetch_related("additional_media").get(pk=item.pk)
+        return Response(module_banner_payload(item, request))
+
+    def delete(self, request, pk):
+        item = get_object_or_404(ModuleBanner.objects.prefetch_related("additional_media"), pk=pk)
+        stored_file = item.file
+        additional_files = [media.file for media in item.additional_media.all()]
+        item.delete()
+        if stored_file:
+            stored_file.delete(save=False)
+        for additional_file in additional_files:
+            additional_file.delete(save=False)
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+class ModuleTemplateListCreateView(APIView):
+    permission_classes = [IsActiveUser]
+
+    def get_module_key(self, request):
+        module_key = str(
+            request.query_params.get("moduleKey") or request.data.get("moduleKey") or ""
+        ).strip()
+        if module_key not in MODULE_TEMPLATE_KEYS:
+            raise ValidationError({"moduleKey": "Неизвестный раздел."})
+        return module_key
+
+    def get(self, request):
+        module_key = self.get_module_key(request)
+        items = ModuleTemplate.objects.filter(module_key=module_key).select_related("uploaded_by")
+        return Response([module_template_payload(item, request) for item in items])
+
+    def post(self, request):
+        if request.user.role != User.Role.ADMIN:
+            raise PermissionDenied("Загружать Үлгү может только администратор.")
+        module_key = self.get_module_key(request)
+        if module_key in MODULE_TEMPLATE_PRIMARY_ONLY_KEYS and not request.user.is_superuser:
+            raise PermissionDenied("В этот раздел загружать Үлгү может только главный администратор.")
+
+        uploaded_file = request.FILES.get("file")
+        if not uploaded_file:
+            raise ValidationError({"file": "Выберите PDF-файл или фотографию."})
+        if Path(uploaded_file.name).suffix.lower() not in MODULE_TEMPLATE_ALLOWED_EXTENSIONS:
+            raise ValidationError({"file": "Разрешены PDF и изображения JPG, PNG, GIF, WEBP или BMP."})
+        if uploaded_file.size > MODULE_TEMPLATE_MAX_SIZE:
+            raise ValidationError({"file": "Размер одного файла не должен превышать 50 МБ."})
+
+        title = str(request.data.get("title") or "").strip()
+        if not title:
+            raise ValidationError({"title": "Укажите название."})
+        item = ModuleTemplate.objects.create(
+            module_key=module_key,
+            title=title[:255],
+            file=uploaded_file,
+            uploaded_by=request.user,
+        )
+        return Response(module_template_payload(item, request), status=status.HTTP_201_CREATED)
+
+
+class ModuleTemplateDetailView(APIView):
+    permission_classes = [IsAdminRole]
+
+    def delete(self, request, pk):
+        item = get_object_or_404(ModuleTemplate, pk=pk)
+        if item.module_key in MODULE_TEMPLATE_PRIMARY_ONLY_KEYS and not request.user.is_superuser:
+            raise PermissionDenied("Удалять Үлгү из этого раздела может только главный администратор.")
+        stored_file = item.file
+        item.delete()
+        if stored_file:
+            stored_file.delete(save=False)
+        return Response(status=status.HTTP_204_NO_CONTENT)
 
 NORMATIVE_LEGAL_ACTS_TITLE = "Ченемдик укуктук актылар"
 
@@ -129,8 +349,10 @@ def build_command_thematic_account_table_title(period_number="___"):
     )
 
 
-def build_lesson_schedule_period_title(week_number, month="__________"):
-    return f'Сабактардын жүгүртмөсү "{month} "айынын {week_number} жумасы'
+def build_lesson_schedule_period_title(week_number, month=""):
+    if month:
+        return f'Сабактардын жүгүртмөсү "{month} "айынын {week_number} жумасы'
+    return f'Сабактардын жүгүртмөсү {week_number} жумасы'
 
 
 def normalize_thematic_account_title(title, is_command=False, period_number=None):
@@ -751,6 +973,47 @@ def latest_users(limit=5):
     ]
 
 
+def build_home_payload(user):
+    now = timezone.localtime()
+    month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    payload = {
+        "month": month_start.date().isoformat(),
+        "sentDocuments": ThematicAccountSubmission.objects.filter(
+            sender=user,
+            created_at__gte=month_start,
+        ).exclude(hidden_by__user=user).count(),
+    }
+    if user.role == User.Role.ADMIN:
+        payload["notifications"] = [
+            {
+                "id": "pendingUsers",
+                "label": "Катталууга жаңы өтүнмөлөр",
+                "count": User.objects.filter(status=User.Status.PENDING).count(),
+                "target": "requests",
+            },
+            {
+                "id": "editRequests",
+                "label": "Документти өзгөртүүгө уруксат сурамдары",
+                "count": SubmissionEditRequest.objects.filter(
+                    status=SubmissionEditRequest.Status.PENDING
+                ).count(),
+                "target": "submissionEditRequests",
+            },
+            {
+                "id": "unreadMessages",
+                "label": "Окулбаган билдирүүлөр",
+                "count": AdminChatMessage.objects.filter(
+                    recipient=user,
+                    is_read=False,
+                    deleted_by_recipient=False,
+                    deleted_for_everyone=False,
+                ).count(),
+                "target": "contactAdmin",
+            },
+        ]
+    return payload
+
+
 class AdminDashboardView(APIView):
     permission_classes = [IsAdminRole]
 
@@ -816,9 +1079,138 @@ class AdminDashboardView(APIView):
                     {"id": "requests", "label": "Проверить новые запросы", "count": pending_count, "target": "adminRequests"},
                     {"id": "export", "label": "Экспорт отчета", "count": None, "target": "export"},
                 ],
+                "home": build_home_payload(request.user),
                 "modules": build_modules_payload(request.user),
             }
         )
+
+
+class RegionalUnitRatingView(APIView):
+    permission_classes = [IsAdminRole]
+
+    def get(self, request):
+        unit_numbers = set(
+            User.objects.filter(
+                role=User.Role.REGIONAL,
+                status=User.Status.ACTIVE,
+            )
+            .exclude(region="")
+            .values_list("region", flat=True)
+        )
+        section_counts = ThematicAccountSubmission.objects.filter(
+            sender__role__in={User.Role.REGIONAL, User.Role.OUTPOST},
+        ).values("unit_number", "section_slug", "sender__role").annotate(count=Count("id"))
+
+        ratings = {
+            unit_number: {
+                "unitNumber": unit_number,
+                "totalDocuments": 0,
+                "regionalDocuments": 0,
+                "outpostDocuments": 0,
+                "sections": [],
+            }
+            for unit_number in unit_numbers
+        }
+        for item in section_counts:
+            unit_number = str(item["unit_number"] or "").strip()
+            if not unit_number:
+                continue
+            rating = ratings.setdefault(
+                unit_number,
+                {
+                    "unitNumber": unit_number,
+                    "totalDocuments": 0,
+                    "regionalDocuments": 0,
+                    "outpostDocuments": 0,
+                    "sections": [],
+                },
+            )
+            count = item["count"]
+            rating["totalDocuments"] += count
+            if item["sender__role"] == User.Role.REGIONAL:
+                rating["regionalDocuments"] += count
+            else:
+                rating["outpostDocuments"] += count
+            existing_section = next(
+                (
+                    section
+                    for section in rating["sections"]
+                    if section["sectionId"] == item["section_slug"]
+                ),
+                None,
+            )
+            if existing_section:
+                existing_section["count"] += count
+            else:
+                rating["sections"].append(
+                    {"sectionId": item["section_slug"], "count": count}
+                )
+
+        ordered_ratings = sorted(
+            ratings.values(),
+            key=lambda item: (-item["totalDocuments"], item["unitNumber"]),
+        )
+        for index, rating in enumerate(ordered_ratings, start=1):
+            rating["rank"] = index
+            rating["sections"].sort(key=lambda item: (-item["count"], item["sectionId"]))
+        return Response({"results": ordered_ratings})
+
+
+class OutpostRatingView(APIView):
+    permission_classes = [IsActiveUser]
+
+    def get(self, request):
+        if request.user.role != User.Role.REGIONAL:
+            raise PermissionDenied("Рейтинг аскер бөлүгүнө гана жеткиликтүү.")
+
+        outpost_names = {
+            format_outpost_name(name)
+            for name in User.objects.filter(
+                role=User.Role.OUTPOST,
+                status=User.Status.ACTIVE,
+                region=request.user.region,
+            )
+            .exclude(outpost_name="")
+            .values_list("outpost_name", flat=True)
+        }
+        section_counts = ThematicAccountSubmission.objects.filter(
+            sender__role=User.Role.OUTPOST,
+            unit_number=request.user.region,
+        ).values("outpost_name", "section_slug").annotate(count=Count("id"))
+
+        ratings = {
+            name: {
+                "outpostName": name,
+                "totalDocuments": 0,
+                "sections": [],
+            }
+            for name in outpost_names
+        }
+        for item in section_counts:
+            outpost_name = format_outpost_name(item["outpost_name"])
+            if not outpost_name:
+                continue
+            rating = ratings.setdefault(
+                outpost_name,
+                {
+                    "outpostName": outpost_name,
+                    "totalDocuments": 0,
+                    "sections": [],
+                },
+            )
+            rating["totalDocuments"] += item["count"]
+            rating["sections"].append(
+                {"sectionId": item["section_slug"], "count": item["count"]}
+            )
+
+        ordered_ratings = sorted(
+            ratings.values(),
+            key=lambda item: (-item["totalDocuments"], item["outpostName"]),
+        )
+        for index, rating in enumerate(ordered_ratings, start=1):
+            rating["rank"] = index
+            rating["sections"].sort(key=lambda item: (-item["count"], item["sectionId"]))
+        return Response({"results": ordered_ratings})
 
 
 class RegionalDashboardView(APIView):
@@ -883,6 +1275,7 @@ class RegionalDashboardView(APIView):
                     {"id": "summary", "label": "Просмотреть сводку по области"},
                     {"id": "notify", "label": "Отправить уведомление всем заставам"},
                 ],
+                "home": build_home_payload(request.user),
                 "modules": build_modules_payload(request.user),
             }
         )
@@ -962,6 +1355,7 @@ class OutpostDashboardView(APIView):
                     {"id": "journal", "label": "Добавить запись в журнал"},
                     {"id": "library", "label": "Сабактардын тематикасынын эсеби жана жүгүртмөсү"},
                 ],
+                "home": build_home_payload(request.user),
                 "modules": build_modules_payload(request.user),
             }
         )
@@ -982,6 +1376,15 @@ class MethodicalManualSubjectListCreateView(APIView):
         return Response(MethodicalManualSubjectSerializer(subjects, many=True).data)
 
     def post(self, request):
+        collection = request.data.get(
+            "collection",
+            MethodicalManualSubject.Collection.METHODICAL_MANUALS,
+        )
+        if (
+            collection == MethodicalManualSubject.Collection.METHODICAL_MANUALS
+            and not request.user.is_superuser
+        ):
+            raise PermissionDenied("Изменять методические пособия может только главный администратор.")
         serializer = MethodicalManualSubjectSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         subject = serializer.save()
@@ -999,6 +1402,11 @@ class MethodicalManualSubjectDetailView(APIView):
 
     def patch(self, request, pk):
         subject = self.get_object(pk)
+        if (
+            subject.collection == MethodicalManualSubject.Collection.METHODICAL_MANUALS
+            and not request.user.is_superuser
+        ):
+            raise PermissionDenied("Изменять методические пособия может только главный администратор.")
         serializer = MethodicalManualSubjectSerializer(
             subject,
             data=request.data,
@@ -1010,6 +1418,11 @@ class MethodicalManualSubjectDetailView(APIView):
 
     def delete(self, request, pk):
         subject = self.get_object(pk)
+        if (
+            subject.collection == MethodicalManualSubject.Collection.METHODICAL_MANUALS
+            and not request.user.is_superuser
+        ):
+            raise PermissionDenied("Изменять методические пособия может только главный администратор.")
         subject.delete()
         return Response(status=204)
 
@@ -1036,6 +1449,11 @@ class MethodicalManualDocumentListCreateView(APIView):
 
     def post(self, request, subject_pk):
         subject = self.get_subject(subject_pk)
+        if (
+            subject.collection == MethodicalManualSubject.Collection.METHODICAL_MANUALS
+            and not request.user.is_superuser
+        ):
+            raise PermissionDenied("Изменять методические пособия может только главный администратор.")
         serializer = MethodicalManualDocumentSerializer(
             data=request.data,
             context={"request": request},
@@ -1060,6 +1478,11 @@ class MethodicalManualDocumentDetailView(APIView):
             pk=pk,
             subject_id=subject_pk,
         )
+        if (
+            document.subject.collection == MethodicalManualSubject.Collection.METHODICAL_MANUALS
+            and not request.user.is_superuser
+        ):
+            raise PermissionDenied("Изменять методические пособия может только главный администратор.")
         stored_file = document.file
         document.delete()
         if stored_file:
@@ -1115,14 +1538,31 @@ def create_news_attachments(news, files):
         )
 
 
+def visible_combat_training_news(user):
+    news_items = CombatTrainingNews.objects.all()
+    if user.role == User.Role.ADMIN or user.is_superuser:
+        return news_items
+
+    visibility = Q(author__isnull=True) | Q(author__role=User.Role.ADMIN)
+    unit_number = str(user.region or "").strip()
+    if unit_number:
+        visibility |= Q(
+            author__role=User.Role.REGIONAL,
+            author__region=unit_number,
+        )
+    elif user.role == User.Role.REGIONAL:
+        visibility |= Q(author=user)
+    return news_items.filter(visibility)
+
+
 class CombatTrainingNewsListCreateView(APIView):
     def get_permissions(self):
         if self.request.method == "GET":
             return [IsActiveUser()]
-        return [IsAdminRole()]
+        return [IsAdminOrRegionalRole()]
 
     def get(self, request):
-        news_items = CombatTrainingNews.objects.select_related("author").prefetch_related(
+        news_items = visible_combat_training_news(request.user).select_related("author").prefetch_related(
             "attachments", "likes"
         )
         serializer = CombatTrainingNewsSerializer(
@@ -1157,13 +1597,16 @@ class CombatTrainingNewsListCreateView(APIView):
 
 
 class CombatTrainingNewsDetailView(APIView):
-    permission_classes = [IsAdminRole]
+    permission_classes = [IsAdminOrRegionalRole]
 
-    def get_object(self, pk):
-        return get_object_or_404(CombatTrainingNews, pk=pk)
+    def get_object(self, request, pk):
+        news = get_object_or_404(CombatTrainingNews, pk=pk)
+        if request.user.role == User.Role.REGIONAL and news.author_id != request.user.id:
+            raise PermissionDenied("Башка колдонуучунун жарыясын өзгөртүүгө укук жок.")
+        return news
 
     def patch(self, request, pk):
-        news = self.get_object(pk)
+        news = self.get_object(request, pk)
         files = request.FILES.getlist("files")
         validate_news_files(files)
         title = str(request.data.get("title", news.title)).strip()
@@ -1199,7 +1642,7 @@ class CombatTrainingNewsDetailView(APIView):
         )
 
     def delete(self, request, pk):
-        news = self.get_object(pk)
+        news = self.get_object(request, pk)
         stored_files = [attachment.file for attachment in news.attachments.all()]
         news.delete()
         for stored_file in stored_files:
@@ -1212,7 +1655,7 @@ class CombatTrainingNewsLikeView(APIView):
     permission_classes = [IsActiveUser]
 
     def post(self, request, pk):
-        news = get_object_or_404(CombatTrainingNews, pk=pk)
+        news = get_object_or_404(visible_combat_training_news(request.user), pk=pk)
         like, created = CombatTrainingNewsLike.objects.get_or_create(
             news=news,
             user=request.user,
@@ -1229,7 +1672,7 @@ class CombatTrainingNewsUnreadCountView(APIView):
     permission_classes = [IsActiveUser]
 
     def get(self, request):
-        unread_count = CombatTrainingNews.objects.filter(
+        unread_count = visible_combat_training_news(request.user).filter(
             created_at__gte=request.user.date_joined,
         ).exclude(reads__user=request.user).count()
         return Response({"unreadCount": unread_count})
@@ -1239,7 +1682,7 @@ class CombatTrainingNewsReadAllView(APIView):
     permission_classes = [IsActiveUser]
 
     def post(self, request):
-        unread_ids = CombatTrainingNews.objects.filter(
+        unread_ids = visible_combat_training_news(request.user).filter(
             created_at__gte=request.user.date_joined,
         ).exclude(reads__user=request.user).values_list("id", flat=True)
         CombatTrainingNewsRead.objects.bulk_create(
@@ -1315,8 +1758,8 @@ class CombatTrainingJournalSubjectListCreateView(APIView):
         return Response(CombatTrainingJournalSubjectSerializer(subjects, many=True).data)
 
     def post(self, request):
-        if request.user.role != User.Role.ADMIN:
-            raise PermissionDenied("Добавлять предметы может только администратор.")
+        if not request.user.is_superuser:
+            raise PermissionDenied("Добавлять предметы может только главный администратор.")
         serializer = CombatTrainingJournalSubjectSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         subject = serializer.save()
@@ -1327,7 +1770,7 @@ class CombatTrainingJournalSubjectListCreateView(APIView):
 
 
 class CombatTrainingJournalSubjectDetailView(APIView):
-    permission_classes = [IsAdminRole]
+    permission_classes = [IsPrimaryAdmin]
 
     def get_object(self, pk):
         return get_object_or_404(CombatTrainingJournalSubject, pk=pk)
@@ -1512,8 +1955,15 @@ def thematic_submission_payload(submission, viewing_user=None):
         edit_request = submission.edit_request
     except SubmissionEditRequest.DoesNotExist:
         edit_request = None
+    submitted_at = timezone.localtime(submission.created_at)
+    registration_code = (
+        f'"{submitted_at.day:02d}"{submitted_at.month:02d}"{submitted_at.year}-ж '
+        f'{submitted_at.month:02d}/{submission.id}'
+    )
     payload = {
         "id": submission.id,
+        "registrationNumber": submission.id,
+        "registrationCode": registration_code,
         "senderId": submission.sender_id,
         "senderRole": submission.sender.role,
         "documentTitle": submission.document_title,
@@ -1583,18 +2033,42 @@ class ThematicAccountSubmissionListCreateView(APIView):
             "revisions__reads",
             "revisions__hidden_by",
         )
+        registration_number = str(
+            request.query_params.get("registrationNumber") or ""
+        ).strip()
+        if registration_number:
+            if request.user.role != User.Role.ADMIN:
+                raise PermissionDenied("Каттоо номери боюнча издөөгө укук жок.")
+            registration_match = re.search(r"(?:^|/)(\d+)$", registration_number)
+            if not registration_match:
+                raise ValidationError({"registrationNumber": "Каттоо номери туура эмес."})
+            submissions = submissions.filter(pk=int(registration_match.group(1)))
+            return Response([
+                thematic_submission_payload(item, request.user)
+                for item in submissions
+            ])
+
         if request.user.role == User.Role.OUTPOST:
             submissions = submissions.filter(sender=request.user)
         elif request.user.role == User.Role.REGIONAL:
             submissions = submissions.filter(unit_number=request.user.region)
+        elif request.user.role == User.Role.ADMIN:
+            # Заставанын билдирме каты алгач өзүнүн аскер бөлүгүнө гана түшөт.
+            submissions = submissions.exclude(
+                section_slug="memo-letter",
+                sender__role=User.Role.OUTPOST,
+            )
         elif request.user.role != User.Role.ADMIN:
             raise PermissionDenied("Нет доступа к отправленным документам.")
+
+        submissions = submissions.exclude(hidden_by__user=request.user)
 
         return Response([
             thematic_submission_payload(item, request.user)
             for item in submissions
         ])
 
+    @transaction.atomic
     def post(self, request):
         document_title = str(request.data.get("documentTitle") or "").strip()
         section_slug = str(request.data.get("sectionId") or "").strip()
@@ -1630,6 +2104,7 @@ class ThematicAccountSubmissionListCreateView(APIView):
             "young-soldier-combat-training-journal",
             "young-soldier-observation",
             "young-soldier-analysis",
+            "memo-letter",
         }:
             errors["sectionId"] = "Отправляемый раздел указан неверно."
         if not request.user.region:
@@ -1715,6 +2190,12 @@ class ThematicAccountSubmissionListCreateView(APIView):
                 document_title=document_title,
                 table_data=copy.deepcopy(table_data),
             )
+        if section_slug in THEMATIC_ACCOUNT_SECTION_SLUGS and period_slug:
+            TrainingPeriod.objects.filter(
+                section__slug=section_slug,
+                slug=period_slug,
+                created_by=request.user,
+            ).delete()
         return Response(
             thematic_submission_payload(submission, request.user),
             status=201 if created else 200,
@@ -1724,11 +2205,42 @@ class ThematicAccountSubmissionListCreateView(APIView):
 class ThematicAccountSubmissionDetailView(APIView):
     permission_classes = [IsActiveUser]
 
+    @transaction.atomic
     def patch(self, request, pk):
         submission = get_object_or_404(
             ThematicAccountSubmission.objects.select_related("sender").prefetch_related("reads"),
             pk=pk,
         )
+        is_sender = (
+            request.user.role in {User.Role.OUTPOST, User.Role.REGIONAL}
+            and submission.sender_id == request.user.id
+        )
+        approved_edit_request = SubmissionEditRequest.objects.filter(
+            submission=submission,
+            requester=request.user,
+            status=SubmissionEditRequest.Status.APPROVED,
+        ).first()
+        if is_sender and approved_edit_request:
+            table_data = request.data.get("table")
+            document_title = str(
+                request.data.get("documentTitle") or submission.document_title
+            ).strip()
+            errors = {}
+            if not document_title:
+                errors["documentTitle"] = "Укажите название документа."
+            if not isinstance(table_data, dict):
+                errors["table"] = "Данные таблицы указаны неверно."
+            if errors:
+                raise ValidationError(errors)
+
+            submission.document_title = document_title
+            submission.table_data = table_data
+            submission.save(update_fields=("document_title", "table_data", "updated_at"))
+            submission.reads.all().delete()
+            approved_edit_request.delete()
+            submission._prefetched_objects_cache.pop("reads", None)
+            return Response(thematic_submission_payload(submission, request.user))
+
         is_matching_regional_unit = (
             request.user.role == User.Role.REGIONAL
             and submission.sender.role == User.Role.OUTPOST
@@ -1779,6 +2291,24 @@ class ThematicAccountSubmissionDetailView(APIView):
 
         submission.delete()
         return Response(status=204)
+
+
+class ThematicAccountSubmissionHideView(APIView):
+    permission_classes = [IsActiveUser]
+
+    def post(self, request, pk):
+        submission = get_object_or_404(ThematicAccountSubmission, pk=pk)
+        if (
+            request.user.role not in {User.Role.OUTPOST, User.Role.REGIONAL}
+            or submission.sender_id != request.user.id
+        ):
+            raise PermissionDenied("Өзүңүз жөнөткөн документти гана тизмеден өчүрө аласыз.")
+
+        ThematicAccountSubmissionHidden.objects.get_or_create(
+            submission=submission,
+            user=request.user,
+        )
+        return Response(status=status.HTTP_204_NO_CONTENT)
 
 
 class CombatTrainingJournalRevisionDetailView(APIView):
@@ -1918,6 +2448,13 @@ class SubmissionEditRequestDecisionView(APIView):
         item.save(update_fields=["status", "reviewed_by", "reviewed_at", "updated_at"])
         return Response(submission_edit_request_payload(item))
 
+    def delete(self, request, pk):
+        item = get_object_or_404(SubmissionEditRequest, pk=pk)
+        if item.status == SubmissionEditRequest.Status.PENDING:
+            raise ValidationError({"detail": "Адегенде сурамга уруксат бериңиз же четке кагыңыз."})
+        item.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
 
 class LessonSchedulePeriodListCreateView(APIView):
     permission_classes = [IsActiveUser]
@@ -2029,7 +2566,7 @@ class LessonSchedulePeriodDetailView(APIView):
         can_delete = (
             request.user.role == User.Role.ADMIN
             or period.created_by_id == request.user.id
-            or (request.user.role == User.Role.OUTPOST and is_legacy_custom_period)
+            or request.user.role == User.Role.OUTPOST
         )
         if not can_delete:
             raise PermissionDenied("Можно удалить только добавленную вами неделю.")

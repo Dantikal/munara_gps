@@ -39,6 +39,9 @@ export default function SMR({
   );
   const [activeDocument, setActiveDocument] = useState(null);
   const isAdmin = user?.role === "admin";
+  const canManage = isAdmin && (
+    collection !== DEFAULT_COLLECTION || Boolean(user?.is_superuser)
+  );
 
   useEffect(() => {
     setSubjects(data?.subjects || []);
@@ -387,7 +390,7 @@ export default function SMR({
         </header>
 
         <>
-            {isAdmin && (
+            {canManage && (
               <div className="methodical-document-toolbar">
                 <button onClick={() => setIsCreateDialogOpen(true)} type="button">
                   Кошуу
@@ -423,7 +426,7 @@ export default function SMR({
                       >
                         Жүктөп алуу
                       </button>
-                      {isAdmin && (
+                      {canManage && (
                         <button
                           className="methodical-document-delete"
                           disabled={isSubmitting}
@@ -520,7 +523,7 @@ export default function SMR({
         <h1>{data?.title || SECTION_TITLE}</h1>
       </header>
 
-      {isAdmin && (
+      {canManage && (
         <form className="methodical-subject-form" onSubmit={handleCreate}>
           <label>
             Предметтин аталышы
@@ -562,7 +565,7 @@ export default function SMR({
                   </button>
                 )}
 
-                {isAdmin && (
+                {canManage && (
                   <div className="methodical-subject-actions">
                     {isEditing ? (
                       <>

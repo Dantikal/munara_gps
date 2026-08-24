@@ -83,8 +83,10 @@ export const deleteLibraryPeriod = async (sectionId, periodId) => {
   await api.delete(`/dashboard/library-periods/${sectionId}/${periodId}/`);
 };
 
-export const getThematicAccountSubmissions = async () => {
-  const { data } = await api.get("/dashboard/thematic-account-submissions/");
+export const getThematicAccountSubmissions = async (registrationNumber) => {
+  const { data } = await api.get("/dashboard/thematic-account-submissions/", {
+    params: registrationNumber ? { registrationNumber } : undefined,
+  });
   return data;
 };
 
@@ -103,6 +105,11 @@ export const getCombatTrainingJournalOutposts = async () => {
 
 export const createThematicAccountSubmission = async (payload) => {
   const { data } = await api.post("/dashboard/thematic-account-submissions/", payload);
+  return data;
+};
+
+export const updateThematicAccountSubmission = async (id, payload) => {
+  const { data } = await api.patch(`/dashboard/thematic-account-submissions/${id}/`, payload);
   return data;
 };
 
@@ -146,6 +153,14 @@ export const getSubmissionEditRequests = async () => {
 export const decideSubmissionEditRequest = async (id, status) => {
   const { data } = await api.patch(`/dashboard/submission-edit-requests/${id}/`, { status });
   return data;
+};
+
+export const hideThematicAccountSubmission = async (id) => {
+  await api.post(`/dashboard/thematic-account-submissions/${id}/hide/`);
+};
+
+export const deleteSubmissionEditRequest = async (id) => {
+  await api.delete(`/dashboard/submission-edit-requests/${id}/`);
 };
 
 export const getCombatTrainingPlans = async (layout = "plan") => {
@@ -288,4 +303,60 @@ export const deleteAdminChatMessage = async (id, mode) => {
 export const getScopedUsers = async () => {
   const { data } = await api.get("/auth/users/");
   return data;
+};
+
+export const getModuleTemplates = async (moduleKey) => {
+  const { data } = await api.get("/dashboard/module-templates/", {
+    params: { moduleKey },
+  });
+  return data;
+};
+
+export const getRegionalUnitRatings = async () => {
+  const { data } = await api.get("/dashboard/admin/regional-unit-ratings/");
+  return data.results || [];
+};
+
+export const getOutpostRatings = async () => {
+  const { data } = await api.get("/dashboard/regional/outpost-ratings/");
+  return data.results || [];
+};
+
+export const createOutpostBroadcastMessage = async (payload) => {
+  const { data } = await api.post("/auth/chat/broadcast/outposts/", payload);
+  return data;
+};
+
+export const deleteAdminChatConversation = async (partnerId) => {
+  await api.delete(`/auth/chat/conversations/${partnerId}/`);
+};
+
+export const createModuleTemplate = async (payload) => {
+  const { data } = await api.post("/dashboard/module-templates/", payload);
+  return data;
+};
+
+export const deleteModuleTemplate = async (id) => {
+  await api.delete(`/dashboard/module-templates/${id}/`);
+};
+
+export const getModuleBanners = async (moduleKey) => {
+  const { data } = await api.get("/dashboard/module-banners/", {
+    params: { moduleKey },
+  });
+  return data;
+};
+
+export const createModuleBanner = async (payload) => {
+  const { data } = await api.post("/dashboard/module-banners/", payload);
+  return data;
+};
+
+export const updateModuleBanner = async (id, payload) => {
+  const { data } = await api.patch(`/dashboard/module-banners/${id}/`, payload);
+  return data;
+};
+
+export const deleteModuleBanner = async (id) => {
+  await api.delete(`/dashboard/module-banners/${id}/`);
 };

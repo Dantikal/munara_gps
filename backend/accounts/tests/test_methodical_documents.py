@@ -39,18 +39,23 @@ class MethodicalManualDocumentApiTests(APITestCase):
         super().tearDownClass()
 
     def setUp(self):
-        self.admin = User.objects.create_user(
+        self.admin = User.objects.create_superuser(
             username="admin@example.com",
             email="admin@example.com",
             password="test-password",
-            role=User.Role.ADMIN,
-            status=User.Status.ACTIVE,
         )
         self.user = User.objects.create_user(
             username="user@example.com",
             email="user@example.com",
             password="test-password",
             role=User.Role.OUTPOST,
+            status=User.Status.ACTIVE,
+        )
+        self.limited_admin = User.objects.create_user(
+            username="limited-admin@example.com",
+            email="limited-admin@example.com",
+            password="test-password",
+            role=User.Role.ADMIN,
             status=User.Status.ACTIVE,
         )
         self.subject = MethodicalManualSubject.objects.create(
@@ -60,6 +65,18 @@ class MethodicalManualDocumentApiTests(APITestCase):
             "methodical-document-list",
             kwargs={"subject_pk": self.subject.pk},
         )
+
+    def test_limited_admin_can_view_but_cannot_create_methodical_material(self):
+        self.client.force_authenticate(self.limited_admin)
+
+        self.assertEqual(self.client.get(self.url).status_code, 200)
+        response = self.client.post(
+            self.url,
+            {"title": "Forbidden material", "content": "content"},
+            format="multipart",
+        )
+
+        self.assertEqual(response.status_code, 403)
 
     def test_admin_uploads_docx_and_active_user_views_preview(self):
         self.client.force_authenticate(self.admin)

@@ -1,3 +1,4 @@
+from datetime import timedelta
 from pathlib import Path
 
 from django.contrib.auth import get_user_model
@@ -58,9 +59,11 @@ class UserPublicSerializer(serializers.ModelSerializer):
             "outpost_name",
             "role",
             "status",
+            "is_superuser",
             "avatar",
             "photo_face",
             "rejection_reason",
+            "profile_completed",
             "reviewed_at",
             "unreadChatCount",
             "date_joined",
@@ -71,6 +74,8 @@ class UserPublicSerializer(serializers.ModelSerializer):
 class AdminUserSerializer(serializers.ModelSerializer):
     avatar = serializers.ImageField(read_only=True)
     photo_face = serializers.ImageField(required=False)
+    lastSeen = serializers.DateTimeField(source="last_login", read_only=True)
+    isOnline = serializers.SerializerMethodField()
     password = serializers.CharField(
         write_only=True, required=False, allow_blank=True, min_length=8
     )
@@ -95,11 +100,21 @@ class AdminUserSerializer(serializers.ModelSerializer):
             "outpost_name",
             "role",
             "status",
+            "is_superuser",
             "avatar",
             "photo_face",
+            "profile_completed",
             "date_joined",
+            "lastSeen",
+            "isOnline",
         ]
-        read_only_fields = ["id", "username", "date_joined"]
+        read_only_fields = ["id", "username", "is_superuser", "profile_completed", "date_joined", "lastSeen", "isOnline"]
+
+    def get_isOnline(self, obj):
+        return bool(
+            obj.last_login
+            and timezone.now() - obj.last_login <= timedelta(minutes=2)
+        )
 
     def validate_email(self, value):
         email = value.lower().strip()
@@ -338,6 +353,7 @@ class CombatTrainingNewsAttachmentSerializer(serializers.ModelSerializer):
 
 class CombatTrainingNewsSerializer(serializers.ModelSerializer):
     attachments = CombatTrainingNewsAttachmentSerializer(many=True, read_only=True)
+    authorId = serializers.IntegerField(source="author_id", read_only=True)
     authorName = serializers.SerializerMethodField()
     createdAt = serializers.DateTimeField(source="created_at")
     updatedAt = serializers.DateTimeField(source="updated_at")
@@ -351,6 +367,7 @@ class CombatTrainingNewsSerializer(serializers.ModelSerializer):
             "title",
             "body",
             "attachments",
+            "authorId",
             "authorName",
             "createdAt",
             "updatedAt",
@@ -361,7 +378,12 @@ class CombatTrainingNewsSerializer(serializers.ModelSerializer):
     def get_authorName(self, news):
         if not news.author:
             return "Администратор"
-        return news.author.full_name or news.author.email or "Администратор"
+        if news.author.role == news.author.Role.ADMIN:
+            return "Администратор"
+        if news.author.role == news.author.Role.REGIONAL:
+            unit_number = str(news.author.region or "").strip()
+            return f"Аскер бөлүгү {unit_number}".strip()
+        return news.author.full_name or news.author.email
 
     def get_likeCount(self, news):
         return news.likes.count()
@@ -449,6 +471,8 @@ class AdminChatMessageSerializer(serializers.ModelSerializer):
     isDeletedForEveryone = serializers.BooleanField(
         source="deleted_for_everyone", read_only=True
     )
+    isBroadcast = serializers.BooleanField(source="is_broadcast", read_only=True)
+    broadcastId = serializers.UUIDField(source="broadcast_id", read_only=True)
 
     class Meta:
         model = AdminChatMessage
@@ -465,6 +489,8 @@ class AdminChatMessageSerializer(serializers.ModelSerializer):
             "createdAt",
             "isRead",
             "isDeletedForEveryone",
+            "isBroadcast",
+            "broadcastId",
         ]
         read_only_fields = [
             "id",
@@ -474,6 +500,8 @@ class AdminChatMessageSerializer(serializers.ModelSerializer):
             "attachment_name",
             "isRead",
             "isDeletedForEveryone",
+            "isBroadcast",
+            "broadcastId",
         ]
 
     def to_representation(self, instance):
@@ -504,12 +532,21 @@ class AdminChatMessageSerializer(serializers.ModelSerializer):
 
             is_allowed = False
             if request_user.role == User.Role.ADMIN:
-                is_allowed = recipient.role == User.Role.REGIONAL
+                is_allowed = recipient.role in {User.Role.REGIONAL, User.Role.OUTPOST}
             elif request_user.role == User.Role.OUTPOST:
-                is_allowed = (
+                is_matching_regional = (
                     recipient.role == User.Role.REGIONAL
                     and recipient.region == request_user.region
                 )
+                admin_started_chat = (
+                    recipient.role == User.Role.ADMIN
+                    and AdminChatMessage.objects.filter(
+                        sender=recipient,
+                        recipient=request_user,
+                        is_broadcast=False,
+                    ).exists()
+                )
+                is_allowed = is_matching_regional or admin_started_chat
             elif request_user.role == User.Role.REGIONAL:
                 is_allowed = recipient.role == User.Role.ADMIN or (
                     recipient.role == User.Role.OUTPOST
@@ -561,10 +598,134 @@ class AdminChatUserSerializer(serializers.ModelSerializer):
 
 class ProfileUpdateSerializer(serializers.ModelSerializer):
     photo_face = serializers.ImageField(required=False)
+    password = serializers.CharField(write_only=True, required=False, allow_blank=True, min_length=8)
+    complete_profile = serializers.BooleanField(write_only=True, required=False, default=False)
+    phone = serializers.CharField(required=False, allow_blank=True, validators=[phone_validator])
+    unit_type = serializers.ChoiceField(choices=User.UnitType.choices, required=False)
 
     class Meta:
         model = User
-        fields = ["photo_face"]
+        fields = [
+            "email",
+            "password",
+            "full_name",
+            "military_rank",
+            "position",
+            "unit_type",
+            "phone",
+            "region",
+            "outpost_name",
+            "photo_face",
+            "complete_profile",
+        ]
+
+    def validate_email(self, value):
+        email = value.lower().strip()
+        if User.objects.filter(email__iexact=email).exclude(pk=self.instance.pk).exists():
+            raise serializers.ValidationError("Пользователь с таким email уже есть.")
+        return email
+
+    def validate(self, attrs):
+        complete_profile = attrs.pop("complete_profile", False)
+        for field in ("full_name", "military_rank", "position", "region", "outpost_name"):
+            if field in attrs and isinstance(attrs[field], str):
+                attrs[field] = attrs[field].strip()
+
+        unit_type = attrs.get("unit_type", self.instance.unit_type)
+        region = attrs.get("region", self.instance.region)
+        outpost_name = attrs.get("outpost_name", self.instance.outpost_name)
+
+        if self.instance.role != User.Role.ADMIN:
+            attrs["role"] = (
+                User.Role.REGIONAL
+                if unit_type in (User.UnitType.REGIONAL, User.UnitType.INSTITUTION)
+                else User.Role.OUTPOST
+            )
+
+        # Only validate outpost selection if user is changing outpost-related fields
+        if unit_type == User.UnitType.OUTPOST and ("outpost_name" in attrs or "region" in attrs):
+            if region and outpost_name:
+                normalized = normalize_outpost_selection(region, outpost_name)
+                if not normalized:
+                    raise serializers.ValidationError(
+                        {"outpost_name": "Тандалган застава бул аскер бөлүгүнө кирбейт."}
+                    )
+                attrs["outpost_name"] = normalized
+        elif unit_type == User.UnitType.INSTITUTION and "outpost_name" in attrs:
+            attrs["outpost_name"] = ""
+
+        if complete_profile:
+            values = {
+                "full_name": attrs.get("full_name", self.instance.full_name),
+                "military_rank": attrs.get("military_rank", self.instance.military_rank),
+                "position": attrs.get("position", self.instance.position),
+                "phone": attrs.get("phone", self.instance.phone),
+                "region": region,
+            }
+            errors = {
+                field: "Бул талааны толтуруңуз."
+                for field, value in values.items()
+                if not str(value or "").strip()
+            }
+            if not attrs.get("photo_face") and not self.instance.photo_face:
+                errors["photo_face"] = "Колдонуучунун сүрөтүн жүктөңүз."
+            if errors:
+                raise serializers.ValidationError(errors)
+            attrs["profile_completed"] = True
+        return attrs
+
+    def update(self, instance, validated_data):
+        password = validated_data.pop("password", "")
+        for field, value in validated_data.items():
+            setattr(instance, field, value)
+        if "email" in validated_data:
+            instance.username = validated_data["email"]
+        if password:
+            instance.set_password(password)
+        instance.save()
+        return instance
+
+
+class QuickUserCreateSerializer(serializers.ModelSerializer):
+    password = serializers.CharField(write_only=True, min_length=8)
+
+    class Meta:
+        model = User
+        fields = ["id", "region", "outpost_name", "email", "password"]
+        read_only_fields = ["id"]
+
+    def validate_email(self, value):
+        email = value.lower().strip()
+        if User.objects.filter(email__iexact=email).exists():
+            raise serializers.ValidationError("Пользователь с таким email уже есть.")
+        return email
+
+    def validate(self, attrs):
+        attrs["region"] = attrs.get("region", "").strip()
+        attrs["outpost_name"] = attrs.get("outpost_name", "").strip()
+        normalized = normalize_outpost_selection(attrs["region"], attrs["outpost_name"])
+        if not normalized:
+            raise serializers.ValidationError(
+                {"outpost_name": "Тандалган застава бул аскер бөлүгүнө кирбейт."}
+            )
+        attrs["outpost_name"] = normalized
+        return attrs
+
+    def create(self, validated_data):
+        password = validated_data.pop("password")
+        email = validated_data["email"]
+        user = User(
+            username=email,
+            full_name=email,
+            unit_type=User.UnitType.OUTPOST,
+            role=User.Role.OUTPOST,
+            status=User.Status.ACTIVE,
+            profile_completed=False,
+            **validated_data,
+        )
+        user.set_password(password)
+        user.save()
+        return user
 
 
 class RegistrationSerializer(serializers.ModelSerializer):
@@ -686,6 +847,8 @@ class ActiveTokenObtainSerializer(serializers.Serializer):
         if user.status != User.Status.ACTIVE:
             raise serializers.ValidationError("Доступ разрешен только после одобрения.")
 
+        user.last_login = timezone.now()
+        user.save(update_fields=["last_login"])
         refresh = RefreshToken.for_user(user)
         return {
             "refresh": str(refresh),

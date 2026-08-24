@@ -12,6 +12,8 @@ import {
   formatOutpostName,
 } from "../../../data/militaryUnits.js";
 import useDocumentHistory from "../../../hooks/useDocumentHistory.js";
+import { confirmDocumentSend } from "../../../utils/confirmDocumentSend.js";
+import { getDocumentRegistrationCode } from "../../../utils/documentRegistration.js";
 import SubmissionForwardDialog from "./SubmissionForwardDialog.jsx";
 import SubmissionEditPermissionButton from "./SubmissionEditPermissionButton.jsx";
 
@@ -1345,6 +1347,8 @@ export default function CombatTrainingResults({ data, user }) {
       return;
     }
 
+    if (!(await confirmDocumentSend())) return;
+
     handleSaveTable();
     setIsSendingResult(true);
     setResultSubmissionError("");
@@ -1392,9 +1396,30 @@ export default function CombatTrainingResults({ data, user }) {
         submission,
         ...items.filter((item) => item.id !== submission.id),
       ]);
+      if (customPeriods.some((period) => period.id === selectedPeriod.id)) {
+        setCustomPeriods((periods) =>
+          periods.filter((period) => period.id !== selectedPeriod.id)
+        );
+      }
+      if (typeof window !== "undefined") {
+        const storagePrefix = `${STORAGE_KEY}-${selectedPeriod.id}`;
+        Object.keys(window.localStorage)
+          .filter((key) => key === storagePrefix || key.startsWith(`${storagePrefix}-`))
+          .forEach((key) => window.localStorage.removeItem(key));
+      }
       data?.onSubmissionCreated?.(submission);
       setIsResultSendDialogOpen(false);
       setResultSubmissionTitle("");
+      setEditableRows([]);
+      setEditableColumns([]);
+      setEditableHeaderRows([]);
+      setEditableTitle("");
+      setEditableFooter(DEFAULT_TABLE_FOOTER);
+      setSignatureImages({});
+      setSelectedPeriodId(null);
+      if (isInspectionSubmission) {
+        setSelectedSubsectionId(null);
+      }
     } catch (error) {
       setResultSubmissionError(
         getApiErrorMessage(error, "Документти жөнөтүү мүмкүн болгон жок.")
@@ -1927,10 +1952,7 @@ export default function CombatTrainingResults({ data, user }) {
         )
     : allSelectedSubsections;
   const selectedSubsection = selectedSubsections.find((section) => section.id === selectedSubsectionId);
-  const shouldHideDefaultPeriods = sectionsWithCreate.includes(selectedSubsectionId);
-  const basePeriods = (selectedSubsection?.periods || []).filter(
-    (period) => !shouldHideDefaultPeriods || !HIDDEN_DEFAULT_PERIOD_TITLES.has(period.title)
-  );
+  const basePeriods = selectedSubsection?.periods || [];
   const selectedCustomPeriods = customPeriods.filter(
     (period) => period.subsectionId === selectedSubsectionId
   );
@@ -2037,9 +2059,7 @@ export default function CombatTrainingResults({ data, user }) {
   const handleSubsectionClick = (subsectionId) => {
     const nextSubsection = selectedSubsections.find((section) => section.id === subsectionId);
     const shouldOpenOnlyPeriod = subsectionId === "inspection-summary-1" || subsectionId === "inspection-summary-2" || subsectionId === "inspection-bp-1" || subsectionId === "inspection-bp-2" || subsectionId === "inspection-obligations-summary";
-    const nextBasePeriods = (nextSubsection?.periods || []).filter(
-      (period) => !sectionsWithCreate.includes(subsectionId) || !HIDDEN_DEFAULT_PERIOD_TITLES.has(period.title)
-    );
+    const nextBasePeriods = nextSubsection?.periods || [];
     const nextCustomPeriods = customPeriods.filter((period) => period.subsectionId === subsectionId);
     const nextPeriods = [...nextBasePeriods, ...nextCustomPeriods];
 
@@ -2075,17 +2095,7 @@ export default function CombatTrainingResults({ data, user }) {
   };
 
   const handleCreateDocument = () => {
-    setDocumentTitle(
-      selectedSubsectionId === "observation-fp"
-        ? PHYSICAL_TRAINING_DOCUMENT_TITLE
-        : selectedSubsectionId === "observation-op"
-          ? SHOOTING_TRAINING_DOCUMENT_TITLE
-          : selectedSubsectionId === "observation-stp"
-            ? LINE_TRAINING_DOCUMENT_TITLE
-            : selectedSubsectionId === "observation-koj"
-              ? KOJ_DOCUMENT_TITLE
-        : DEFAULT_DOCUMENT_TITLE
-    );
+    setDocumentTitle(DEFAULT_DOCUMENT_TITLE);
     setIsCreateDialogOpen(true);
   };
 
@@ -2096,9 +2106,7 @@ export default function CombatTrainingResults({ data, user }) {
   };
 
   const handleSaveDocument = () => {
-    const finalTitle = monthInput
-      ? `${monthInput} айына ${documentTitle}`
-      : documentTitle;
+    const finalTitle = documentTitle;
     const newPeriodId = `custom-${Date.now()}`;
     const newPeriod = {
       id: newPeriodId,
@@ -2143,9 +2151,7 @@ export default function CombatTrainingResults({ data, user }) {
   };
 
   const handleUpdateDocument = () => {
-    const finalTitle = monthInput
-      ? `${monthInput} айына\n${documentTitle}`
-      : documentTitle;
+    const finalTitle = documentTitle;
     const updatedPeriods = customPeriods.map((period) =>
       period.id === editingPeriodId
         ? {
@@ -2759,6 +2765,7 @@ export default function CombatTrainingResults({ data, user }) {
         <span aria-hidden="true" className="module-document-icon" />
         <span className="module-submission-card__content">
           <strong>{submission.documentTitle}</strong>
+          <small>Каттоо № {getDocumentRegistrationCode(submission)}</small>
           <small>
             {submission.senderRole === "outpost"
               ? `Застава: ${submission.outpostName || submission.senderName}`
@@ -2819,6 +2826,7 @@ export default function CombatTrainingResults({ data, user }) {
                   <span aria-hidden="true" className="module-document-icon" />
                   <span className="module-submission-card__content">
                     <strong>{submission.documentTitle}</strong>
+                    <small>Каттоо № {getDocumentRegistrationCode(submission)}</small>
                     {submission.table?.subsectionTitle ? (
                       <small>{submission.table.subsectionTitle}</small>
                     ) : null}
@@ -3181,7 +3189,7 @@ export default function CombatTrainingResults({ data, user }) {
               <div className="module-period-row" key={`out-${submission.id}`}>
                 <button className="module-period-card module-period-card--document" onClick={() => setSelectedResultSubmission(submission)} type="button">
                   <span aria-hidden="true" className="module-document-icon" />
-                  <span className="module-submission-card__content"><strong>{submission.documentTitle}</strong></span>
+                  <span className="module-submission-card__content"><strong>{submission.documentTitle}</strong><small>Каттоо № {getDocumentRegistrationCode(submission)}</small></span>
                 </button>
                 <div className="module-period-actions"><SubmissionEditPermissionButton onUpdated={(updated) => setResultSubmissions((items) => items.map((item) => item.id === updated.id ? updated : item))} submission={submission} /></div>
               </div>
@@ -3201,6 +3209,7 @@ export default function CombatTrainingResults({ data, user }) {
                   <span aria-hidden="true" className="module-document-icon" />
                   <span className="module-submission-card__content">
                     <strong>{submission.documentTitle}</strong>
+                    <small>Каттоо № {getDocumentRegistrationCode(submission)}</small>
                     <small>{submission.table?.subsectionTitle || submission.senderName}</small>
                   </span>
                 </button>
@@ -3253,6 +3262,7 @@ export default function CombatTrainingResults({ data, user }) {
                   <span aria-hidden="true" className="module-document-icon" />
                   <span className="module-submission-card__content">
                     <strong>{submission.documentTitle}</strong>
+                    <small>Каттоо № {getDocumentRegistrationCode(submission)}</small>
                     <small>{submission.table?.subsectionTitle}</small>
                   </span>
                 </button>
@@ -3326,6 +3336,7 @@ export default function CombatTrainingResults({ data, user }) {
                     <span aria-hidden="true" className="module-document-icon" />
                     <span className="module-submission-card__content">
                       <strong>{submission.documentTitle}</strong>
+                      <small>Каттоо № {getDocumentRegistrationCode(submission)}</small>
                       <small>{submission.table?.subsectionTitle}</small>
                     </span>
                   </button>
@@ -3726,12 +3737,16 @@ export default function CombatTrainingResults({ data, user }) {
                 </div>
               );
             })}
-            {/* Кнопка "+ Создать" для всех разделов из списка sectionsWithCreate */}
-            {sectionsWithCreate.includes(selectedSubsectionId) && (
-              <button className="module-period-add-button" onClick={handleCreateDocument} type="button">
+            {selectedSectionId === "observation" &&
+            sectionsWithCreate.includes(selectedSubsectionId) ? (
+              <button
+                className="module-period-add-button"
+                onClick={handleCreateDocument}
+                type="button"
+              >
                 + Кошуу
               </button>
-            )}
+            ) : null}
           </div>
           {user?.role === "outpost" && selectedSectionId === "observation" && (
             <div className="module-submission-list">
@@ -3746,6 +3761,7 @@ export default function CombatTrainingResults({ data, user }) {
                     <span aria-hidden="true" className="module-document-icon" />
                     <span className="module-submission-card__content">
                       <strong>{submission.documentTitle}</strong>
+                      <small>Каттоо № {getDocumentRegistrationCode(submission)}</small>
                       <small>
                         {submission.table?.subjects?.[selectedSubsectionId]?.periodTitle || selectedSubsection?.title}
                       </small>
@@ -3817,19 +3833,6 @@ export default function CombatTrainingResults({ data, user }) {
             handleSaveDocument();
           }}>
             <h2 id="create-dialog-title">Документ түзүү</h2>
-            {selectedSubsectionId !== "observation-koj" && (
-              <div className="lesson-period-dialog__field">
-                <label htmlFor="month-input">Ай:</label>
-                <input
-                  id="month-input"
-                  className="lesson-period-dialog__input"
-                  onChange={(event) => setMonthInput(event.target.value)}
-                  placeholder="март"
-                  type="text"
-                  value={monthInput}
-                />
-              </div>
-            )}
             <textarea
               className="lesson-period-dialog__textarea"
               onChange={(event) => setDocumentTitle(event.target.value)}
@@ -3855,19 +3858,6 @@ export default function CombatTrainingResults({ data, user }) {
             handleUpdateDocument();
           }}>
             <h2 id="edit-dialog-title">Өзгөртүү</h2>
-            {selectedSubsectionId !== "observation-koj" && (
-              <div className="lesson-period-dialog__field">
-                <label htmlFor="edit-month-input">Ай:</label>
-                <input
-                  id="edit-month-input"
-                  className="lesson-period-dialog__input"
-                  onChange={(event) => setMonthInput(event.target.value)}
-                  placeholder="март"
-                  type="text"
-                  value={monthInput}
-                />
-              </div>
-            )}
             <textarea
               className="lesson-period-dialog__textarea"
               onChange={(event) => setDocumentTitle(event.target.value)}

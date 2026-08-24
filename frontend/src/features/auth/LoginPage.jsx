@@ -11,6 +11,7 @@ export default function LoginPage({ onLoggedIn }) {
     email: "",
     password: "",
   });
+  const [showPassword, setShowPassword] = useState(false);
 
   const updateField = (event) => {
     const { name, value } = event.target;
@@ -46,14 +47,24 @@ export default function LoginPage({ onLoggedIn }) {
         </label>
         <label>
           Сырсөз
-          <input
-            autoComplete="current-password"
-            name="password"
-            required
-            type="password"
-            value={credentials.password}
-            onChange={updateField}
-          />
+          <span className="password-input">
+            <input
+              autoComplete="current-password"
+              name="password"
+              required
+              type={showPassword ? "text" : "password"}
+              value={credentials.password}
+              onChange={updateField}
+            />
+            <button
+              aria-label={showPassword ? "Сырсөздү жашыруу" : "Сырсөздү көрсөтүү"}
+              aria-pressed={showPassword}
+              onClick={() => setShowPassword((current) => !current)}
+              type="button"
+            >
+              {showPassword ? "Жашыруу" : "Көрсөтүү"}
+            </button>
+          </span>
         </label>
         <button disabled={loading} type="submit">
           {loading ? "Кирүүдө..." : "Кирүү"}

@@ -45,7 +45,7 @@ const isAlreadyProcessedError = (error) =>
     String(error.response?.data?.detail || "").includes(text)
   );
 
-export default function AdminRequestsPage() {
+export default function AdminRequestsPage({ user }) {
   const [requests, setRequests] = useState([]);
   const [selected, setSelected] = useState(null);
   const [reason, setReason] = useState("");
@@ -155,15 +155,15 @@ export default function AdminRequestsPage() {
             </div>
             <label>
               Четке кагуунун себеби
-              <textarea value={reason} onChange={(event) => setReason(event.target.value)} />
+              <textarea disabled={!user?.is_superuser} value={reason} onChange={(event) => setReason(event.target.value)} />
             </label>
             <div className="actions">
-              <button disabled={actionLoading} onClick={() => moderate("approve")}>
+              <button disabled={actionLoading || !user?.is_superuser} onClick={() => moderate("approve")}>
                 {actionLoading ? "Иштетилүүдө..." : "Ырастоо"}
               </button>
               <button
                 className="danger"
-                disabled={actionLoading}
+                disabled={actionLoading || !user?.is_superuser}
                 onClick={() => moderate("reject")}
               >
                 Четке кагуу

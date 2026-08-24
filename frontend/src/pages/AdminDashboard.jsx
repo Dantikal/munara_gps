@@ -5,6 +5,7 @@ import Sidebar from "../components/dashboard/Sidebar.jsx";
 import DashboardModuleView from "../components/dashboard/modules/DashboardModuleView.jsx";
 import AdminRequestsPage from "../features/admin/AdminRequestsPage.jsx";
 import AdminUsersPage from "../features/admin/AdminUsersPage.jsx";
+import RegionalUnitRatingPage from "../features/admin/RegionalUnitRatingPage.jsx";
 import SubmissionEditRequestsPage from "../features/admin/SubmissionEditRequestsPage.jsx";
 import { fetchDashboard } from "../features/dashboard/dashboardSlice.js";
 
@@ -12,7 +13,8 @@ export default function AdminDashboard() {
   const dispatch = useDispatch();
   const { user } = useSelector((state) => state.auth);
   const { data, loading, error, role } = useSelector((state) => state.dashboard);
-  const [activeView, setActiveView] = useState("requests");
+  const [activeView, setActiveView] = useState("home");
+  const [chatPartnerId, setChatPartnerId] = useState(null);
 
   useEffect(() => {
     if (user?.role === "admin" && role !== "admin") {
@@ -38,6 +40,14 @@ export default function AdminDashboard() {
 
   const refreshDashboard = () => dispatch(fetchDashboard("admin"));
   const pendingCount = data.stats.find((item) => item.id === "pending")?.value || 0;
+  const navigate = (view) => {
+    setChatPartnerId(null);
+    setActiveView(view);
+  };
+  const openUserChat = (selectedUser) => {
+    setChatPartnerId(selectedUser.id);
+    setActiveView("contactAdmin");
+  };
 
   return (
     <div className="dashboard-layout">
@@ -47,21 +57,26 @@ export default function AdminDashboard() {
         pendingCount={pendingCount}
         role="admin"
         user={user}
-        onNavigate={setActiveView}
+        onNavigate={navigate}
         onOpenRequests={() => setActiveView("requests")}
       />
 
       <section className="dashboard-content">
         {activeView === "requests" ? (
-          <AdminRequestsPage />
+          <AdminRequestsPage user={user} />
         ) : activeView === "submissionEditRequests" ? (
-          <SubmissionEditRequestsPage />
+          <SubmissionEditRequestsPage user={user} />
         ) : activeView === "users" ? (
-          <AdminUsersPage />
+          <AdminUsersPage onMessageUser={openUserChat} user={user} />
+        ) : activeView === "regionalUnitRating" ? (
+          <RegionalUnitRatingPage />
         ) : (
           <DashboardModuleView
             activeModule={activeView}
+            dashboardData={data}
+            initialChatPartnerId={chatPartnerId}
             modules={data.modules}
+            onNavigate={navigate}
             user={user}
             onRefresh={refreshDashboard}
           />

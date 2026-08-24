@@ -6,7 +6,7 @@ from django.test import override_settings
 from django.urls import reverse
 from rest_framework.test import APITestCase
 
-from accounts.models import CombatTrainingNews, User
+from accounts.models import CombatTrainingNews, CombatTrainingNewsRead, User
 
 
 class CombatTrainingNewsApiTests(APITestCase):
@@ -38,6 +38,14 @@ class CombatTrainingNewsApiTests(APITestCase):
             role=User.Role.OUTPOST,
             status=User.Status.ACTIVE,
         )
+        self.regional = User.objects.create_user(
+            username="news-regional@example.com",
+            email="news-regional@example.com",
+            password="test-password",
+            role=User.Role.REGIONAL,
+            status=User.Status.ACTIVE,
+            region="2026",
+        )
         self.list_url = reverse("combat-training-news-list")
 
     def create_news(self):
@@ -57,6 +65,7 @@ class CombatTrainingNewsApiTests(APITestCase):
     def test_admin_publishes_and_user_reads_and_likes_news(self):
         created_news = self.create_news()
         self.assertEqual(len(created_news["attachments"]), 1)
+        self.assertEqual(created_news["authorName"], "Администратор")
 
         self.client.force_authenticate(self.user)
         unread_response = self.client.get(reverse("combat-training-news-unread-count"))
@@ -79,7 +88,7 @@ class CombatTrainingNewsApiTests(APITestCase):
         unread_response = self.client.get(reverse("combat-training-news-unread-count"))
         self.assertEqual(unread_response.data["unreadCount"], 0)
 
-    def test_only_admin_can_create_edit_and_delete_news(self):
+    def test_outpost_cannot_create_edit_or_delete_news(self):
         self.client.force_authenticate(self.user)
         forbidden_response = self.client.post(
             self.list_url,
@@ -89,14 +98,109 @@ class CombatTrainingNewsApiTests(APITestCase):
 
         created_news = self.create_news()
         detail_url = reverse("combat-training-news-detail", kwargs={"pk": created_news["id"]})
-        update_response = self.client.patch(
+        self.client.force_authenticate(self.user)
+        self.assertEqual(self.client.patch(
             detail_url,
             {"title": "Изменённая публикация", "body": "Новый текст"},
             format="multipart",
+        ).status_code, 403)
+        self.assertEqual(self.client.delete(detail_url).status_code, 403)
+
+    def test_regional_can_publish_and_manage_only_own_news(self):
+        self.client.force_authenticate(self.regional)
+        response = self.client.post(
+            self.list_url,
+            {"title": "Бөлүктүн маалыматы", "body": "2026 аскер бөлүгүнүн маалыматы"},
+            format="multipart",
+        )
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.data["authorId"], self.regional.id)
+        self.assertEqual(response.data["authorName"], "Аскер бөлүгү 2026")
+
+        detail_url = reverse("combat-training-news-detail", kwargs={"pk": response.data["id"]})
+        update_response = self.client.patch(
+            detail_url,
+            {"title": "Өзгөртүлгөн маалымат", "body": "Жаңы текст"},
+            format="multipart",
         )
         self.assertEqual(update_response.status_code, 200)
-        self.assertEqual(update_response.data["title"], "Изменённая публикация")
 
-        delete_response = self.client.delete(detail_url)
-        self.assertEqual(delete_response.status_code, 204)
+        admin_news = self.create_news()
+        admin_detail_url = reverse("combat-training-news-detail", kwargs={"pk": admin_news["id"]})
+        self.client.force_authenticate(self.regional)
+        self.assertEqual(
+            self.client.patch(admin_detail_url, {"title": "Бөтөн"}, format="multipart").status_code,
+            403,
+        )
+        self.assertEqual(self.client.delete(admin_detail_url).status_code, 403)
+
+        self.assertEqual(self.client.delete(detail_url).status_code, 204)
+        self.assertEqual(CombatTrainingNews.objects.count(), 1)
+
+        self.client.force_authenticate(self.admin)
+        self.assertEqual(self.client.delete(admin_detail_url).status_code, 204)
         self.assertFalse(CombatTrainingNews.objects.exists())
+
+    def test_regional_news_is_visible_only_to_outposts_from_same_unit(self):
+        matching_outpost = User.objects.create_user(
+            username="news-outpost-2026@example.com",
+            email="news-outpost-2026@example.com",
+            password="test-password",
+            role=User.Role.OUTPOST,
+            status=User.Status.ACTIVE,
+            region="2026",
+        )
+        other_outpost = User.objects.create_user(
+            username="news-outpost-2027@example.com",
+            email="news-outpost-2027@example.com",
+            password="test-password",
+            role=User.Role.OUTPOST,
+            status=User.Status.ACTIVE,
+            region="2027",
+        )
+
+        self.client.force_authenticate(self.regional)
+        regional_news = self.client.post(
+            self.list_url,
+            {"title": "2026 үчүн маалымат", "body": "2026 үчүн гана"},
+            format="multipart",
+        )
+        admin_news = self.create_news()
+
+        self.client.force_authenticate(matching_outpost)
+        matching_response = self.client.get(self.list_url)
+        self.assertEqual(
+            {item["id"] for item in matching_response.data["results"]},
+            {regional_news.data["id"], admin_news["id"]},
+        )
+        self.assertEqual(
+            self.client.get(reverse("combat-training-news-unread-count")).data["unreadCount"],
+            2,
+        )
+
+        self.client.force_authenticate(other_outpost)
+        other_response = self.client.get(self.list_url)
+        self.assertEqual(
+            [item["id"] for item in other_response.data["results"]],
+            [admin_news["id"]],
+        )
+        self.assertEqual(
+            self.client.get(reverse("combat-training-news-unread-count")).data["unreadCount"],
+            1,
+        )
+        hidden_like_url = reverse(
+            "combat-training-news-like",
+            kwargs={"pk": regional_news.data["id"]},
+        )
+        self.assertEqual(self.client.post(hidden_like_url).status_code, 404)
+
+        self.assertEqual(
+            self.client.post(reverse("combat-training-news-read-all")).status_code,
+            200,
+        )
+        self.assertFalse(
+            CombatTrainingNewsRead.objects.filter(
+                news_id=regional_news.data["id"],
+                user=other_outpost,
+            ).exists()
+        )

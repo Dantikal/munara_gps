@@ -2,6 +2,8 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 
 import {
   createAdminChatMessage,
+  createOutpostBroadcastMessage,
+  deleteAdminChatConversation,
   deleteAdminChatMessage,
   getAdminChatMessages,
   getChatPartners,
@@ -9,6 +11,7 @@ import {
 
 const FILE_ACCEPT =
   "image/*,video/*,audio/*,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.rtf,.zip,.rar";
+const OUTPOST_BROADCAST_ID = "all-outposts";
 const EMOJI_GROUPS = [
   {
     id: "faces",
@@ -168,8 +171,9 @@ const TrashIcon = () => (
   </Icon>
 );
 
-export default function ContactAdmin({ user, onRefresh }) {
+export default function ContactAdmin({ initialPartnerId, user, onRefresh }) {
   const isAdmin = user?.role === "admin";
+  const isRegional = user?.role === "regional";
   const isOutpost = user?.role === "outpost";
   const fileInputRef = useRef(null);
   const messageInputRef = useRef(null);
@@ -179,28 +183,41 @@ export default function ContactAdmin({ user, onRefresh }) {
   const audioChunksRef = useRef([]);
   const [messages, setMessages] = useState([]);
   const [users, setUsers] = useState([]);
-  const [selectedUserId, setSelectedUserId] = useState("");
+  const [selectedUserId, setSelectedUserId] = useState(
+    initialPartnerId ? String(initialPartnerId) : ""
+  );
   const [selectedAdminGroup, setSelectedAdminGroup] = useState("regional");
+  const [selectedRegionalGroup, setSelectedRegionalGroup] = useState("admin");
   const [body, setBody] = useState("");
   const [file, setFile] = useState(null);
   const [loading, setLoading] = useState(false);
   const [sending, setSending] = useState(false);
   const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
   const [isEmojiPickerOpen, setIsEmojiPickerOpen] = useState(false);
   const [activeEmojiGroup, setActiveEmojiGroup] = useState(EMOJI_GROUPS[0].id);
   const [isRecording, setIsRecording] = useState(false);
   const [recordingSeconds, setRecordingSeconds] = useState(0);
   const [deleteMenuMessageId, setDeleteMenuMessageId] = useState(null);
 
+  const isOutpostBroadcast = (isAdmin || isOutpost) && selectedUserId === OUTPOST_BROADCAST_ID;
   const selectedPartner = useMemo(
-    () => users.find((item) => String(item.id) === String(selectedUserId)),
-    [selectedUserId, users]
+    () => isOutpostBroadcast
+      ? { id: OUTPOST_BROADCAST_ID, full_name: "Жалпы топ", role: "outpost-group" }
+      : users.find((item) => String(item.id) === String(selectedUserId)),
+    [isOutpostBroadcast, selectedUserId, users]
   );
   const displayedUsers = useMemo(
-    () => isAdmin
-      ? users.filter((item) => item.role === selectedAdminGroup)
-      : users,
-    [isAdmin, selectedAdminGroup, users]
+    () => {
+      if (isAdmin) {
+        return users.filter((item) => item.role === selectedAdminGroup);
+      }
+      if (isRegional) {
+        return users.filter((item) => item.role === selectedRegionalGroup);
+      }
+      return users;
+    },
+    [isAdmin, isRegional, selectedAdminGroup, selectedRegionalGroup, users]
   );
 
   const unreadCounts = useMemo(() => {
@@ -228,21 +245,24 @@ export default function ContactAdmin({ user, onRefresh }) {
     ),
     [unreadCounts, users]
   );
-  const adminGroupUnreadCounts = useMemo(
+  const partnerGroupUnreadCounts = useMemo(
     () => users.reduce(
       (counts, item) => {
         const count = Number(item.unreadChatCount || unreadCounts[String(item.id)] || 0);
-        if (item.role === "regional" || item.role === "outpost") {
+        if (item.role === "admin" || item.role === "regional" || item.role === "outpost") {
           counts[item.role] += count;
         }
         return counts;
       },
-      { regional: 0, outpost: 0 }
+      { admin: 0, regional: 0, outpost: 0 }
     ),
     [unreadCounts, users]
   );
 
   const visibleMessages = useMemo(() => {
+    if (isOutpostBroadcast) {
+      return messages;
+    }
     if (!selectedUserId) {
       return messages;
     }
@@ -252,7 +272,7 @@ export default function ContactAdmin({ user, onRefresh }) {
         String(message.sender?.id) === String(selectedUserId) ||
         String(message.recipient?.id) === String(selectedUserId)
     );
-  }, [messages, selectedUserId]);
+  }, [isOutpostBroadcast, messages, selectedUserId]);
 
   const chatPartner = useMemo(() => {
     return selectedPartner;
@@ -271,15 +291,29 @@ export default function ContactAdmin({ user, onRefresh }) {
       if (isOutpost) {
         const admin = filtered.find((item) => item.role === "admin");
         const regional = filtered.find((item) => item.role === "regional");
-        filtered = [admin, regional].filter(Boolean);
+        filtered = [regional, admin].filter(Boolean);
+      }
+      const initialPartner = initialPartnerId
+        ? filtered.find((item) => String(item.id) === String(initialPartnerId))
+        : null;
+      if (isAdmin && initialPartner) {
+        setSelectedAdminGroup(initialPartner.role);
       }
       setUsers(filtered);
       setSelectedUserId((current) => {
+        if (current === OUTPOST_BROADCAST_ID && (isAdmin || isOutpost)) {
+          return current;
+        }
+        if (initialPartner) {
+          return String(initialPartner.id);
+        }
         if (current && filtered.some((item) => String(item.id) === String(current))) {
           return current;
         }
         const firstPartner = isAdmin
           ? filtered.find((item) => item.role === selectedAdminGroup)
+          : isRegional
+            ? filtered.find((item) => item.role === selectedRegionalGroup)
           : filtered[0];
         return firstPartner ? String(firstPartner.id) : "";
       });
@@ -288,9 +322,42 @@ export default function ContactAdmin({ user, onRefresh }) {
     }
   };
 
-  const loadMessages = async (partnerId = selectedUserId) => {
-    setLoading(true);
+  const loadMessages = async (partnerId = selectedUserId, silent = false) => {
+    if (!silent) setLoading(true);
     setError("");
+
+    if (partnerId === OUTPOST_BROADCAST_ID) {
+      try {
+        if (isAdmin || isOutpost) {
+          const data = await getAdminChatMessages({ scope: "outpost_broadcast" });
+          const items = Array.isArray(data) ? data : [];
+          if (isAdmin) {
+            const seenBroadcasts = new Set();
+            setMessages(items.filter((item) => {
+              const broadcastKey = item.broadcastId || [
+                item.body,
+                item.attachment_name,
+                String(item.createdAt || "").slice(0, 19),
+              ].join("|");
+              if (seenBroadcasts.has(broadcastKey)) return false;
+              seenBroadcasts.add(broadcastKey);
+              return true;
+            }));
+          } else {
+            setMessages(items);
+            window.dispatchEvent(new Event("chat-messages-read"));
+          }
+          onRefresh?.();
+        } else {
+          setMessages([]);
+        }
+      } catch (requestError) {
+        setError(requestError?.response?.data?.detail || "Билдирмелерди жүктөө мүмкүн болгон жок.");
+      } finally {
+        if (!silent) setLoading(false);
+      }
+      return;
+    }
 
     try {
       const params = partnerId ? { user_id: partnerId } : undefined;
@@ -308,7 +375,7 @@ export default function ContactAdmin({ user, onRefresh }) {
     } catch (requestError) {
       setError(requestError?.response?.data?.detail || "Билдирмелерди жүктөө мүмкүн болгон жок.");
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   };
 
@@ -323,6 +390,12 @@ export default function ContactAdmin({ user, onRefresh }) {
     }
 
     loadMessages(selectedUserId);
+    if (!selectedUserId) return undefined;
+    const intervalId = window.setInterval(
+      () => loadMessages(selectedUserId, true),
+      5000
+    );
+    return () => window.clearInterval(intervalId);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedUserId]);
 
@@ -431,6 +504,7 @@ export default function ContactAdmin({ user, onRefresh }) {
 
     setSending(true);
     setError("");
+    setNotice("");
 
     try {
       const formData = new FormData();
@@ -442,9 +516,13 @@ export default function ContactAdmin({ user, onRefresh }) {
         formData.append("attachment_kind", getAttachmentKind(file));
         formData.append("attachment_name", file.name);
       }
-      formData.append("recipientId", selectedUserId);
-
-      await createAdminChatMessage(formData);
+      if (isOutpostBroadcast) {
+        const result = await createOutpostBroadcastMessage(formData);
+        setNotice(`Билдирүү ${result.recipientCount} заставага жөнөтүлдү.`);
+      } else {
+        formData.append("recipientId", selectedUserId);
+        await createAdminChatMessage(formData);
+      }
       setBody("");
       setFile(null);
       if (fileInputRef.current) {
@@ -488,6 +566,22 @@ export default function ContactAdmin({ user, onRefresh }) {
     }
   };
 
+  const handleDeleteConversation = async () => {
+    if (!selectedPartner) return;
+    if (!window.confirm(`«${getDisplayName(selectedPartner)}» менен болгон чат эки тараптан тең өчүрүлсүнбү?`)) {
+      return;
+    }
+    try {
+      setError("");
+      await deleteAdminChatConversation(selectedPartner.id);
+      setMessages([]);
+      await loadUsers();
+      onRefresh?.();
+    } catch (requestError) {
+      setError(requestError?.response?.data?.detail || "Чатты өчүрүү мүмкүн болгон жок.");
+    }
+  };
+
   const currentThreadName = chatPartner
     ? getDisplayName(chatPartner)
     : "Колдонуучуну тандаңыз";
@@ -500,7 +594,7 @@ export default function ContactAdmin({ user, onRefresh }) {
           <span className="admin-chat__page-icon"><ChatIcon /></span>
           <div>
           <p>{isAdmin ? "Колдонуучулар менен кат алышуу" : "Байланыш"}</p>
-          <h1>Администратор менен байланыш</h1>
+          <h1>{isOutpost ? "Аскер бөлүгү менен байланыш" : "Колдонуучулар менен байланыш"}</h1>
           <span className="admin-chat__subtitle">
             {isAdmin
               ? "Сол жактан колдонуучуну тандап, оң жакка билдирүү жазыңыз."
@@ -529,13 +623,71 @@ export default function ContactAdmin({ user, onRefresh }) {
                   type="button"
                 >
                   Аскер бөлүгү
-                  {adminGroupUnreadCounts.regional > 0 ? (
-                    <em>{adminGroupUnreadCounts.regional}</em>
+                  {partnerGroupUnreadCounts.regional > 0 ? (
+                    <em>{partnerGroupUnreadCounts.regional}</em>
+                  ) : null}
+                </button>
+                <button
+                  className={selectedAdminGroup === "outpost" ? "is-active" : ""}
+                  onClick={() => {
+                    setSelectedAdminGroup("outpost");
+                    setSelectedUserId(OUTPOST_BROADCAST_ID);
+                  }}
+                  type="button"
+                >
+                  Заставалар
+                  {partnerGroupUnreadCounts.outpost > 0 ? (
+                    <em>{partnerGroupUnreadCounts.outpost}</em>
+                  ) : null}
+                </button>
+              </div>
+            ) : null}
+            {isRegional ? (
+              <div className="admin-chat__recipient-sections">
+                <button
+                  className={selectedRegionalGroup === "admin" ? "is-active" : ""}
+                  onClick={() => {
+                    setSelectedRegionalGroup("admin");
+                    const firstAdmin = users.find((item) => item.role === "admin");
+                    setSelectedUserId(firstAdmin ? String(firstAdmin.id) : "");
+                  }}
+                  type="button"
+                >
+                  Администратор
+                  {partnerGroupUnreadCounts.admin > 0 ? (
+                    <em>{partnerGroupUnreadCounts.admin}</em>
+                  ) : null}
+                </button>
+                <button
+                  className={selectedRegionalGroup === "outpost" ? "is-active" : ""}
+                  onClick={() => {
+                    setSelectedRegionalGroup("outpost");
+                    const firstOutpost = users.find((item) => item.role === "outpost");
+                    setSelectedUserId(firstOutpost ? String(firstOutpost.id) : "");
+                  }}
+                  type="button"
+                >
+                  Заставалар
+                  {partnerGroupUnreadCounts.outpost > 0 ? (
+                    <em>{partnerGroupUnreadCounts.outpost}</em>
                   ) : null}
                 </button>
               </div>
             ) : null}
             <div className="admin-chat__user-list">
+              {isOutpost || (isAdmin && selectedAdminGroup === "outpost") ? (
+                <button
+                  className={isOutpostBroadcast ? "is-active" : ""}
+                  onClick={() => setSelectedUserId(OUTPOST_BROADCAST_ID)}
+                  type="button"
+                >
+                  <span className="admin-chat__user-avatar">БЗ</span>
+                  <span className="admin-chat__user-info">
+                    <span className="admin-chat__user-title">Жалпы топ</span>
+                    <small>Бардык заставалар</small>
+                  </span>
+                </button>
+              ) : null}
               {displayedUsers.length === 0 ? (
                 <span className="admin-chat__empty">Нет активных пользователей.</span>
               ) : (
@@ -598,9 +750,25 @@ export default function ContactAdmin({ user, onRefresh }) {
                 </span>
               </div>
             </div>
+            {isAdmin && selectedPartner && !isOutpostBroadcast ? (
+              <button className="danger" onClick={handleDeleteConversation} type="button">
+                Чатты өчүрүү
+              </button>
+            ) : null}
           </div>
 
           <div className="admin-chat__messages" ref={messagesContainerRef}>
+            {isOutpostBroadcast ? (
+              <div className="admin-chat__empty">
+                <strong>Бардык заставалар</strong>
+                <span>
+                  {isAdmin
+                    ? "Бул жерден жөнөтүлгөн билдирүү бардык активдүү заставаларга жетет."
+                    : "Бул топко билдирүүнү администратор гана жөнөтөт."}
+                </span>
+                {isAdmin && notice ? <span className="dashboard-notice">{notice}</span> : null}
+              </div>
+            ) : null}
             {loading ? (
               <div className="admin-chat__empty">Билдирмелер жүктөлүүдө...</div>
             ) : visibleMessages.length === 0 ? (
@@ -644,6 +812,9 @@ export default function ContactAdmin({ user, onRefresh }) {
                             {isAdminMessage ? "Администратор" : "Колдонуучу"}
                           </em>
                         </div>
+                        {message.isBroadcast && !isAdmin ? (
+                          <span>{formatTime(message.createdAt)}</span>
+                        ) : (
                         <div className="admin-chat__message-menu-wrap">
                           <span>{formatTime(message.createdAt)}</span>
                           <button
@@ -678,6 +849,7 @@ export default function ContactAdmin({ user, onRefresh }) {
                             </div>
                           ) : null}
                         </div>
+                        )}
                       </div>
                       {isDeletedForEveryone ? (
                         <p className="admin-chat__deleted-message">
@@ -706,6 +878,11 @@ export default function ContactAdmin({ user, onRefresh }) {
             )}
           </div>
 
+          {isOutpostBroadcast && isOutpost ? (
+            <div className="admin-chat__composer admin-chat__composer--readonly">
+              Жалпы топко билдирүүнү администратор гана жөнөтө алат.
+            </div>
+          ) : (
           <form className="admin-chat__composer" onSubmit={handleSubmit}>
             <div className="admin-chat__composer-tools">
               <div className="admin-chat__emoji-wrap">
@@ -808,6 +985,7 @@ export default function ContactAdmin({ user, onRefresh }) {
 
             {error ? <div className="admin-chat__error">{error}</div> : null}
           </form>
+          )}
         </div>
       </div>
     </section>

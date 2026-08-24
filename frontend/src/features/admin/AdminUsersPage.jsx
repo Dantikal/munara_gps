@@ -10,6 +10,7 @@ import {
 } from "../../data/militaryUnits.js";
 
 const roleLabels = {
+  admin: "Администратор",
   regional: "Аскер бөлүгү",
   outpost: "Застава",
 };
@@ -44,7 +45,7 @@ const createEmptyForm = (role = "outpost") => ({
   full_name: "",
   military_rank: "",
   position: "",
-  unit_type: role === "regional" ? "regional_department" : "outpost",
+  unit_type: role === "admin" ? "" : role === "regional" ? "regional_department" : "outpost",
   phone: "",
   region: "",
   outpost_name: "",
@@ -59,6 +60,17 @@ const formatDate = (value) => {
   return Number.isNaN(date.getTime()) ? value : date.toLocaleDateString("ky-KG");
 };
 
+const formatPresence = (user) => {
+  if (user?.isOnline) return "Онлайн";
+  if (!user?.lastSeen) return "Азырынча кире элек";
+  const date = new Date(user.lastSeen);
+  if (Number.isNaN(date.getTime())) return "Оффлайн";
+  return `Был(а) в ${date.toLocaleTimeString("ru-RU", {
+    hour: "2-digit",
+    minute: "2-digit",
+  })}`;
+};
+
 const getInitials = (user) =>
   String(user?.full_name || user?.email || "П")
     .split(/\s|@/)
@@ -68,6 +80,9 @@ const getInitials = (user) =>
     .join("");
 
 const getUnitName = (user) => {
+  if (user?.role === "admin") {
+    return user.is_superuser ? "Главный администратор" : "Администратор";
+  }
   if (user?.role === "outpost") {
     return user.outpost_name || unitLabels[user.unit_type] || "Застава көрсөтүлгөн эмес";
   }
@@ -82,7 +97,9 @@ const toForm = (user) => ({
   full_name: user.full_name || "",
   military_rank: user.military_rank || "",
   position: user.position || "",
-  unit_type: user.unit_type || (user.role === "regional" ? "regional_department" : "outpost"),
+  unit_type: user.role === "admin"
+    ? ""
+    : user.unit_type || (user.role === "regional" ? "regional_department" : "outpost"),
   phone: user.phone || "",
   region: user.region || "",
   outpost_name:
@@ -98,9 +115,11 @@ const toForm = (user) => ({
 
 const buildPayload = (form, editing) => {
   const payload = new FormData();
-  const role = ["regional_department", "institution"].includes(form.unit_type)
-    ? "regional"
-    : "outpost";
+  const role = form.role === "admin"
+    ? "admin"
+    : ["regional_department", "institution"].includes(form.unit_type)
+      ? "regional"
+      : "outpost";
   const values = {
     email: form.email.trim(),
     full_name: form.full_name.trim(),
@@ -120,13 +139,15 @@ const buildPayload = (form, editing) => {
   return { payload, role };
 };
 
-export default function AdminUsersPage() {
+export default function AdminUsersPage({ onMessageUser, user: currentUser }) {
   const [users, setUsers] = useState([]);
   const [activeGroup, setActiveGroup] = useState("outpost");
   const [selectedUser, setSelectedUser] = useState(null);
   const [selectedRegionalUnit, setSelectedRegionalUnit] = useState(null);
   const [form, setForm] = useState(() => createEmptyForm("outpost"));
   const [isFormOpen, setIsFormOpen] = useState(false);
+  const [isQuickFormOpen, setIsQuickFormOpen] = useState(false);
+  const [quickForm, setQuickForm] = useState({ region: "", outpost_name: "", email: "", password: "" });
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
@@ -156,8 +177,8 @@ export default function AdminUsersPage() {
     ].some((value) => String(value || "").toLocaleLowerCase("ru").includes(normalizedSearch));
   });
 
-  const loadUsers = async () => {
-    setLoading(true);
+  const loadUsers = async (silent = false) => {
+    if (!silent) setLoading(true);
     setError("");
     try {
       const { data } = await api.get("/auth/admin/users/");
@@ -165,12 +186,19 @@ export default function AdminUsersPage() {
     } catch (requestError) {
       setError(getApiErrorMessage(requestError, "Колдонуучуларды жүктөө мүмкүн болгон жок."));
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   };
 
   useEffect(() => {
     loadUsers();
+    const intervalId = window.setInterval(() => loadUsers(true), 30000);
+    const refreshOnFocus = () => loadUsers(true);
+    window.addEventListener("focus", refreshOnFocus);
+    return () => {
+      window.clearInterval(intervalId);
+      window.removeEventListener("focus", refreshOnFocus);
+    };
   }, []);
 
   const updateField = (event) => {
@@ -206,6 +234,26 @@ export default function AdminUsersPage() {
     setMessage("");
     setError("");
     setIsFormOpen(true);
+    setIsQuickFormOpen(false);
+  };
+
+  const submitQuickUser = async (event) => {
+    event.preventDefault();
+    setSaving(true);
+    setMessage("");
+    setError("");
+    try {
+      await api.post("/auth/admin/users/quick/", quickForm);
+      setQuickForm({ region: "", outpost_name: "", email: "", password: "" });
+      setIsQuickFormOpen(false);
+      setActiveGroup("outpost");
+      setMessage("Колдонуучу тез кошулду. Ал биринчи киргенде калган маалыматтарын толтурат.");
+      await loadUsers();
+    } catch (requestError) {
+      setError(getApiErrorMessage(requestError, "Колдонуучуну тез кошуу мүмкүн болгон жок."));
+    } finally {
+      setSaving(false);
+    }
   };
 
   const editUser = (user) => {
@@ -292,6 +340,7 @@ export default function AdminUsersPage() {
       ["Телефон", selectedUser.phone],
       ["Email", selectedUser.email],
       ["Статусу", statusLabels[selectedUser.status] || selectedUser.status],
+      ["Активдүүлүгү", formatPresence(selectedUser)],
       ["Каттоо датасы", formatDate(selectedUser.date_joined)],
     ].filter(([, value]) => value);
     const avatar = selectedUser.photo_face || selectedUser.avatar;
@@ -308,12 +357,17 @@ export default function AdminUsersPage() {
           <div>
             <h1>{selectedUser.full_name || selectedUser.email}</h1>
             <p>{getUnitName(selectedUser)}</p>
-            <div className="table-actions">
+            {(!selectedUser.is_superuser || currentUser?.is_superuser) && <div className="table-actions">
+              {selectedUser.role === "outpost" ? (
+                <button onClick={() => onMessageUser?.(selectedUser)} type="button">
+                  Написать
+                </button>
+              ) : null}
               <button onClick={() => editUser(selectedUser)} type="button">Өзгөртүү</button>
               <button className="danger" disabled={saving} onClick={() => deleteUser(selectedUser)} type="button">
                 Өчүрүү
               </button>
-            </div>
+            </div>}
           </div>
         </div>
         <dl className="profile-details admin-user-detail__fields">
@@ -400,6 +454,9 @@ export default function AdminUsersPage() {
                       {unitUser.role === "outpost" ? (
                         <small>{formatOutpostName(unitUser.outpost_name)}</small>
                       ) : null}
+                      <small className={unitUser.isOnline ? "user-presence is-online" : "user-presence"}>
+                        {formatPresence(unitUser)}
+                      </small>
                     </span>
                     <span aria-hidden="true" className="admin-user-list-card__arrow">
                       ›
@@ -431,13 +488,58 @@ export default function AdminUsersPage() {
   return (
     <section className="module-panel admin-users-page">
       <header className="admin-users-page__header">
-        <div><h1>Колдонуучулар</h1><p>Заставалар жана аскер бөлүктөрү.</p></div>
-        <button onClick={openCreateForm} type="button">Кошуу</button>
+        <div><h1>Колдонуучулар</h1><p>Администраторлор, заставалар жана аскер бөлүктөрү.</p></div>
+        <div className="admin-users-page__header-actions">
+          <button onClick={() => {
+            setIsQuickFormOpen((current) => !current);
+            setIsFormOpen(false);
+            setError("");
+          }} type="button">Тез кошуу</button>
+          <button onClick={openCreateForm} type="button">Кошуу</button>
+        </div>
       </header>
+
+      {isQuickFormOpen && (
+        <form className="admin-quick-user-form" onSubmit={submitQuickUser}>
+          <h2>Колдонуучуну тез кошуу</h2>
+          <label>
+            Аскер бөлүгүнүн номери
+            <select
+              required
+              value={quickForm.region}
+              onChange={(event) => setQuickForm((current) => ({ ...current, region: event.target.value, outpost_name: "" }))}
+            >
+              <option disabled value="">Тандаңыз</option>
+              {OUTPOST_MILITARY_UNIT_OPTIONS.map((unit) => <option key={unit} value={unit}>{unit}</option>)}
+            </select>
+          </label>
+          <label>
+            Заставанын аталышы
+            <select
+              disabled={!quickForm.region}
+              required
+              value={quickForm.outpost_name}
+              onChange={(event) => setQuickForm((current) => ({ ...current, outpost_name: event.target.value }))}
+            >
+              <option disabled value="">Тандаңыз</option>
+              {(OUTPOSTS_BY_MILITARY_UNIT[quickForm.region] || []).map(([number, name]) => (
+                <option key={`${number}-${name}`} value={formatOutpostName(name)}>{number}. {formatOutpostName(name)}</option>
+              ))}
+            </select>
+          </label>
+          <label>Email<input required type="email" value={quickForm.email} onChange={(event) => setQuickForm((current) => ({ ...current, email: event.target.value }))} /></label>
+          <label>Сырсөз<input minLength={8} required type="password" value={quickForm.password} onChange={(event) => setQuickForm((current) => ({ ...current, password: event.target.value }))} /></label>
+          <div className="admin-user-form__actions">
+            <button disabled={saving} type="submit">{saving ? "Кошулууда..." : "Тез кошуу"}</button>
+            <button disabled={saving} onClick={() => setIsQuickFormOpen(false)} type="button">Жокко чыгаруу</button>
+          </div>
+        </form>
+      )}
 
       <div className="admin-users-page__tabs" role="tablist" aria-label="Колдонуучунун түрү">
         <button aria-selected={activeGroup === "outpost"} className={activeGroup === "outpost" ? "active" : ""} onClick={() => selectGroup("outpost")} role="tab" type="button">Застава</button>
         <button aria-selected={activeGroup === "regional"} className={activeGroup === "regional" ? "active" : ""} onClick={() => selectGroup("regional")} role="tab" type="button">Аскер бөлүгү</button>
+        <button aria-selected={activeGroup === "admin"} className={activeGroup === "admin" ? "active" : ""} onClick={() => selectGroup("admin")} role="tab" type="button">Администратор</button>
       </div>
 
       {isFormOpen && (
@@ -446,7 +548,7 @@ export default function AdminUsersPage() {
           <label>Аты-жөнү<input name="full_name" required value={form.full_name} onChange={updateField} /></label>
           <label>Аскердик наамы<input name="military_rank" required value={form.military_rank} onChange={updateField} /></label>
           <label>Кызматы<input name="position" required value={form.position} onChange={updateField} /></label>
-          <label>
+          {form.role !== "admin" && <label>
             Бөлүкчө
             <select name="unit_type" required value={form.unit_type} onChange={updateField}>
               <option value="outpost">Застава</option>
@@ -457,8 +559,8 @@ export default function AdminUsersPage() {
               <option value="platoon">Взвод</option>
               <option value="institution">Мекеме</option>
             </select>
-          </label>
-          <label>
+          </label>}
+          {form.role !== "admin" && <label>
             Аскер бөлүгүнүн номери
             <select className={!form.region ? "form-select-placeholder" : undefined} name="region" required value={form.region} onChange={updateField}>
               <option disabled value="">Аскер бөлүгүнүн номерин тандаңыз</option>
@@ -466,7 +568,7 @@ export default function AdminUsersPage() {
                 <option key={unit} value={unit}>{unit}</option>
               ))}
             </select>
-          </label>
+          </label>}
           {form.unit_type === "outpost" && (
             <label>
               Заставанын аталышы
@@ -541,13 +643,13 @@ export default function AdminUsersPage() {
             <option value="rejected">Четке кагылган</option>
           </select>
         </label>
-        <label>
+        {activeGroup !== "admin" && <label>
           <span>Аскер бөлүгүнүн номери</span>
           <select onChange={(event) => setUnitFilter(event.target.value)} value={unitFilter}>
             <option value="">Бардык аскер бөлүктөр</option>
             {availableUnitNumbers.map((unit) => <option key={unit} value={unit}>{unit}</option>)}
           </select>
-        </label>
+        </label>}
         {(searchQuery || statusFilter || unitFilter) && (
           <button onClick={resetFilters} type="button">Тазалоо</button>
         )}
@@ -589,6 +691,9 @@ export default function AdminUsersPage() {
                 <span className="admin-user-list-card__text">
                   <strong>{user.full_name || user.email}</strong>
                   <small>{getUnitName(user)}</small>
+                  <small className={user.isOnline ? "user-presence is-online" : "user-presence"}>
+                    {formatPresence(user)}
+                  </small>
                 </span>
                 <span aria-hidden="true" className="admin-user-list-card__arrow">›</span>
               </button>

@@ -16,6 +16,7 @@ import {
   updateCombatTrainingJournal,
   updateCombatTrainingJournalSubject,
 } from "../../../api/dashboard.js";
+import { getDocumentRegistrationCode } from "../../../utils/documentRegistration.js";
 import {
   OUTPOSTS_BY_MILITARY_UNIT,
   formatOutpostName,
@@ -104,7 +105,7 @@ export const buildSubjectJournalTable = (title, options = {}) => {
   };
   const attendanceColumns = Array.from({ length: 31 }, (_, index) => ({
     key: `attendance_${index + 1}`,
-    label: '"__"____202__ж.',
+    label: '202__ж."__"____',
     width: 44,
   }));
   const attendanceHoursHeaderColumns = attendanceColumns.map((column) => ({
@@ -125,6 +126,7 @@ export const buildSubjectJournalTable = (title, options = {}) => {
     {key: "attendance_marker", label: "", readOnly: true, width: 44},
     ...attendanceColumns,
     ...(!hideDate ? [{key: "date", label: labels.date, width: 180}] : []),
+    {key: "hours_date", label: labels.date, type: "date", width: 150},
     {key: "hours", label: labels.hours, type: "number", width: 180},
     {
       key: "topic_method",
@@ -175,6 +177,7 @@ export const buildSubjectJournalTable = (title, options = {}) => {
           colSpan: attendanceColumns.length + 1,
         },
         ...(!hideDate ? [{key: "date", label: labels.date, rowSpan: mainHeaderRowSpan}] : []),
+        {key: "hours_date", label: labels.date, rowSpan: mainHeaderRowSpan, fixed: true},
         {key: "hours", label: labels.hours, rowSpan: mainHeaderRowSpan},
         {
           key: "topic_method",
@@ -220,6 +223,7 @@ export const buildSubjectJournalTable = (title, options = {}) => {
         {}
       ),
       date: "",
+      hours_date: "",
       hours: "",
       topic_method: "",
       completion_note: "",
@@ -405,6 +409,7 @@ const JournalDailyStatus = ({ updatedAt, now }) => {
 };
 
 export default function CombatTrainingJournal({ data, methodicalSubjects = [], user }) {
+  const canManageJournalSubjects = Boolean(user?.is_superuser);
   const [year, setYear] = useState(DEFAULT_YEAR);
   const [unitName, setUnitName] = useState(getDefaultUnitName(user));
   const [journalTitle, setJournalTitle] = useState(() =>
@@ -1373,7 +1378,7 @@ export default function CombatTrainingJournal({ data, methodicalSubjects = [], u
             <p>Предметтер бул аскер бөлүгүнө жана анын заставаларына гана көрүнөт.</p>
             <p>Предметтердин саны: {availableSubjects.length}</p>
           </div>
-          <button
+          {canManageJournalSubjects ? <button
             className="combat-journal-create-button"
             onClick={() => {
               setManualSubjectTitle("");
@@ -1383,10 +1388,10 @@ export default function CombatTrainingJournal({ data, methodicalSubjects = [], u
             type="button"
           >
             Предмет кошуу
-          </button>
+          </button> : null}
         </div>
 
-        {isSubjectCreateOpen ? (
+        {canManageJournalSubjects && isSubjectCreateOpen ? (
           <div className="combat-journal-dialog" role="dialog" aria-modal="true">
             <form
               className="combat-journal-dialog__panel"
@@ -1424,7 +1429,7 @@ export default function CombatTrainingJournal({ data, methodicalSubjects = [], u
           </div>
         ) : null}
 
-        {renderSubjectEditDialog()}
+        {canManageJournalSubjects ? renderSubjectEditDialog() : null}
         {subjectLoadError && !isSubjectCreateOpen ? (
           <p className="dashboard-error">{subjectLoadError}</p>
         ) : null}
@@ -1433,7 +1438,7 @@ export default function CombatTrainingJournal({ data, methodicalSubjects = [], u
             {availableSubjects.map((subject, subjectIndex) => (
               <article className="saved-table-card" key={subject.id}>
                 <strong>{subjectIndex + 1}. {subject.title}</strong>
-                <div className="saved-table-card__actions">
+                {canManageJournalSubjects ? <div className="saved-table-card__actions">
                   <button
                     onClick={() => openSubjectEditDialog(subject)}
                     type="button"
@@ -1447,7 +1452,7 @@ export default function CombatTrainingJournal({ data, methodicalSubjects = [], u
                   >
                     {deletingSubjectId === subject.id ? "Өчүрүлүүдө..." : "Өчүрүү"}
                   </button>
-                </div>
+                </div> : null}
               </article>
             ))}
           </div>
@@ -1478,6 +1483,7 @@ export default function CombatTrainingJournal({ data, methodicalSubjects = [], u
         tabIndex={0}
       >
         <strong>{submission.documentTitle}</strong>
+        <small>Каттоо № {getDocumentRegistrationCode(submission)}</small>
         <span>{getSubmissionSenderLabel(submission)}</span>
         <span>Толтурулду</span>
         <JournalDailyStatus

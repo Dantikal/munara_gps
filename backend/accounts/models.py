@@ -46,6 +46,7 @@ class User(AbstractUser):
         "Фото военного билета", upload_to="users/military_ids/", blank=True
     )
     rejection_reason = models.TextField("Причина отклонения", blank=True)
+    profile_completed = models.BooleanField("Профиль заполнен", default=True)
     reviewed_at = models.DateTimeField("Дата модерации", null=True, blank=True)
     reviewed_by = models.ForeignKey(
         "self",
@@ -75,11 +76,13 @@ class User(AbstractUser):
             )
 
     def save(self, *args, **kwargs):
-        if self.is_superuser or self.role == self.Role.ADMIN:
+        if self.is_superuser:
             self.role = self.Role.ADMIN
             self.status = self.Status.ACTIVE
             self.is_staff = True
-            self.is_superuser = True
+        elif self.role == self.Role.ADMIN:
+            self.status = self.Status.ACTIVE
+            self.is_staff = True
         else:
             self.is_staff = False
             self.is_superuser = False
@@ -327,6 +330,30 @@ class ThematicAccountSubmissionRead(models.Model):
         ]
         verbose_name = "Просмотр отправленного документа"
         verbose_name_plural = "Просмотры отправленных документов"
+
+
+class ThematicAccountSubmissionHidden(models.Model):
+    submission = models.ForeignKey(
+        ThematicAccountSubmission,
+        on_delete=models.CASCADE,
+        related_name="hidden_by",
+    )
+    user = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name="hidden_thematic_account_submissions",
+    )
+    hidden_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=("submission", "user"),
+                name="unique_hidden_thematic_account_submission",
+            )
+        ]
+        verbose_name = "Скрытый отправленный документ"
+        verbose_name_plural = "Скрытые отправленные документы"
 
 
 class CombatTrainingJournalRevision(models.Model):
@@ -617,6 +644,67 @@ class CombatTrainingPlanRead(models.Model):
         verbose_name_plural = "Просмотры обновлений плановых мероприятий"
 
 
+class ModuleTemplate(models.Model):
+    module_key = models.CharField("Раздел", max_length=64, db_index=True)
+    title = models.CharField("Название", max_length=255)
+    file = models.FileField("PDF-файл", upload_to="module_templates/%Y/%m/")
+    uploaded_by = models.ForeignKey(
+        User,
+        verbose_name="Загрузил",
+        on_delete=models.SET_NULL,
+        null=True,
+        related_name="module_templates",
+    )
+    created_at = models.DateTimeField("Загружено", auto_now_add=True)
+
+    class Meta:
+        ordering = ("-created_at", "-id")
+        verbose_name = "Үлгү раздела"
+        verbose_name_plural = "Үлгү разделов"
+
+    def __str__(self):
+        return f"{self.module_key}: {self.title}"
+
+
+class ModuleBanner(models.Model):
+    module_key = models.CharField("Раздел", max_length=64, db_index=True)
+    title = models.CharField("Название", max_length=255)
+    description = models.TextField("Дополнительная информация", blank=True)
+    file = models.FileField("Фото или видео", upload_to="module_banners/%Y/%m/")
+    uploaded_by = models.ForeignKey(
+        User,
+        verbose_name="Опубликовал",
+        on_delete=models.SET_NULL,
+        null=True,
+        related_name="module_banners",
+    )
+    created_at = models.DateTimeField("Опубликовано", auto_now_add=True)
+
+    class Meta:
+        ordering = ("-created_at", "-id")
+        verbose_name = "Баннер раздела"
+        verbose_name_plural = "Баннеры разделов"
+
+    def __str__(self):
+        return f"{self.module_key}: {self.title}"
+
+
+class ModuleBannerMedia(models.Model):
+    banner = models.ForeignKey(
+        ModuleBanner,
+        verbose_name="Баннер",
+        on_delete=models.CASCADE,
+        related_name="additional_media",
+    )
+    file = models.FileField("Фото или видео", upload_to="module_banners/%Y/%m/")
+    created_at = models.DateTimeField("Загружено", auto_now_add=True)
+
+    class Meta:
+        ordering = ("id",)
+        verbose_name = "Дополнительный файл баннера"
+        verbose_name_plural = "Дополнительные файлы баннеров"
+
+
 class AdminChatMessage(models.Model):
     class AttachmentKind(models.TextChoices):
         IMAGE = "image", "Image"
@@ -651,6 +739,13 @@ class AdminChatMessage(models.Model):
     deleted_by_sender = models.BooleanField("Удалено отправителем у себя", default=False)
     deleted_by_recipient = models.BooleanField("Удалено получателем у себя", default=False)
     deleted_for_everyone = models.BooleanField("Удалено у всех", default=False)
+    is_broadcast = models.BooleanField("Сообщение общей группе застав", default=False)
+    broadcast_id = models.UUIDField(
+        "Идентификатор рассылки",
+        null=True,
+        blank=True,
+        db_index=True,
+    )
 
     class Meta:
         ordering = ("created_at", "id")

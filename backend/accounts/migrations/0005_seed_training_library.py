@@ -33,8 +33,10 @@ def build_training_table(period_number):
     }
 
 
-def build_lesson_schedule_period_title(week_number, month="__________"):
-    return f'Сабактардын жүгүртмөсү "{month} "айынын {week_number} жумасы'
+def build_lesson_schedule_period_title(week_number, month=""):
+    if month:
+        return f'Сабактардын жүгүртмөсү "{month} "айынын {week_number} жумасы'
+    return f'Сабактардын жүгүртмөсү {week_number} жумасы'
 
 
 def build_lesson_schedule_table(title=None):

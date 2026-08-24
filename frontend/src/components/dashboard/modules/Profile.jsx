@@ -4,6 +4,7 @@ import { useDispatch } from "react-redux";
 import { api } from "../../../api/client.js";
 import { getApiErrorMessage } from "../../../api/errors.js";
 import { updateUser } from "../../../features/auth/authSlice.js";
+import ProfileEditForm from "./ProfileEditForm.jsx";
 
 const roleLabels = {
   admin: "Администратор",
@@ -50,6 +51,7 @@ const getInitials = (user) => {
 export default function Profile({ user }) {
   const dispatch = useDispatch();
   const [uploading, setUploading] = useState(false);
+  const [editing, setEditing] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const avatarSrc = user?.photo_face || user?.avatar;
@@ -96,9 +98,20 @@ export default function Profile({ user }) {
   return (
     <section className="module-panel profile-panel">
       <header>
-        <h1>Жеке кабинетим</h1>
-        <p>Системанын учурдагы колдонуучусунун маалыматы.</p>
+        <div>
+          <h1>Жеке кабинетим</h1>
+          <p>Системанын учурдагы колдонуучусунун маалыматы.</p>
+        </div>
+        <button onClick={() => setEditing((current) => !current)} type="button">
+          {editing ? "Жабуу" : "Профилди өзгөртүү"}
+        </button>
       </header>
+      {editing ? (
+        <ProfileEditForm user={user} onCancel={() => setEditing(false)} onSaved={() => {
+          setEditing(false);
+          setMessage("Профиль сакталды.");
+        }} />
+      ) : null}
       <div className="profile-layout">
         <div className="profile-avatar profile-avatar--large">
           {avatarSrc ? (

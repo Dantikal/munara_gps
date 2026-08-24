@@ -6,9 +6,14 @@ from accounts.models import CombatTrainingJournalSubject, User
 
 class CombatTrainingJournalSubjectApiTests(APITestCase):
     def setUp(self):
-        self.admin = User.objects.create_user(
+        self.admin = User.objects.create_superuser(
             username="journal-subject-admin@example.com",
             email="journal-subject-admin@example.com",
+            password="test-password",
+        )
+        self.limited_admin = User.objects.create_user(
+            username="limited-journal-admin@example.com",
+            email="limited-journal-admin@example.com",
             password="test-password",
             role=User.Role.ADMIN,
             status=User.Status.ACTIVE,
@@ -58,6 +63,14 @@ class CombatTrainingJournalSubjectApiTests(APITestCase):
             format="json",
         )
         self.assertEqual(forbidden.status_code, 403)
+
+        self.client.force_authenticate(self.limited_admin)
+        limited_admin_forbidden = self.client.post(
+            self.url,
+            {"title": "Limited admin subject", "unitNumber": "2021"},
+            format="json",
+        )
+        self.assertEqual(limited_admin_forbidden.status_code, 403)
 
         self.client.force_authenticate(self.admin)
         created = self.client.post(

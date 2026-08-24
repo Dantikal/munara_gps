@@ -6,6 +6,7 @@ import {
   getCombatTrainingJournalSubjects,
   getThematicAccountSubmissions,
 } from "../../../api/dashboard.js";
+import { getDocumentRegistrationCode } from "../../../utils/documentRegistration.js";
 import Analytics from "./Analytics.jsx";
 import {
   buildSubjectJournalTable,
@@ -556,6 +557,7 @@ export default function Meetings({
                     <span aria-hidden="true" className="module-document-icon" />
                     <span className="module-submission-card__content">
                       <strong>{submission.documentTitle}</strong>
+                      <small>Каттоо № {getDocumentRegistrationCode(submission)}</small>
                       <small>
                         Жөнөтүлдү:{" "}
                         {new Date(
@@ -921,6 +923,7 @@ export default function Meetings({
                   <span aria-hidden="true" className="module-document-icon" />
                   <span className="module-submission-card__content">
                     <strong>{submission.documentTitle}</strong>
+                    <small>Каттоо № {getDocumentRegistrationCode(submission)}</small>
                     <small>
                       {new Date(
                         submission.updatedAt || submission.createdAt

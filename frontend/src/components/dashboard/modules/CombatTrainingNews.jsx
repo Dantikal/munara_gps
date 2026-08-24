@@ -49,6 +49,10 @@ export default function CombatTrainingNews({ user }) {
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const isAdmin = user?.role === "admin";
+  const canPublish = isAdmin || user?.role === "regional";
+  const canManage = (news) => isAdmin || (
+    user?.role === "regional" && String(news.authorId) === String(user?.id)
+  );
 
   const loadNews = async () => {
     setLoading(true);
@@ -169,7 +173,7 @@ export default function CombatTrainingNews({ user }) {
     <section className="module-panel combat-news">
       <header className="module-header combat-news__header">
         <h1>Күжүрмөн даярдоонун маалыматтары</h1>
-        {isAdmin && (
+        {canPublish && (
           <button onClick={openCreate} type="button">+ Маалымат кошуу</button>
         )}
       </header>
@@ -190,7 +194,7 @@ export default function CombatTrainingNews({ user }) {
                   <h2>{news.title}</h2>
                   <span>{news.authorName} · {formatDate(news.createdAt)}</span>
                 </div>
-                {isAdmin && (
+                {canManage(news) && (
                   <div className="combat-news-card__admin-actions">
                     <button onClick={() => openEdit(news)} type="button">Өзгөртүү</button>
                     <button onClick={() => handleDelete(news)} type="button">Өчүрүү</button>

@@ -5,6 +5,7 @@ import {
   getChatUnreadCount,
   getCombatTrainingNewsUnreadCount,
   getCombatTrainingPlanUnreadCount,
+  getThematicAccountSubmissions,
   markAllCombatTrainingPlansRead,
 } from "../../api/dashboard.js";
 
@@ -50,6 +51,7 @@ const getInitials = (user) => {
 };
 
 const adminItems = [
+  { id: "home", label: "Башкы экран" },
   { id: "library", label: "Сабактардын тематикасынын эсеби жана жүгүртмөсү" },
   { id: "combatTrainingJournal", label: "Күжүрмөн даярдоону каттоо журналы" },
   { id: "combatTrainingResults", label: "Күжүрмөн даярдоонун жыйынтыктары ( көзөмөл сабактары, көзөмөл текшерүү сабактары)" },
@@ -59,7 +61,8 @@ const adminItems = [
   { id: "smr", label: "Күжүрмөн даярдоо боюнча усулдук колдонмолор" },
   { id: "combatTrainingPlan", label: "Күжүрмөн даярдоонун пландалган иш-чаралары" },
   { id: "combatTrainingReport", label: "Күжүрмөн даярдоонун маалыматтары" },
-  { id: "contactAdmin", label: "Администратор менен байланыш" },
+  { id: "contactAdmin", label: "Колдонуучулар менен байланыш" },
+  { id: "memoLetter", label: "Билдирме кат" },
 ];
 
 const getAdminSections = (pendingCount) => [
@@ -71,11 +74,14 @@ const getAdminSections = (pendingCount) => [
       { id: "users", label: "Колдонуучулар" },
       { id: "requests", label: `Өтүнмөлөр (${pendingCount})` },
       { id: "submissionEditRequests", label: "Уруксат сурамдары" },
+      { id: "documents", label: "Документтер" },
+      { id: "regionalUnitRating", label: "Рейтинг" },
     ],
   },
 ];
 
 const fieldItems = [
+  { id: "home", label: "Башкы экран" },
   { id: "library", label: "Сабактардын тематикасынын эсеби жана жүгүртмөсү" },
   { id: "combatTrainingJournal", label: "Күжүрмөн даярдоону каттоо журналы" },
   { id: "combatTrainingResults", label: "Күжүрмөн даярдоонун жыйынтыктары ( көзөмөл сабактары, көзөмөл текшерүү сабактары)" },
@@ -83,7 +89,8 @@ const fieldItems = [
   { id: "smr", label: "Күжүрмөн даярдоо боюнча усулдук колдонмолор" },
   { id: "combatTrainingPlan", label: "Күжүрмөн даярдоонун пландалган иш-чаралары" },
   { id: "combatTrainingReport", label: "Күжүрмөн даярдоонун маалыматтары" },
-  { id: "contactAdmin", label: "Администратор менен байланыш" },
+  { id: "contactAdmin", label: "Аскер бөлүгү менен байланыш" },
+  { id: "memoLetter", label: "Билдирме кат" },
 ];
 
 const regionalItems = [
@@ -91,7 +98,13 @@ const regionalItems = [
   { id: "meetings", label: "Жыйындар" },
   { id: "youngSoldierTrainingCourse", label: "Жаш жоокерлерди даярдоо курсу" },
   ...fieldItems.slice(3),
-];
+  { id: "regionalUsers", label: "Колдонуучулар" },
+  { id: "outpostRating", label: "Рейтинг" },
+].map((item) => (
+  item.id === "contactAdmin"
+    ? { ...item, label: "Колдонуучулар менен байланыш" }
+    : item
+));
 
 export default function Sidebar({
   role,
@@ -104,11 +117,16 @@ export default function Sidebar({
 }) {
   const avatarSrc = user?.photo_face || user?.avatar;
   const isAdminChildActive =
-    activeItem === "users" || activeItem === "requests" || activeItem === "submissionEditRequests";
+    activeItem === "users" ||
+    activeItem === "requests" ||
+    activeItem === "submissionEditRequests" ||
+    activeItem === "documents" ||
+    activeItem === "regionalUnitRating";
   const [adminOpen, setAdminOpen] = useState(isAdminChildActive);
   const [newsUnreadCount, setNewsUnreadCount] = useState(0);
   const [planUnreadCount, setPlanUnreadCount] = useState(0);
   const [chatUnreadCount, setChatUnreadCount] = useState(modules?.chatUnreadCount || 0);
+  const [memoLetterUnreadCount, setMemoLetterUnreadCount] = useState(0);
   const sections =
     role === "admin"
       ? getAdminSections(pendingCount)
@@ -201,6 +219,41 @@ export default function Sidebar({
     };
   }, [role]);
 
+  useEffect(() => {
+    if (!["regional", "admin"].includes(role)) {
+      setMemoLetterUnreadCount(0);
+      return undefined;
+    }
+
+    let isMounted = true;
+    const refreshMemoLetterUnreadCount = async () => {
+      try {
+        const submissions = await getThematicAccountSubmissions();
+        const incomingRole = role === "regional" ? "outpost" : "regional";
+        const count = (Array.isArray(submissions) ? submissions : []).filter(
+          (submission) =>
+            submission.sectionId === "memo-letter" &&
+            submission.senderRole === incomingRole &&
+            !submission.isRead
+        ).length;
+        if (isMounted) setMemoLetterUnreadCount(count);
+      } catch {
+        // The menu remains available if notification loading fails.
+      }
+    };
+
+    refreshMemoLetterUnreadCount();
+    const intervalId = window.setInterval(refreshMemoLetterUnreadCount, 15000);
+    window.addEventListener("focus", refreshMemoLetterUnreadCount);
+    window.addEventListener("memo-letter-read", refreshMemoLetterUnreadCount);
+    return () => {
+      isMounted = false;
+      window.clearInterval(intervalId);
+      window.removeEventListener("focus", refreshMemoLetterUnreadCount);
+      window.removeEventListener("memo-letter-read", refreshMemoLetterUnreadCount);
+    };
+  }, [role]);
+
   const handleClick = (itemId) => {
     if (itemId === "requests") {
       onOpenRequests?.();
@@ -270,6 +323,14 @@ export default function Sidebar({
                   <span className="dashboard-sidebar__item-label">{item.label}</span>
                   {item.id === "contactAdmin" && chatUnreadCount > 0 ? (
                     <span className="dashboard-sidebar__item-badge">{chatUnreadCount}</span>
+                  ) : null}
+                  {item.id === "memoLetter" && memoLetterUnreadCount > 0 ? (
+                    <span
+                      aria-label={`Жаңы билдирме каттар: ${memoLetterUnreadCount}`}
+                      className="dashboard-sidebar__item-badge"
+                    >
+                      {memoLetterUnreadCount}
+                    </span>
                   ) : null}
                   {item.id === "combatTrainingReport" && newsUnreadCount > 0 ? (
                     <span

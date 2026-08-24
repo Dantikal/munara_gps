@@ -6,52 +6,67 @@ import CombatTrainingNews from "./CombatTrainingNews.jsx";
 import CombatTrainingPlan from "./CombatTrainingPlan.jsx";
 import CombatTrainingResults from "./CombatTrainingResults.jsx";
 import ContactAdmin from "./ContactAdmin.jsx";
+import DocumentRegistry from "./DocumentRegistry.jsx";
+import DashboardHome from "./DashboardHome.jsx";
 import Journal from "./Journal.jsx";
 import Library from "./Library.jsx";
 import Meetings from "./Meetings.jsx";
+import MemoLetter from "./MemoLetter.jsx";
+import ModuleTemplates from "./ModuleTemplates.jsx";
 import Profile from "./Profile.jsx";
 import SavedTables from "./SavedTables.jsx";
 import Schedule from "./Schedule.jsx";
 import SMR from "./SMR.jsx";
 import YoungSoldierTrainingCourse from "./YoungSoldierTrainingCourse.jsx";
 
-export default function DashboardModuleView({ activeModule, modules, onRefresh, user }) {
+export default function DashboardModuleView({ activeModule, dashboardData, initialChatPartnerId, modules, onNavigate, onRefresh, user }) {
+  const withTemplates = (moduleKey, content) => (
+    <div className="module-with-templates">
+      <ModuleTemplates moduleKey={moduleKey} user={user} />
+      {content}
+    </div>
+  );
+
+  if (activeModule === "home") {
+    return <DashboardHome data={dashboardData?.home} modules={modules} onNavigate={onNavigate} user={user} />;
+  }
+
   if (activeModule === "profile") {
     return <Profile user={user} />;
   }
 
   if (activeModule === "library") {
-    return <Library data={modules?.library} onRefresh={onRefresh} />;
+    return withTemplates("library", <Library data={modules?.library} onRefresh={onRefresh} />);
   }
 
   if (activeModule === "combatTrainingJournal") {
-    return (
+    return withTemplates("combatTrainingJournal", (
       <CombatTrainingJournal
         data={modules?.combatTrainingJournal}
         methodicalSubjects={modules?.smr?.subjects || []}
         user={user}
       />
-    );
+    ));
   }
 
   if (activeModule === "combatTrainingResults") {
-    return <CombatTrainingResults data={modules?.combatTrainingResults} user={user} />;
+    return withTemplates("combatTrainingResults", <CombatTrainingResults data={modules?.combatTrainingResults} user={user} />);
   }
 
   if (activeModule === "meetings") {
-    return <Meetings modules={modules} user={user} />;
+    return withTemplates("meetings", <Meetings modules={modules} user={user} />);
   }
 
   if (activeModule === "youngSoldierTrainingCourse") {
-    return <YoungSoldierTrainingCourse modules={modules} user={user} />;
+    return withTemplates("youngSoldierTrainingCourse", <YoungSoldierTrainingCourse modules={modules} user={user} />);
   }
 
   if (activeModule === "combatTrainingPlan") {
-    return <CombatTrainingPlan user={user} />;
+    return withTemplates("combatTrainingPlan", <CombatTrainingPlan user={user} />);
   }
 
   if (activeModule === "combatTrainingReport") {
-    return <CombatTrainingNews user={user} />;
+    return withTemplates("combatTrainingReport", <CombatTrainingNews user={user} />);
   }
 
   if (activeModule === "savedTables") {
@@ -59,7 +74,7 @@ export default function DashboardModuleView({ activeModule, modules, onRefresh, 
   }
 
   if (activeModule === "smr") {
-    return <SMR data={modules?.smr} user={user} />;
+    return withTemplates("smr", <SMR data={modules?.smr} user={user} />);
   }
 
   if (activeModule === "schedule") {
@@ -71,11 +86,25 @@ export default function DashboardModuleView({ activeModule, modules, onRefresh, 
   }
 
   if (activeModule === "analytics" || activeModule === "combatTrainingAnalytics") {
-    return <Analytics data={modules?.analytics} user={user} />;
+    return withTemplates("combatTrainingAnalytics", <Analytics data={modules?.analytics} user={user} />);
   }
 
   if (activeModule === "contactAdmin") {
-    return <ContactAdmin user={user} onRefresh={onRefresh} />;
+    return withTemplates("contactAdmin", (
+      <ContactAdmin
+        initialPartnerId={initialChatPartnerId}
+        user={user}
+        onRefresh={onRefresh}
+      />
+    ));
+  }
+
+  if (activeModule === "memoLetter") {
+    return <MemoLetter user={user} />;
+  }
+
+  if (activeModule === "documents") {
+    return <DocumentRegistry user={user} />;
   }
 
   return null;

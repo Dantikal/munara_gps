@@ -3,9 +3,12 @@ from rest_framework_simplejwt.views import TokenRefreshView
 
 from .views import (
     AdminUserDetailView,
+    AdminQuickUserCreateView,
     AdminUsersView,
     AdminChatMessageView,
     AdminChatMessageDeleteView,
+    AdminChatConversationDeleteView,
+    AdminChatOutpostBroadcastView,
     ChatPartnerListView,
     ChatUnreadCountView,
     LoginView,
@@ -24,6 +27,7 @@ urlpatterns = [
     path("me/", MeView.as_view(), name="me"),
     path("users/", ScopedUsersView.as_view(), name="scoped-users"),
     path("admin/users/", AdminUsersView.as_view(), name="admin-users"),
+    path("admin/users/quick/", AdminQuickUserCreateView.as_view(), name="admin-user-quick-create"),
     path("admin/users/<int:pk>/", AdminUserDetailView.as_view(), name="admin-user-detail"),
     path("admin/requests/", PendingRequestsView.as_view(), name="pending-requests"),
     path("admin/requests/<int:pk>/", UserRequestDetailView.as_view(), name="request-detail"),
@@ -32,4 +36,14 @@ urlpatterns = [
     path("chat/partners/", ChatPartnerListView.as_view(), name="chat-partners"),
     path("chat/unread-count/", ChatUnreadCountView.as_view(), name="chat-unread-count"),
     path("chat/messages/<int:pk>/", AdminChatMessageDeleteView.as_view(), name="admin-chat-message-delete"),
+    path(
+        "chat/conversations/<int:partner_pk>/",
+        AdminChatConversationDeleteView.as_view(),
+        name="admin-chat-conversation-delete",
+    ),
+    path(
+        "chat/broadcast/outposts/",
+        AdminChatOutpostBroadcastView.as_view(),
+        name="admin-chat-outpost-broadcast",
+    ),
 ]

@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 
 import { getApiErrorMessage } from "../../../api/errors.js";
+import { confirmDocumentSend } from "../../../utils/confirmDocumentSend.js";
 
 export default function SubmissionForwardDialog({ onClose, onForward, submission }) {
   const [title, setTitle] = useState("");
@@ -21,6 +22,8 @@ export default function SubmissionForwardDialog({ onClose, onForward, submission
       setError("Иш кагаздардын аталышын жазыңыз.");
       return;
     }
+
+    if (!(await confirmDocumentSend())) return;
 
     setIsSending(true);
     setError("");

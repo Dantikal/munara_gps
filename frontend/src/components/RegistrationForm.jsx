@@ -34,6 +34,7 @@ export default function RegistrationForm() {
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const namedSubunitLabel = namedSubunitLabels[form.unit_type];
   const isNamedSubunit = Boolean(namedSubunitLabel);
 
@@ -79,6 +80,7 @@ export default function RegistrationForm() {
       const { data } = await api.post("/auth/register/", payload);
       setMessage(data.message);
       setForm(initialForm);
+      setShowPassword(false);
       formElement.reset();
     } catch (err) {
       setError(JSON.stringify(err.response?.data || "Каттоо катасы"));
@@ -228,13 +230,25 @@ export default function RegistrationForm() {
         </label>
         <label>
           Сырсөз
-          <input
-            name="password"
-            type="password"
-            minLength={8}
-            required
-            onChange={updateField}
-          />
+          <span className="password-input">
+            <input
+              autoComplete="new-password"
+              name="password"
+              type={showPassword ? "text" : "password"}
+              minLength={8}
+              required
+              value={form.password}
+              onChange={updateField}
+            />
+            <button
+              aria-label={showPassword ? "Сырсөздү жашыруу" : "Сырсөздү көрсөтүү"}
+              aria-pressed={showPassword}
+              onClick={() => setShowPassword((current) => !current)}
+              type="button"
+            >
+              {showPassword ? "Жашыруу" : "Көрсөтүү"}
+            </button>
+          </span>
         </label>
         <label>
           Колдонуучунун сүрөтү

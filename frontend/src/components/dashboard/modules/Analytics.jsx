@@ -12,6 +12,8 @@ import {
   formatOutpostName,
 } from "../../../data/militaryUnits.js";
 import useDocumentHistory from "../../../hooks/useDocumentHistory.js";
+import { confirmDocumentSend } from "../../../utils/confirmDocumentSend.js";
+import { getDocumentRegistrationCode } from "../../../utils/documentRegistration.js";
 import SubmissionForwardDialog from "./SubmissionForwardDialog.jsx";
 import SubmissionEditPermissionButton from "./SubmissionEditPermissionButton.jsx";
 
@@ -353,7 +355,8 @@ export default function Analytics({ data, user }) {
   const [draftMonthlyAnalysisTitle, setDraftMonthlyAnalysisTitle] = useState("");
   const [monthlyAnalysisRegistryNumber, setMonthlyAnalysisRegistryNumber] = useState(null);
   const [monthlyAnalysisAddressee, setMonthlyAnalysisAddressee] = useState(
-    "КР Мамлекетик чек ара кызматынын күжүрмөн даярдоо башкармалыгынын башчысына"
+    data?.defaultAddressee ||
+      "КР Мамлекетик чек ара кызматынын күжүрмөн даярдоо башкармалыгынын башчысына"
   );
   const [analysisSubmissions, setAnalysisSubmissions] = useState([]);
   const [selectedAnalysisSubmission, setSelectedAnalysisSubmission] = useState(null);
@@ -587,7 +590,10 @@ export default function Analytics({ data, user }) {
   const currentMonth = String(currentDate.getMonth() + 1).padStart(2, "0");
   const currentYear = currentDate.getFullYear();
   const formattedDocumentDate = `"${currentDay}"${currentMonth}"${currentYear}-ж`;
-  const formattedRegistryNumber = `№ ${currentMonth}/${monthlyAnalysisRegistryNumber || "__"}`;
+  const formattedRegistryNumber = `${currentMonth}/${monthlyAnalysisRegistryNumber || "__"}`;
+  const formattedRegistrationCode = selectedAnalysisSubmission
+    ? getDocumentRegistrationCode(selectedAnalysisSubmission)
+    : `${formattedDocumentDate} ${formattedRegistryNumber}`;
   const isMonthlyAnalysisSent = Boolean(monthlyAnalysisRegistryNumber);
   const activeMonthlyAnalysisDocument = monthlyAnalysisDocuments.find(
     (document) => document.id === activeMonthlyAnalysisDocumentId
@@ -894,6 +900,7 @@ export default function Analytics({ data, user }) {
     );
     const directDocument = {
       addressee:
+        data?.defaultAddressee ||
         "КР Мамлекетик чек ара кызматынын күжүрмөн даярдоо башкармалыгынын башчысына",
       attachments: [],
       body: "",
@@ -945,9 +952,33 @@ export default function Analytics({ data, user }) {
     data?.directDocumentId,
     data?.directDocumentTitle,
     data?.directEditor,
+    data?.defaultAddressee,
     data?.initialSectionId,
     user?.id,
   ]);
+
+  useEffect(() => {
+    const submission = data?.directSubmission;
+    if (!data?.directEditor || !submission) return;
+
+    const document = submission.table?.document || {};
+    const sectionId =
+      submission.table?.sectionId || data.initialSectionId || MONTHLY_ANALYSIS_SECTION_ID;
+    setSelectedAnalyticsScope("regional-unit");
+    setSelectedSectionId(sectionId);
+    setSelectedAnalysisSubmission(submission);
+    setMonthlyAnalysisCreated(true);
+    setIsCreateDialogOpen(false);
+    setIsMonthlyDocumentOpen(true);
+    setActiveMonthlyAnalysisDocumentId(null);
+    applyMonthlyAnalysisDocumentToState({
+      ...document,
+      id: `submission-${submission.id}`,
+      registryNumber: submission.registrationNumber || submission.id,
+      sectionId,
+      title: document.title || submission.documentTitle || "",
+    });
+  }, [data?.directEditor, data?.directSubmission, data?.initialSectionId]);
 
   useEffect(() => {
     if (!selectedSectionId || !analyticsSections.some((section) => section.id === selectedSectionId)) return;
@@ -1400,6 +1431,8 @@ export default function Analytics({ data, user }) {
       return;
     }
 
+    if (!(await confirmDocumentSend())) return;
+
     const currentCounter = Number(
       window.localStorage.getItem(registryCounterStorageKey) || "0"
     );
@@ -1441,10 +1474,11 @@ export default function Analytics({ data, user }) {
         ...items.filter((item) => item.id !== submission.id),
       ]);
       data?.onSubmissionCreated?.(submission);
-      window.localStorage.setItem(registryCounterStorageKey, String(nextCounter));
-      setMonthlyAnalysisRegistryNumber(nextCounter);
-      updateActiveMonthlyAnalysisDocument({ registryNumber: nextCounter });
-      persistMonthlyAnalysisDraft({ registryNumber: nextCounter });
+      const registrationNumber = submission.registrationNumber || submission.id;
+      window.localStorage.setItem(registryCounterStorageKey, String(registrationNumber));
+      setMonthlyAnalysisRegistryNumber(registrationNumber);
+      updateActiveMonthlyAnalysisDocument({ registryNumber: registrationNumber });
+      persistMonthlyAnalysisDraft({ registryNumber: registrationNumber });
       setIsAnalysisSendDialogOpen(false);
       setAnalysisSubmissionTitle("");
     } catch (error) {
@@ -1892,7 +1926,7 @@ export default function Analytics({ data, user }) {
           Артка
         </button>
         <div className="module-actions">
-          {!selectedAnalysisSubmission && canEditAnalysis ? (
+          {!data?.simpleLetterEditor && !selectedAnalysisSubmission && canEditAnalysis ? (
             <button
               className="module-action-button"
               disabled={isMonthlyAnalysisSent || !analysisDocumentHistory.canUndo}
@@ -1902,7 +1936,7 @@ export default function Analytics({ data, user }) {
               ↶ Артка
             </button>
           ) : null}
-          {!selectedAnalysisSubmission && canEditAnalysis ? (
+          {!data?.simpleLetterEditor && !selectedAnalysisSubmission && canEditAnalysis ? (
             <button
               className="module-action-button"
               disabled={isMonthlyAnalysisSent || !analysisDocumentHistory.canRedo}
@@ -1912,12 +1946,12 @@ export default function Analytics({ data, user }) {
               ↷ Алдыга
             </button>
           ) : null}
-          {!selectedAnalysisSubmission && canEditAnalysis ? (
+          {!data?.simpleLetterEditor && !selectedAnalysisSubmission && canEditAnalysis ? (
             <button className="module-action-button" onClick={handleSaveCurrentMonthlyAnalysisDocument} type="button">
               Сактоо
             </button>
           ) : null}
-          {!selectedAnalysisSubmission && canEditAnalysis && (
+          {!data?.simpleLetterEditor && !selectedAnalysisSubmission && canEditAnalysis && (
             selectedAnalyticsScope === "regional-unit" ||
             selectedSectionId === "period-analysis" ||
             selectedSectionId === "year-analysis"
@@ -1944,7 +1978,19 @@ export default function Analytics({ data, user }) {
               Жөнөтүү
             </button>
           ) : null}
-          {!data?.directEditor && !selectedAnalysisSubmission && canEditAnalysis ? (
+          {data?.simpleLetterEditor && !selectedAnalysisSubmission && canEditAnalysis ? (
+            <button
+              className="module-action-button"
+              disabled={isMonthlyAnalysisSent}
+              onClick={() => {
+                handleDeleteMonthlyAnalysisDocument(activeMonthlyAnalysisDocumentId);
+                data?.onDeleteDirectDocument?.(activeMonthlyAnalysisDocumentId);
+              }}
+              type="button"
+            >
+              Өчүрүү
+            </button>
+          ) : !data?.directEditor && !selectedAnalysisSubmission && canEditAnalysis ? (
             <button
               className="module-action-button"
               disabled={isMonthlyAnalysisSent}
@@ -2077,7 +2123,7 @@ export default function Analytics({ data, user }) {
               textAlign: "left",
             }}
           >
-            {formattedDocumentDate} {formattedRegistryNumber}
+            {formattedRegistrationCode}
           </div>
           <textarea
             onChange={(event) => {
@@ -2403,6 +2449,7 @@ export default function Analytics({ data, user }) {
         <span aria-hidden="true" className="module-document-icon" />
         <span className="module-submission-card__content">
           <strong>{submission.documentTitle}</strong>
+          <small>Каттоо № {getDocumentRegistrationCode(submission)}</small>
           <small>
             {submission.senderRole === "outpost"
               ? `Застава: ${submission.outpostName || submission.senderName}`

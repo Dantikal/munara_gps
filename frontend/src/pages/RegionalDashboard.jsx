@@ -4,12 +4,14 @@ import { useDispatch, useSelector } from "react-redux";
 import Sidebar from "../components/dashboard/Sidebar.jsx";
 import DashboardModuleView from "../components/dashboard/modules/DashboardModuleView.jsx";
 import { fetchDashboard } from "../features/dashboard/dashboardSlice.js";
+import RegionalUsersPage from "../features/regional/RegionalUsersPage.jsx";
+import OutpostRatingPage from "../features/regional/OutpostRatingPage.jsx";
 
 export default function RegionalDashboard() {
   const dispatch = useDispatch();
   const { user } = useSelector((state) => state.auth);
   const { data, loading, error, role } = useSelector((state) => state.dashboard);
-  const [activeView, setActiveView] = useState("library");
+  const [activeView, setActiveView] = useState("home");
 
   useEffect(() => {
     if (user?.role === "regional" && (!data || role !== "regional")) {
@@ -47,12 +49,20 @@ export default function RegionalDashboard() {
 
       <section className="dashboard-content">
         {error && <p className="dashboard-error">{error}</p>}
-        <DashboardModuleView
-          activeModule={activeView}
-          modules={data.modules}
-          user={user}
-          onRefresh={refreshDashboard}
-        />
+        {activeView === "regionalUsers" ? (
+          <RegionalUsersPage user={user} />
+        ) : activeView === "outpostRating" ? (
+          <OutpostRatingPage user={user} />
+        ) : (
+          <DashboardModuleView
+            activeModule={activeView}
+            dashboardData={data}
+            modules={data.modules}
+            onNavigate={setActiveView}
+            user={user}
+            onRefresh={refreshDashboard}
+          />
+        )}
       </section>
     </div>
   );
