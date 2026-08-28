@@ -11,7 +11,40 @@ import { resetDashboard } from "./features/dashboard/dashboardSlice.js";
 import AdminDashboard from "./pages/AdminDashboard.jsx";
 import OutpostDashboard from "./pages/OutpostDashboard.jsx";
 import RegionalDashboard from "./pages/RegionalDashboard.jsx";
-import sideEagleUrl from "./assets/Gemini_Generated_Image_uce9y0uce9y0uce9-removebg-preview (1) (1).png";
+
+const AUTH_NETWORK_POINTS = [
+  [3, 72], [9, 57], [15, 76], [21, 48], [28, 66], [34, 38], [41, 59],
+  [48, 31], [54, 53], [61, 24], [67, 47], [73, 18], [78, 41], [84, 29],
+  [89, 56], [95, 37], [24, 88], [39, 82], [55, 76], [70, 86], [85, 77], [97, 82],
+];
+
+const AUTH_NETWORK_LINKS = [
+  [0, 1], [0, 2], [1, 2], [1, 3], [2, 3], [2, 4], [3, 4], [3, 5],
+  [4, 5], [4, 6], [4, 16], [5, 6], [5, 7], [6, 7], [6, 8], [6, 17],
+  [7, 8], [7, 9], [8, 9], [8, 10], [8, 18], [9, 10], [9, 11], [10, 11],
+  [10, 12], [10, 18], [11, 12], [11, 13], [12, 13], [12, 14], [13, 14],
+  [13, 15], [14, 15], [14, 20], [15, 21], [16, 17], [17, 18], [18, 19],
+  [19, 20], [20, 21], [14, 19], [18, 20],
+];
+
+function AuthNetwork({ className = "auth-network" }) {
+  return (
+    <svg aria-hidden="true" className={className} preserveAspectRatio="none" viewBox="0 0 100 100">
+      <g className="auth-network__links">
+        {AUTH_NETWORK_LINKS.map(([from, to], index) => (
+          <line
+            key={`${from}-${to}`}
+            style={{ "--link-delay": `${-(index % 12) * 0.42}s` }}
+            x1={AUTH_NETWORK_POINTS[from][0]}
+            x2={AUTH_NETWORK_POINTS[to][0]}
+            y1={AUTH_NETWORK_POINTS[from][1]}
+            y2={AUTH_NETWORK_POINTS[to][1]}
+          />
+        ))}
+      </g>
+    </svg>
+  );
+}
 
 export default function App() {
   const { user } = useSelector((state) => state.auth);
@@ -56,21 +89,26 @@ export default function App() {
 
   const renderAuthPage = () => (
     <section className="auth-screen">
-      <div aria-hidden="true" className="auth-gold-particles">
-        {Array.from({ length: 42 }, (_, index) => (
+      <div aria-hidden="true" className="auth-hud auth-hud--top" />
+      <div aria-hidden="true" className="auth-hud auth-hud--bottom" />
+      <AuthNetwork />
+      <div aria-hidden="true" className="auth-green-particles">
+        {Array.from({ length: 72 }, (_, index) => (
           <span
             key={index}
             style={{
-              "--particle-delay": `${-(index * 1.37) % 13}s`,
-              "--particle-duration": `${6 + (index % 6) * 0.9}s`,
-              "--particle-left": `${4 + ((index * 17) % 93)}%`,
-              "--particle-size": `${5 + (index % 4)}px`,
+              "--particle-delay": `${-((index * 1.21) % 12)}s`,
+              "--particle-duration": `${7 + (index % 6) * 0.85}s`,
+              "--particle-left": `${2 + ((index * 29) % 96)}%`,
+              "--particle-size": `${3 + (index % 4)}px`,
+              "--particle-drift": `${-35 + ((index * 17) % 70)}px`,
             }}
           />
         ))}
       </div>
-      <img alt="" aria-hidden="true" className="auth-side-eagle auth-side-eagle--left" src={sideEagleUrl} />
-      <img alt="" aria-hidden="true" className="auth-side-eagle auth-side-eagle--right" src={sideEagleUrl} />
+      <div className="auth-corner-brand">
+        <BorderServiceLogo large />
+      </div>
       <div className={`auth-card auth-card--${page}`} key={page}>
         <header className="auth-brand">
           <BorderServiceLogo large />
@@ -103,7 +141,21 @@ export default function App() {
 
   return (
     <main className="app-shell">
+      <AuthNetwork className="dashboard-network" />
       <header className="topbar">
+        <div aria-hidden="true" className="topbar-particles">
+          {Array.from({ length: 64 }, (_, index) => (
+            <span
+              key={index}
+              style={{
+                "--topbar-particle-delay": `${-((index * 0.73) % 9)}s`,
+                "--topbar-particle-duration": `${5.5 + (index % 5) * 0.8}s`,
+                "--topbar-particle-size": `${2 + (index % 4)}px`,
+                "--topbar-particle-top": `${12 + ((index * 31) % 76)}%`,
+              }}
+            />
+          ))}
+        </div>
         <div className="brand-lockup">
           <div>
             <strong>КҮЖҮРМӨН АСКЕР 1.0</strong>

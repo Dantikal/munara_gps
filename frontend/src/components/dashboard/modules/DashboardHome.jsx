@@ -65,6 +65,39 @@ const regionalLinks = [
   { id: "outpostRating", icon: "♜", label: "Заставалардын рейтинги" },
 ];
 
+const quickIconTypes = {
+  library: "book", combatTrainingJournal: "journal", combatTrainingResults: "check",
+  combatTrainingAnalytics: "chart", smr: "shield", combatTrainingPlan: "calendar",
+  combatTrainingReport: "report", contactAdmin: "message", memoLetter: "letter",
+  meetings: "meeting", youngSoldierTrainingCourse: "training", users: "users",
+  regionalUsers: "users", requests: "request", submissionEditRequests: "edit",
+  documents: "documents", regionalUnitRating: "rating", outpostRating: "rating",
+};
+
+function QuickAccessIcon({ sectionId }) {
+  const type = quickIconTypes[sectionId] || "grid";
+  const paths = {
+    book: <><path d="M4 5.5A3.5 3.5 0 0 1 7.5 2H12v17H7.5A3.5 3.5 0 0 0 4 22Z"/><path d="M20 5.5A3.5 3.5 0 0 0 16.5 2H12v17h4.5A3.5 3.5 0 0 1 20 22Z"/></>,
+    journal: <><path d="M5 3h14v18H5z"/><path d="M9 3v18M12 8h4M12 12h4M12 16h4"/></>,
+    check: <><circle cx="12" cy="12" r="9"/><path d="m8 12 2.5 2.5L16.5 8"/></>,
+    chart: <><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></>,
+    shield: <><path d="M12 2 20 5v6c0 5.2-3.3 9-8 11-4.7-2-8-5.8-8-11V5Z"/><path d="m9 12 2 2 4-5"/></>,
+    calendar: <><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M7 2v6M17 2v6M3 10h18M8 14h2M14 14h2M8 18h2"/></>,
+    report: <><path d="M6 2h9l4 4v16H6z"/><path d="M14 2v5h5M9 17v-3M12 17v-6M15 17v-8"/></>,
+    message: <><path d="M4 4h16v13H9l-5 4Z"/><path d="M8 9h8M8 13h5"/></>,
+    letter: <><path d="M3 5h18v14H3z"/><path d="m3 6 9 7 9-7"/></>,
+    meeting: <><circle cx="8" cy="8" r="3"/><circle cx="17" cy="8" r="3"/><path d="M2 20c.4-4 2.4-6 6-6s5.6 2 6 6M13 15c1-.7 2.3-1 4-1 3.2 0 4.8 2 5 6"/></>,
+    training: <><path d="m3 9 9-5 9 5-9 5Z"/><path d="M7 12v5c3 2 7 2 10 0v-5M21 9v7"/></>,
+    users: <><circle cx="9" cy="8" r="4"/><path d="M2 21c.5-5 2.8-7 7-7s6.5 2 7 7M16 5.5a3.5 3.5 0 0 1 0 6.5M17 15c3 .3 4.6 2.2 5 6"/></>,
+    request: <><path d="M6 3h12v18H6z"/><path d="M9 8h6M9 12h6M9 16h3"/></>,
+    edit: <><path d="M4 20h4L20 8l-4-4L4 16Z"/><path d="m14 6 4 4"/></>,
+    documents: <><path d="M5 3h10l4 4v14H5z"/><path d="M14 3v5h5M8 12h8M8 16h8"/></>,
+    rating: <><path d="M8 21h8M12 17v4M7 4h10v4c0 4-2 7-5 9-3-2-5-5-5-9Z"/><path d="M7 6H3c0 4 1.5 6 5 6M17 6h4c0 4-1.5 6-5 6"/></>,
+    grid: <><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></>,
+  };
+  return <svg aria-hidden="true" viewBox="0 0 24 24">{paths[type]}</svg>;
+}
+
 const formatMonth = (value) => {
   const [year, month] = String(value || "").split("-").map(Number);
   const date = year && month ? new Date(year, month - 1, 1) : new Date();
@@ -191,7 +224,7 @@ export default function DashboardHome({ data, modules, onNavigate, user }) {
         <div className="dashboard-home__quick-grid">
           {visibleLinks.map((item) => (
             <button key={item.id} onClick={() => onNavigate?.(item.id)} type="button">
-              <span className="dashboard-home__quick-icon" aria-hidden="true">{item.icon}</span>
+              <span className="dashboard-home__quick-icon"><QuickAccessIcon sectionId={item.id} /></span>
               <span>{item.label}</span>
               <small aria-hidden="true">→</small>
             </button>

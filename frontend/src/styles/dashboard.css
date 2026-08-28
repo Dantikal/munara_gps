@@ -7,6 +7,386 @@
   width: 100%;
 }
 
+/* Dark border-service theme for the authenticated workspace. */
+@media screen {
+  .app-shell:not(.auth-shell) {
+    --bg: #050907;
+    --surface: rgba(12, 24, 18, 0.96);
+    --surface-muted: #12271c;
+    --text: #edf6f0;
+    --muted: #a7bdb0;
+    --border: #294b39;
+    --primary: #19844d;
+    --primary-strong: #24a960;
+    --primary-soft: #193d29;
+    --primary-dark: #07140e;
+    --primary-darker: #030906;
+    --gold: #d8b84b;
+    animation: dashboard-background-flow 14s ease-in-out infinite alternate;
+    background:
+      radial-gradient(circle at 82% 8%, rgba(0, 215, 255, 0.2), transparent 27%),
+      radial-gradient(circle at 14% 78%, rgba(22, 151, 89, 0.22), transparent 32%),
+      radial-gradient(circle at 52% 44%, rgba(34, 90, 215, 0.13), transparent 35%),
+      linear-gradient(135deg, #010508 0%, #041710 48%, #020a13 100%);
+    background-size: 115% 115%, 120% 120%, 130% 130%, 100% 100%;
+    color: var(--text);
+    position: relative;
+  }
+
+  .app-shell:not(.auth-shell)::before {
+    animation: dashboard-grid-drift 12s linear infinite;
+    background-image:
+      linear-gradient(rgba(53, 213, 255, 0.065) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(53, 213, 255, 0.065) 1px, transparent 1px),
+      radial-gradient(circle at 50% 50%, rgba(53, 213, 255, 0.22) 0 1px, transparent 1.5px);
+    background-size: 54px 54px, 54px 54px, 27px 27px;
+    content: "";
+    inset: 0;
+    mask-image: linear-gradient(to bottom, rgba(0, 0, 0, 0.7), transparent 92%);
+    opacity: 0.52;
+    pointer-events: none;
+    position: absolute;
+    z-index: 0;
+  }
+
+  .app-shell:not(.auth-shell)::after {
+    animation: dashboard-tech-scan 9s linear infinite;
+    background: linear-gradient(
+      180deg,
+      transparent 0%,
+      rgba(54, 218, 255, 0.03) 44%,
+      rgba(54, 218, 255, 0.28) 50%,
+      rgba(54, 218, 255, 0.03) 56%,
+      transparent 100%
+    );
+    content: "";
+    height: 32vh;
+    left: 0;
+    pointer-events: none;
+    position: fixed;
+    top: -38vh;
+    width: 100%;
+    z-index: 0;
+  }
+
+  .app-shell:not(.auth-shell) > .topbar,
+  .app-shell:not(.auth-shell) > .dashboard-layout,
+  .app-shell:not(.auth-shell) > .panel {
+    position: relative;
+    z-index: 1;
+  }
+
+  .dashboard-network {
+    animation: dashboard-network-drift 16s ease-in-out infinite alternate;
+    height: 106vh;
+    left: -4%;
+    opacity: 0.72;
+    overflow: visible;
+    pointer-events: none;
+    position: fixed;
+    top: -3vh;
+    width: 108%;
+    z-index: 0;
+  }
+
+  .dashboard-network .auth-network__links line {
+    animation: dashboard-link-glow 7s ease-in-out var(--link-delay) infinite;
+    filter: drop-shadow(0 0 2px rgba(255, 214, 77, 0.72));
+    stroke: rgba(255, 214, 77, 0.56);
+    stroke-width: 0.09;
+    vector-effect: non-scaling-stroke;
+  }
+
+  .app-shell:not(.auth-shell) .topbar {
+    background: linear-gradient(100deg, rgba(4, 12, 8, 0.98), rgba(11, 35, 23, 0.98));
+    border-color: #395b45;
+    box-shadow: 0 7px 24px rgba(0, 0, 0, 0.32), inset 0 -2px 0 rgba(216, 184, 75, 0.68);
+  }
+
+  .app-shell:not(.auth-shell) .dashboard-sidebar {
+    background: linear-gradient(180deg, #07150e, #0c2518);
+    border-color: #31543f;
+    box-shadow: 0 12px 34px rgba(0, 0, 0, 0.34);
+  }
+
+  .app-shell:not(.auth-shell) .dashboard-sidebar__nav button:hover,
+  .app-shell:not(.auth-shell) .dashboard-sidebar__nav button.is-active,
+  .app-shell:not(.auth-shell) .profile-open-button:hover,
+  .app-shell:not(.auth-shell) .profile-open-button.is-active {
+    background: linear-gradient(90deg, #143824, #1b4c30);
+    border-color: #52745d;
+  }
+
+  .app-shell:not(.auth-shell) .dashboard-sidebar__nav button.is-active {
+    border-left-color: var(--gold);
+    color: #fff7cf;
+  }
+
+  .app-shell:not(.auth-shell) .panel,
+  .app-shell:not(.auth-shell) .stat-card,
+  .app-shell:not(.auth-shell) .chart-card,
+  .app-shell:not(.auth-shell) .data-card,
+  .app-shell:not(.auth-shell) .dashboard-widget,
+  .app-shell:not(.auth-shell) .module-panel,
+  .app-shell:not(.auth-shell) .action-form {
+    background: linear-gradient(145deg, rgba(16, 34, 24, 0.97), rgba(8, 20, 14, 0.97));
+    border-color: var(--border);
+    box-shadow: 0 9px 28px rgba(0, 0, 0, 0.2);
+    color: var(--text);
+  }
+
+  .app-shell:not(.auth-shell) .stat-card {
+    border-top-color: var(--gold);
+  }
+
+  .app-shell:not(.auth-shell) .stat-card--primary,
+  .app-shell:not(.auth-shell) .stat-card--success {
+    border-top-color: #42cf79;
+  }
+
+  .app-shell:not(.auth-shell) .stat-card--clickable:hover,
+  .app-shell:not(.auth-shell) tbody tr:hover {
+    background: rgba(40, 98, 62, 0.4);
+    color: var(--text);
+  }
+
+  .app-shell:not(.auth-shell) .chart-card__header,
+  .app-shell:not(.auth-shell) .data-card header,
+  .app-shell:not(.auth-shell) .module-panel header,
+  .app-shell:not(.auth-shell) .dashboard-widget h2,
+  .app-shell:not(.auth-shell) th,
+  .app-shell:not(.auth-shell) td {
+    border-color: #284535;
+  }
+
+  .app-shell:not(.auth-shell) input,
+  .app-shell:not(.auth-shell) select,
+  .app-shell:not(.auth-shell) textarea {
+    background: #0c1b13;
+    border-color: #355944;
+    color: #eef7f1;
+  }
+
+  .app-shell:not(.auth-shell) input::placeholder,
+  .app-shell:not(.auth-shell) textarea::placeholder {
+    color: #718b7b;
+  }
+
+  .app-shell:not(.auth-shell) input:focus,
+  .app-shell:not(.auth-shell) select:focus,
+  .app-shell:not(.auth-shell) textarea:focus {
+    border-color: #45b56f;
+    box-shadow: 0 0 0 2px rgba(51, 204, 108, 0.15);
+  }
+
+  .app-shell:not(.auth-shell) option {
+    background: #0c1b13;
+    color: #eef7f1;
+  }
+
+  .app-shell:not(.auth-shell) button {
+    border-color: #318754;
+  }
+
+  .app-shell:not(.auth-shell) .quick-actions button,
+  .app-shell:not(.auth-shell) .password-input button {
+    background: #10291b;
+    border-color: #3c654d;
+    color: #bfe5cc;
+  }
+
+  .app-shell:not(.auth-shell) .quick-actions button:hover,
+  .app-shell:not(.auth-shell) .password-input button:hover {
+    background: #1b5735;
+    color: #fff6c8;
+  }
+
+  .app-shell:not(.auth-shell) .quick-actions span,
+  .app-shell:not(.auth-shell) .dashboard-sidebar__item-badge,
+  .app-shell:not(.auth-shell) .admin-chat__badge,
+  .app-shell:not(.auth-shell) .admin-chat__counter {
+    background: #d8b84b;
+    border-color: #f1d976;
+    color: #171307;
+  }
+
+  .app-shell:not(.auth-shell) .combat-journal-dialog,
+  .app-shell:not(.auth-shell) .profile-completion-modal {
+    background: rgba(0, 6, 3, 0.78);
+    backdrop-filter: blur(5px);
+  }
+
+  .app-shell:not(.auth-shell) .combat-journal-dialog__panel,
+  .app-shell:not(.auth-shell) .profile-completion-modal__panel {
+    background: linear-gradient(145deg, #10251a, #08140e);
+    border-color: var(--gold);
+    color: var(--text);
+  }
+
+  /* Document canvases stay white for accurate editing and printing. */
+  .app-shell:not(.auth-shell) .memo-letter-page,
+  .app-shell:not(.auth-shell) .registered-document-page,
+  .app-shell:not(.auth-shell) .document-paper,
+  .app-shell:not(.auth-shell) [class*="word-page"] {
+    color: #111;
+  }
+}
+
+@keyframes dashboard-network-drift {
+  from { transform: translate3d(-0.7%, 0.8%, 0) scale(1); }
+  to { transform: translate3d(0.8%, -0.9%, 0) scale(1.025); }
+}
+
+@keyframes dashboard-background-flow {
+  from { background-position: 100% 0, 0 100%, 45% 45%, 0 0; }
+  to { background-position: 82% 18%, 18% 82%, 58% 38%, 0 0; }
+}
+
+@keyframes dashboard-grid-drift {
+  from { background-position: 0 0, 0 0, 0 0; opacity: 0.38; }
+  50% { opacity: 0.68; }
+  to { background-position: 54px 54px, 54px 54px, 27px 27px; opacity: 0.38; }
+}
+
+@keyframes dashboard-tech-scan {
+  from { transform: translate3d(0, 0, 0); }
+  to { transform: translate3d(0, 145vh, 0); }
+}
+
+@keyframes dashboard-link-glow {
+  0%, 100% { opacity: 0.2; }
+  50% { opacity: 0.82; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dashboard-network,
+  .dashboard-network .auth-network__links line,
+  .app-shell:not(.auth-shell)::before,
+  .app-shell:not(.auth-shell)::after,
+  .app-shell:not(.auth-shell) {
+    animation: none;
+  }
+}
+
+.topbar {
+  overflow: hidden;
+  position: relative;
+}
+
+.topbar > :not(.topbar-particles) {
+  position: relative;
+  z-index: 1;
+}
+
+.topbar-particles {
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+  position: absolute;
+  z-index: 0;
+}
+
+.topbar-particles span {
+  animation: topbar-particle-travel var(--topbar-particle-duration) linear var(--topbar-particle-delay) infinite;
+  background: #f2d45e;
+  border-radius: 50%;
+  box-shadow: 0 0 5px #ffe98c, 0 0 11px rgba(242, 212, 94, 0.72);
+  height: var(--topbar-particle-size);
+  left: -12px;
+  opacity: 0;
+  position: absolute;
+  top: var(--topbar-particle-top);
+  width: var(--topbar-particle-size);
+}
+
+.topbar-particles span:nth-child(3n) {
+  background: #4dff83;
+  box-shadow: 0 0 5px #8dffaa, 0 0 11px rgba(37, 220, 94, 0.7);
+}
+
+@keyframes topbar-particle-travel {
+  0% { opacity: 0; transform: translate3d(0, 0, 0) scale(0.7); }
+  10% { opacity: 0.9; }
+  82% { opacity: 0.75; }
+  100% { opacity: 0; transform: translate3d(calc(100vw + 30px), 0, 0) scale(1.2); }
+}
+
+.dashboard-content > :first-child,
+.dashboard-content .module-panel,
+.dashboard-content .dashboard-home,
+.dashboard-content .module-table-view,
+.dashboard-content .module-document-list,
+.dashboard-content .module-period-list,
+.dashboard-content .module-submission-list,
+.dashboard-content .methodical-document-viewer,
+.dashboard-content .combat-training-results,
+.dashboard-content .analysis-section-list,
+.dashboard-content .saved-table-list,
+.dashboard-content .admin-chat__thread,
+.dashboard-content [role="dialog"] > :first-child {
+  animation: dashboard-section-enter 0.48s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.dashboard-content .module-document-list > *,
+.dashboard-content .module-period-list > *,
+.dashboard-content .module-submission-list > * {
+  animation: dashboard-card-enter 0.42s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.dashboard-content .module-document-list > :nth-child(2),
+.dashboard-content .module-period-list > :nth-child(2),
+.dashboard-content .module-submission-list > :nth-child(2) { animation-delay: 0.04s; }
+.dashboard-content .module-document-list > :nth-child(3),
+.dashboard-content .module-period-list > :nth-child(3),
+.dashboard-content .module-submission-list > :nth-child(3) { animation-delay: 0.08s; }
+.dashboard-content .module-document-list > :nth-child(n+4),
+.dashboard-content .module-period-list > :nth-child(n+4),
+.dashboard-content .module-submission-list > :nth-child(n+4) { animation-delay: 0.12s; }
+
+@keyframes dashboard-section-enter {
+  from {
+    opacity: 0;
+    transform: translate3d(0, 18px, 0) scale(0.992);
+  }
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+}
+
+@keyframes dashboard-card-enter {
+  from {
+    opacity: 0;
+    transform: translate3d(-14px, 0, 0);
+  }
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .topbar-particles span,
+  .dashboard-content > :first-child,
+  .dashboard-content .module-panel,
+  .dashboard-content .dashboard-home,
+  .dashboard-content .module-table-view,
+  .dashboard-content .module-document-list,
+  .dashboard-content .module-period-list,
+  .dashboard-content .module-submission-list,
+  .dashboard-content .methodical-document-viewer,
+  .dashboard-content .combat-training-results,
+  .dashboard-content .analysis-section-list,
+  .dashboard-content .saved-table-list,
+  .dashboard-content .admin-chat__thread,
+  .dashboard-content [role="dialog"] > :first-child,
+  .dashboard-content .module-document-list > *,
+  .dashboard-content .module-period-list > *,
+  .dashboard-content .module-submission-list > * {
+    animation: none;
+  }
+}
+
 .dashboard-sidebar {
   align-self: start;
   background: var(--primary-dark);
@@ -5607,6 +5987,16 @@ button.module-section-card:focus-visible {
   width: 46px;
 }
 
+.dashboard-home__quick-icon svg {
+  fill: none;
+  height: 25px;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.8;
+  width: 25px;
+}
+
 .dashboard-home__quick-grid small {
   color: #9a761d;
   font-size: 20px;
@@ -6164,4 +6554,205 @@ button.module-section-card:focus-visible {
   .module-banner-preview__carousel { height: 48vh; }
   .module-banner-preview__arrow { height: 36px; width: 36px; }
   .module-banner-preview__actions { align-items: stretch; flex-direction: column; }
+}
+
+/* Nested dashboard surfaces must follow the authenticated dark theme too. */
+@media screen {
+  .app-shell:not(.auth-shell) :is(
+    .methodical-subject-card,
+    .methodical-document-card,
+    .methodical-document-viewer__header,
+    .combat-training-plan__day,
+    .admin-quick-user-form,
+    .profile-edit-form,
+    .admin-user-search-filters,
+    .admin-user-list-card,
+    .module-metric,
+    .analysis-section-card,
+    .combat-news-card,
+    .combat-news-attachment,
+    .combat-news-editor__existing-files,
+    .module-period-card,
+    .saved-table-card,
+    .profile-document-placeholder,
+    .admin-chat__sidebar,
+    .admin-chat__thread,
+    .admin-chat__messages,
+    .admin-chat__composer,
+    .admin-chat__message-menu,
+    .admin-chat__emoji-picker,
+    .lesson-period-dialog__panel,
+    .module-template-modal__panel,
+    .document-send-confirm__panel,
+    .regional-rating-vertical-chart,
+    .dashboard-home__notifications button,
+    .dashboard-home__quick-grid button,
+    .dashboard-home-documents__list article
+  ) {
+    background: linear-gradient(145deg, #12291d, #0a1911);
+    border-color: #315640;
+    color: var(--text);
+  }
+
+  .app-shell:not(.auth-shell) :is(
+    .methodical-subject-card,
+    .methodical-document-card,
+    .admin-user-list-card,
+    .analysis-section-card,
+    .combat-news-card,
+    .module-period-card,
+    .saved-table-card,
+    .admin-chat__sidebar,
+    .admin-chat__thread,
+    .dashboard-home__notifications button,
+    .dashboard-home__quick-grid button,
+    .dashboard-home-documents__list article
+  ) :is(h1, h2, h3, h4, strong, span, p) {
+    color: inherit;
+  }
+
+  .app-shell:not(.auth-shell) .admin-chat__user-list button,
+  .app-shell:not(.auth-shell) .admin-chat__message-menu button,
+  .app-shell:not(.auth-shell) .admin-chat__composer-tools > button,
+  .app-shell:not(.auth-shell) .admin-chat__emoji-wrap > button,
+  .app-shell:not(.auth-shell) .admin-chat__remove-file {
+    background: #132c1e;
+    border-color: #365d46;
+    color: #dcebe1;
+  }
+
+  .app-shell:not(.auth-shell) .admin-chat__user-list button:hover,
+  .app-shell:not(.auth-shell) .admin-chat__message-menu button:hover {
+    background: #205038;
+  }
+
+  .app-shell:not(.auth-shell) .combat-news-attachment :is(img, video, iframe),
+  .app-shell:not(.auth-shell) .profile-documents img {
+    background: #0b1710;
+    border-color: #315640;
+  }
+
+  .app-shell:not(.auth-shell) :is(
+    .lesson-period-dialog,
+    .module-template-modal,
+    .document-send-confirm,
+    .thematic-month-dialog
+  ) {
+    background: rgba(0, 6, 3, 0.8);
+    backdrop-filter: blur(5px);
+  }
+
+  /* Word/document canvases deliberately remain white with dark readable text. */
+  .app-shell:not(.auth-shell) :is(
+    .methodical-text-content,
+    .docx-preview,
+    .module-table-view--word,
+    .submitted-result-footer,
+    .document-registry__result,
+    .document-registry__paper
+  ),
+  .app-shell:not(.auth-shell) .module-table-view--word :is(
+    table, thead, tbody, tr, th, td, label, span, p, div
+  ) {
+    color: #111;
+  }
+
+  .app-shell:not(.auth-shell) .module-table-view--word :is(input, select, textarea),
+  .app-shell:not(.auth-shell) .combat-training-plan__signature-dialog canvas {
+    background: #fff;
+    border-color: #777;
+    color: #111;
+  }
+
+  .app-shell:not(.auth-shell) :is(
+    .dashboard-home__section,
+    .dashboard-home__monthly-stat,
+    .dashboard-home-documents__panel,
+    .regional-rating-card,
+    .module-banner-modal__panel,
+    .monthly-analysis-attachment,
+    .module-document-card,
+    .module-section-card,
+    .thematic-month-dialog__panel
+  ) {
+    background: linear-gradient(145deg, #12291d, #09170f);
+    border-color: #3a6149;
+    color: var(--text);
+  }
+
+  .app-shell:not(.auth-shell) :is(
+    .dashboard-home__section,
+    .dashboard-home__monthly-stat,
+    .dashboard-home-documents__panel,
+    .regional-rating-card,
+    .module-banner-modal__panel,
+    .module-document-card,
+    .module-section-card,
+    .thematic-month-dialog__panel
+  ) :is(h1, h2, h3, h4, p, span, strong, label) {
+    color: inherit;
+  }
+
+  .app-shell:not(.auth-shell) :is(
+    .dashboard-home__notification-icon,
+    .dashboard-home__quick-icon,
+    .regional-rating-card__sections span
+  ) {
+    background: #1b4930;
+    color: #f0d36f;
+  }
+
+  .app-shell:not(.auth-shell) .dashboard-home__notification-total {
+    background: #d8b84b;
+    color: #181306;
+  }
+
+  .app-shell:not(.auth-shell) :is(
+    .dashboard-home__monthly-stat:hover,
+    .dashboard-home__notifications button:hover,
+    .dashboard-home__quick-grid button:hover,
+    button.module-document-card.module-section-card:hover,
+    button.module-document-card.module-section-card:focus-visible,
+    .module-document-card:hover,
+    .module-document-card:focus-visible,
+    .module-period-card:hover,
+    .module-period-card:focus-visible
+  ) {
+    background: linear-gradient(145deg, #1b4930, #102b1c);
+    border-color: #759b80;
+  }
+
+  .app-shell:not(.auth-shell) .thematic-month-dialog__panel input {
+    background: #0b1c12;
+    border-color: #417056;
+    color: var(--text);
+  }
+
+  .app-shell:not(.auth-shell) :is(
+    .module-period-actions button,
+    .admin-chat__recipient-sections button
+  ) {
+    background: #132c1e;
+    border-color: #365d46;
+    color: #dcebe1;
+  }
+
+  .app-shell:not(.auth-shell) :is(
+    .module-period-actions button:hover,
+    .admin-chat__recipient-sections button:hover
+  ) {
+    background: #205038;
+  }
+
+  /* These are real document sheets: keep the paper light and its text dark. */
+  .app-shell:not(.auth-shell) .monthly-analysis-page,
+  .app-shell:not(.auth-shell) .monthly-analysis-page * {
+    color: #111;
+  }
+
+  .app-shell:not(.auth-shell) .monthly-analysis-page :is(input, select, textarea) {
+    background: #fff;
+    border-color: #777;
+    color: #111;
+  }
 }
