@@ -165,12 +165,32 @@ button:disabled {
   left: clamp(18px, 3.5vw, 54px);
   pointer-events: none;
   position: fixed;
-  top: clamp(48px, 7vh, 76px);
+  /* The left SVG overflows its 72px wrapper; compensate so visible tops align. */
+  top: calc(clamp(48px, 7vh, 76px) - (clamp(110px, 13vw, 175px) - 72px) / 2 + 90px);
   z-index: 1;
 }
 
 .auth-corner-brand .service-logo--large img {
   height: clamp(110px, 13vw, 175px);
+  width: auto;
+}
+
+.auth-corner-platform-logo {
+  animation: auth-platform-logo-enter 0.7s cubic-bezier(0.22, 1, 0.36, 1) both;
+  filter:
+    drop-shadow(0 12px 28px rgba(0, 0, 0, 0.78))
+    drop-shadow(0 0 14px rgba(211, 183, 73, 0.18));
+  pointer-events: none;
+  position: fixed;
+  right: clamp(18px, 3.5vw, 54px);
+  top: clamp(48px, 7vh, 76px);
+  z-index: 2;
+}
+
+.auth-corner-platform-logo img {
+  display: block;
+  height: clamp(110px, 13vw, 175px);
+  object-fit: contain;
   width: auto;
 }
 
@@ -314,6 +334,11 @@ button:disabled {
   to { opacity: 1; transform: translateX(0) scale(1); }
 }
 
+@keyframes auth-platform-logo-enter {
+  from { opacity: 0; transform: translate3d(24px, -18px, 0) scale(0.88) rotate(4deg); }
+  to { opacity: 1; transform: translate3d(0, 0, 0) scale(1) rotate(0deg); }
+}
+
 @keyframes auth-eagles-float {
   from { transform: translate3d(0, -5px, 0) scale(1); }
   to { transform: translate3d(0, 12px, 0) scale(1.025); }
@@ -349,6 +374,10 @@ button:disabled {
   .auth-green-particles span {
     animation: none;
   }
+
+  .auth-corner-platform-logo {
+    animation: none;
+  }
 }
 
 @media (max-width: 640px) {
@@ -369,6 +398,16 @@ button:disabled {
   }
 
   .auth-corner-brand .service-logo--large img {
+    height: 82px;
+  }
+
+  .auth-corner-platform-logo {
+    opacity: 0.55;
+    right: 12px;
+    top: 121px;
+  }
+
+  .auth-corner-platform-logo img {
     height: 82px;
   }
 

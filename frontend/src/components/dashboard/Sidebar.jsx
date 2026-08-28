@@ -297,7 +297,7 @@ export default function Sidebar({
         </button>
       </div>
       <nav className="dashboard-sidebar__nav">
-        {sections.map((section) => (
+        {sections.map((section, sectionIndex) => (
           <div className="dashboard-sidebar__group" key={section.id}>
             {section.title && (
               <button
@@ -309,11 +309,12 @@ export default function Sidebar({
               </button>
             )}
             {(!section.title || adminOpen) &&
-              section.items.filter((item) => !hiddenItemIds.has(item.id)).map((item) => (
+              section.items.filter((item) => !hiddenItemIds.has(item.id)).map((item, itemIndex) => (
                 <button
                   className={[
                     activeItem === item.id ? "is-active" : "",
                     section.title ? "dashboard-sidebar__subitem" : "",
+                    `dashboard-sidebar__hover--${(sectionIndex + itemIndex) % 6 + 1}`,
                   ]
                     .filter(Boolean)
                     .join(" ")}

@@ -16,6 +16,7 @@ import { confirmDocumentSend } from "../../../utils/confirmDocumentSend.js";
 import { getDocumentRegistrationCode } from "../../../utils/documentRegistration.js";
 import SubmissionForwardDialog from "./SubmissionForwardDialog.jsx";
 import SubmissionEditPermissionButton from "./SubmissionEditPermissionButton.jsx";
+import MilitaryUnitIcon from "./MilitaryUnitIcon.jsx";
 
 const EMPTY_ARRAY = [];
 const STORAGE_KEY = "combat-training-results-custom-periods";
@@ -3049,7 +3050,7 @@ export default function CombatTrainingResults({ data, user }) {
                   }}
                   type="button"
                 >
-                  <span aria-hidden="true" className="module-document-icon" />
+                  <MilitaryUnitIcon unitNumber={unitNumber} />
                   <strong>{unitNumber} аскер бөлүгү</strong>
                   {selectedSectionId === OBSERVATION_SECTION_ID ? (
                     <ObservationMonthlySubmissionStatus

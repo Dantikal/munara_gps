@@ -15,6 +15,7 @@ const GENERAL_ANALYSIS_TITLE =
   "Жаш жоокерлердин даярдоо курсунун жалпы талдоосу";
 const PROGRAM_DATA = { subjects: [], title: PROGRAM_TITLE };
 const COURSE_STORAGE_NAMESPACE = "young-soldier-training-course";
+const COURSE_MILITARY_UNIT_NUMBERS = ["2023", "2024", "2027", "2028"];
 
 export default function YoungSoldierTrainingCourse({ modules, user }) {
   const [activeSection, setActiveSection] = useState(null);
@@ -35,6 +36,7 @@ export default function YoungSoldierTrainingCourse({ modules, user }) {
     if (activeSection === "general-analysis") {
       return (
         <Meetings
+          allowedUnitNumbers={COURSE_MILITARY_UNIT_NUMBERS}
           analysisSourceSectionId="young-soldier-analysis"
           directSectionId="meeting-analysis"
           disableAdminBrowser
@@ -53,6 +55,7 @@ export default function YoungSoldierTrainingCourse({ modules, user }) {
 
     return (
       <Meetings
+        allowedUnitNumbers={COURSE_MILITARY_UNIT_NUMBERS}
         adminExtraCards={[
           {
             onOpen: () => setActiveSection("program"),
@@ -96,6 +99,7 @@ export default function YoungSoldierTrainingCourse({ modules, user }) {
   if (activeSection === "thematic-account") {
     return (
       <Meetings
+        allowedUnitNumbers={COURSE_MILITARY_UNIT_NUMBERS}
         directSectionId="thematic-account"
         moduleTitle={THEMATIC_TITLE}
         modules={modules}
@@ -110,6 +114,7 @@ export default function YoungSoldierTrainingCourse({ modules, user }) {
   if (activeSection === "lesson-schedule") {
     return (
       <Meetings
+        allowedUnitNumbers={COURSE_MILITARY_UNIT_NUMBERS}
         directSectionId="lesson-schedule"
         moduleTitle={SCHEDULE_TITLE}
         modules={modules}
@@ -124,6 +129,7 @@ export default function YoungSoldierTrainingCourse({ modules, user }) {
   if (activeSection === "combat-training-journal") {
     return (
       <Meetings
+        allowedUnitNumbers={COURSE_MILITARY_UNIT_NUMBERS}
         directSectionId="combat-training-journal"
         moduleTitle={JOURNAL_TITLE}
         modules={modules}
@@ -138,6 +144,7 @@ export default function YoungSoldierTrainingCourse({ modules, user }) {
   if (activeSection === "observation") {
     return (
       <Meetings
+        allowedUnitNumbers={COURSE_MILITARY_UNIT_NUMBERS}
         directSectionId="observation"
         moduleTitle={OBSERVATION_TITLE}
         modules={modules}
@@ -152,6 +159,7 @@ export default function YoungSoldierTrainingCourse({ modules, user }) {
   if (activeSection === "meeting-analysis") {
     return (
       <Meetings
+        allowedUnitNumbers={COURSE_MILITARY_UNIT_NUMBERS}
         directSectionId="meeting-analysis"
         moduleTitle={COURSE_ANALYSIS_TITLE}
         modules={modules}

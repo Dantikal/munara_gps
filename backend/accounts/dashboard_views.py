@@ -1,6 +1,7 @@
 import copy
 import json
 import re
+from datetime import timedelta
 from pathlib import Path
 
 from django.contrib.auth import get_user_model
@@ -40,7 +41,7 @@ from .models import (
     ThematicAccountSubmissionRead,
 )
 from .permissions import IsActiveUser, IsAdminOrRegionalRole, IsAdminRole, IsPrimaryAdmin
-from .outposts import format_outpost_name
+from .outposts import OUTPOSTS_BY_MILITARY_UNIT, format_outpost_name
 from .serializers import (
     CombatTrainingJournalSerializer,
     CombatTrainingJournalSubjectSerializer,
@@ -1089,71 +1090,168 @@ class RegionalUnitRatingView(APIView):
     permission_classes = [IsAdminRole]
 
     def get(self, request):
-        unit_numbers = set(
+        now = timezone.now()
+        active_since = now - timedelta(days=30)
+        deadline_days = {
+            "combat-training-analysis": 28,
+            "combat-training-analysis-regional": 28,
+            "combat-training-results-observation": 29,
+            "combat-training-results-inspection": 29,
+        }
+        users = list(
             User.objects.filter(
-                role=User.Role.REGIONAL,
+                role__in={User.Role.REGIONAL, User.Role.OUTPOST},
                 status=User.Status.ACTIVE,
-            )
-            .exclude(region="")
-            .values_list("region", flat=True)
+            ).exclude(region="")
         )
-        section_counts = ThematicAccountSubmission.objects.filter(
-            sender__role__in={User.Role.REGIONAL, User.Role.OUTPOST},
-        ).values("unit_number", "section_slug", "sender__role").annotate(count=Count("id"))
+        submissions = list(
+            ThematicAccountSubmission.objects.filter(
+                sender__role__in={User.Role.REGIONAL, User.Role.OUTPOST},
+            ).select_related("sender")
+        )
+        unit_numbers = {
+            str(value or "").strip()
+            for value in [
+                *ADMIN_MILITARY_UNIT_NUMBERS,
+                *(user.region for user in users),
+                *(item.unit_number for item in submissions),
+            ]
+            if str(value or "").strip()
+        }
+
+        def empty_entity(name_key, name):
+            return {
+                name_key: name,
+                "totalDocuments": 0,
+                "onTimeDocuments": 0,
+                "regionalDocuments": 0,
+                "outpostDocuments": 0,
+                "sections": {},
+                "userCount": 0,
+                "activeUserCount": 0,
+                "lastSeen": None,
+                "actions": [],
+            }
 
         ratings = {
             unit_number: {
-                "unitNumber": unit_number,
-                "totalDocuments": 0,
-                "regionalDocuments": 0,
-                "outpostDocuments": 0,
-                "sections": [],
+                **empty_entity("unitNumber", unit_number),
+                "outposts": {},
             }
             for unit_number in unit_numbers
         }
-        for item in section_counts:
-            unit_number = str(item["unit_number"] or "").strip()
+        all_outposts = {}
+
+        # Include the complete platform directory, even before registration or submissions.
+        for unit_number, outpost_names in OUTPOSTS_BY_MILITARY_UNIT.items():
+            rating = ratings.setdefault(
+                unit_number,
+                {**empty_entity("unitNumber", unit_number), "outposts": {}},
+            )
+            for raw_name in outpost_names:
+                outpost_name = format_outpost_name(raw_name)
+                outpost = rating["outposts"].setdefault(
+                    outpost_name, empty_entity("outpostName", outpost_name)
+                )
+                all_outposts[(unit_number, outpost_name)] = outpost
+
+        for user in users:
+            unit_number = str(user.region or "").strip()
+            rating = ratings.setdefault(
+                unit_number,
+                {**empty_entity("unitNumber", unit_number), "outposts": {}},
+            )
+            targets = [rating]
+            if user.role == User.Role.OUTPOST:
+                outpost_name = format_outpost_name(user.outpost_name) or user.full_name
+                outpost = rating["outposts"].setdefault(
+                    outpost_name, empty_entity("outpostName", outpost_name)
+                )
+                all_outposts[(unit_number, outpost_name)] = outpost
+                targets.append(outpost)
+            for target in targets:
+                target["userCount"] += 1
+                if user.last_login and user.last_login >= active_since:
+                    target["activeUserCount"] += 1
+                if user.last_login and (not target["lastSeen"] or user.last_login > target["lastSeen"]):
+                    target["lastSeen"] = user.last_login
+                if user.last_login:
+                    target["actions"].append({
+                        "type": "login",
+                        "title": f"{user.full_name} платформага кирди",
+                        "at": user.last_login.isoformat(),
+                    })
+
+        for submission in submissions:
+            unit_number = str(submission.unit_number or "").strip()
             if not unit_number:
                 continue
             rating = ratings.setdefault(
                 unit_number,
-                {
-                    "unitNumber": unit_number,
-                    "totalDocuments": 0,
-                    "regionalDocuments": 0,
-                    "outpostDocuments": 0,
-                    "sections": [],
-                },
+                {**empty_entity("unitNumber", unit_number), "outposts": {}},
             )
-            count = item["count"]
-            rating["totalDocuments"] += count
-            if item["sender__role"] == User.Role.REGIONAL:
-                rating["regionalDocuments"] += count
-            else:
-                rating["outpostDocuments"] += count
-            existing_section = next(
-                (
-                    section
-                    for section in rating["sections"]
-                    if section["sectionId"] == item["section_slug"]
-                ),
-                None,
-            )
-            if existing_section:
-                existing_section["count"] += count
-            else:
-                rating["sections"].append(
-                    {"sectionId": item["section_slug"], "count": count}
+            targets = [rating]
+            if submission.sender.role == User.Role.OUTPOST:
+                outpost_name = format_outpost_name(submission.outpost_name) or submission.sender.full_name
+                outpost = rating["outposts"].setdefault(
+                    outpost_name, empty_entity("outpostName", outpost_name)
                 )
+                all_outposts[(unit_number, outpost_name)] = outpost
+                targets.append(outpost)
 
-        ordered_ratings = sorted(
-            ratings.values(),
-            key=lambda item: (-item["totalDocuments"], item["unitNumber"]),
-        )
+            deadline_day = deadline_days.get(submission.section_slug, 28)
+            is_on_time = timezone.localtime(submission.created_at).day <= deadline_day
+            action = {
+                "type": "submission",
+                "title": f"{submission.sender.full_name}: {submission.document_title}",
+                "sectionId": submission.section_slug,
+                "onTime": is_on_time,
+                "deadlineDay": deadline_day,
+                "at": submission.created_at.isoformat(),
+            }
+            for target in targets:
+                target["totalDocuments"] += 1
+                target["onTimeDocuments"] += int(is_on_time)
+                section = target["sections"].setdefault(
+                    submission.section_slug,
+                    {"sectionId": submission.section_slug, "count": 0, "onTimeCount": 0, "deadlineDay": deadline_day},
+                )
+                section["count"] += 1
+                section["onTimeCount"] += int(is_on_time)
+                target["actions"].append(action)
+            if submission.sender.role == User.Role.REGIONAL:
+                rating["regionalDocuments"] += 1
+            else:
+                rating["outpostDocuments"] += 1
+
+        entities = [*ratings.values(), *all_outposts.values()]
+        maximum_documents = max([entity["totalDocuments"] for entity in entities] or [0])
+        for entity in entities:
+            total = entity["totalDocuments"]
+            entity["documentScore"] = round(total / maximum_documents * 100, 1) if maximum_documents else 0
+            entity["deadlineScore"] = round(entity["onTimeDocuments"] / total * 100, 1) if total else 0
+            entity["activityScore"] = round(entity["activeUserCount"] / entity["userCount"] * 100, 1) if entity["userCount"] else 0
+            entity["score"] = round(
+                entity["deadlineScore"] * 0.5 + entity["documentScore"] * 0.3 + entity["activityScore"] * 0.2,
+                1,
+            )
+            entity["sections"] = sorted(entity["sections"].values(), key=lambda item: (-item["count"], item["sectionId"]))
+            entity["actions"] = sorted(entity["actions"], key=lambda item: item["at"], reverse=True)[:50]
+            if entity["lastSeen"]:
+                entity["lastSeen"] = entity["lastSeen"].isoformat()
+
+        ordered_ratings = sorted(ratings.values(), key=lambda item: (-item["score"], item["unitNumber"]))
+        ordered_outposts = []
         for index, rating in enumerate(ordered_ratings, start=1):
             rating["rank"] = index
-            rating["sections"].sort(key=lambda item: (-item["count"], item["sectionId"]))
-        return Response({"results": ordered_ratings})
+            rating["outposts"] = sorted(rating["outposts"].values(), key=lambda item: (-item["score"], item["outpostName"]))
+            for outpost in rating["outposts"]:
+                outpost["unitNumber"] = rating["unitNumber"]
+                ordered_outposts.append(outpost)
+        ordered_outposts.sort(key=lambda item: (-item["score"], item["unitNumber"], item["outpostName"]))
+        for index, outpost in enumerate(ordered_outposts, start=1):
+            outpost["rank"] = index
+        return Response({"results": ordered_ratings, "outposts": ordered_outposts})
 
 
 class OutpostRatingView(APIView):

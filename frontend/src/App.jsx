@@ -2,6 +2,7 @@ import React from "react";
 import { useEffect, useState } from "react";
 import { useDispatch, useSelector } from "react-redux";
 
+import CombatPlatformLogo from "./assets/combat-platform-logo.png";
 import BorderServiceLogo from "./components/BorderServiceLogo.jsx";
 import LoginPage from "./features/auth/LoginPage.jsx";
 import RegistrationForm from "./components/RegistrationForm.jsx";
@@ -108,6 +109,9 @@ export default function App() {
       </div>
       <div className="auth-corner-brand">
         <BorderServiceLogo large />
+      </div>
+      <div className="auth-corner-platform-logo">
+        <img alt="Күжүрмөн Аскер 1.0" src={CombatPlatformLogo} />
       </div>
       <div className={`auth-card auth-card--${page}`} key={page}>
         <header className="auth-brand">

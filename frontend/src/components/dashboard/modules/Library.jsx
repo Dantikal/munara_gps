@@ -24,6 +24,7 @@ import { confirmDocumentSend } from "../../../utils/confirmDocumentSend.js";
 import { getDocumentRegistrationCode } from "../../../utils/documentRegistration.js";
 import SubmissionForwardDialog from "./SubmissionForwardDialog.jsx";
 import SubmissionEditPermissionButton from "./SubmissionEditPermissionButton.jsx";
+import MilitaryUnitIcon from "./MilitaryUnitIcon.jsx";
 
 const TABLE_STORAGE_PREFIX = "munara-library-table";
 const TABLE_FIELD_STORAGE_SUFFIX = "fields";
@@ -3862,7 +3863,7 @@ export default function Library({ data, onBack, onRefresh, onSubmissionCreated }
                     }}
                     type="button"
                   >
-                    <span aria-hidden="true" className="module-document-icon" />
+                    <MilitaryUnitIcon unitNumber={unitNumber} />
                     <strong>{unitNumber} аскер бөлүгү</strong>
                     {isWeeklyScheduleSection ? (
                       <WeeklySubmissionStatus

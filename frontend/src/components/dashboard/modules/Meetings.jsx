@@ -19,6 +19,7 @@ import CombatTrainingResults, {
   createPhysicalTrainingTable,
   createShootingTrainingTable,
 } from "./CombatTrainingResults.jsx";
+import MilitaryUnitIcon from "./MilitaryUnitIcon.jsx";
 import Library, {
   buildLessonScheduleLikePhoto,
   buildThematicAccountLikePhoto,
@@ -135,6 +136,7 @@ const getSubmissionSectionId = (storageNamespace, sectionId) =>
 export default function Meetings({
   adminExtraCard,
   adminExtraCards,
+  allowedUnitNumbers,
   analysisSourceSectionId,
   disableAdminBrowser = false,
   directSectionId,
@@ -198,7 +200,11 @@ export default function Meetings({
         ...adminSubmissions.map((submission) => submission.unitNumber),
       ]
         .map((unitNumber) => String(unitNumber || "").trim())
-        .filter(Boolean)
+        .filter(
+          (unitNumber) =>
+            unitNumber &&
+            (!allowedUnitNumbers || allowedUnitNumbers.includes(unitNumber))
+        )
     )
   );
   const selectedAdminSection = visibleSections.find(
@@ -1030,7 +1036,7 @@ export default function Meetings({
                 onClick={() => setSelectedAdminUnitNumber(unitNumber)}
                 type="button"
               >
-                <span aria-hidden="true" className="module-document-icon" />
+                <MilitaryUnitIcon unitNumber={unitNumber} />
                 <strong>{unitNumber} аскер бөлүгү</strong>
               </button>
             ))
@@ -1080,7 +1086,11 @@ export default function Meetings({
               ],
             },
           ],
-          unitNumbers: modules?.combatTrainingResults?.unitNumbers || [],
+          unitNumbers: (modules?.combatTrainingResults?.unitNumbers || []).filter(
+            (unitNumber) =>
+              !allowedUnitNumbers ||
+              allowedUnitNumbers.includes(String(unitNumber || "").trim())
+          ),
         }}
         key={activeDocument.id}
         user={user}

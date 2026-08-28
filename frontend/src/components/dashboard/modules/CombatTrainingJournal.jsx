@@ -24,6 +24,7 @@ import {
 import Library from "./Library.jsx";
 import SubmissionForwardDialog from "./SubmissionForwardDialog.jsx";
 import SubmissionEditPermissionButton from "./SubmissionEditPermissionButton.jsx";
+import MilitaryUnitIcon from "./MilitaryUnitIcon.jsx";
 
 const DEFAULT_YEAR = "20__";
 const BLANK_UNIT = "_________________________________";
@@ -1363,6 +1364,7 @@ export default function CombatTrainingJournal({ data, methodicalSubjects = [], u
               }}
               type="button"
             >
+              <MilitaryUnitIcon unitNumber={unitNumber} />
               <strong>{unitNumber} аскер бөлүгү</strong>
             </button>
           ))}
@@ -1833,6 +1835,7 @@ export default function CombatTrainingJournal({ data, methodicalSubjects = [], u
                 }}
                 type="button"
               >
+                <MilitaryUnitIcon unitNumber={unitNumber} />
                 <strong>{unitNumber} аскер бөлүгү</strong>
                 <JournalDailyStatus
                   now={dailyStatusNow}

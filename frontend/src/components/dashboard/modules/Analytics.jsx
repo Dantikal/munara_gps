@@ -16,6 +16,7 @@ import { confirmDocumentSend } from "../../../utils/confirmDocumentSend.js";
 import { getDocumentRegistrationCode } from "../../../utils/documentRegistration.js";
 import SubmissionForwardDialog from "./SubmissionForwardDialog.jsx";
 import SubmissionEditPermissionButton from "./SubmissionEditPermissionButton.jsx";
+import MilitaryUnitIcon from "./MilitaryUnitIcon.jsx";
 
 const kyrgyzstanCoatOfArmsUrl =
   "https://upload.wikimedia.org/wikipedia/commons/f/f1/Emblem_of_Kyrgyzstan.svg";
@@ -2529,7 +2530,7 @@ export default function Analytics({ data, user }) {
                     }}
                     type="button"
                   >
-                    <span aria-hidden="true" className="module-document-icon" />
+                    <MilitaryUnitIcon unitNumber={unitNumber} />
                     <strong>{unitNumber} аскер бөлүгү</strong>
                     {renderAnalysisReportingStatus(
                       getLatestAnalysisSubmission(

@@ -314,7 +314,10 @@ export const getModuleTemplates = async (moduleKey) => {
 
 export const getRegionalUnitRatings = async () => {
   const { data } = await api.get("/dashboard/admin/regional-unit-ratings/");
-  return data.results || [];
+  return {
+    outposts: data.outposts || [],
+    units: data.results || [],
+  };
 };
 
 export const getOutpostRatings = async () => {
