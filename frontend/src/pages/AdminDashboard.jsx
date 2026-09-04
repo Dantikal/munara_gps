@@ -2,6 +2,7 @@ import React, { useEffect, useState } from "react";
 import { useDispatch, useSelector } from "react-redux";
 
 import Sidebar from "../components/dashboard/Sidebar.jsx";
+import DashboardPrintButton from "../components/dashboard/DashboardPrintButton.jsx";
 import DashboardModuleView from "../components/dashboard/modules/DashboardModuleView.jsx";
 import AdminRequestsPage from "../features/admin/AdminRequestsPage.jsx";
 import AdminUsersPage from "../features/admin/AdminUsersPage.jsx";
@@ -62,6 +63,7 @@ export default function AdminDashboard() {
       />
 
       <section className="dashboard-content">
+        <DashboardPrintButton />
         {activeView === "requests" ? (
           <AdminRequestsPage user={user} />
         ) : activeView === "submissionEditRequests" ? (

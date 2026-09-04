@@ -966,7 +966,7 @@ export default function Meetings({
         <header className="module-header">
           <h1>{selectedAdminUnitNumber} аскер бөлүгү</h1>
         </header>
-        <div className="module-document-list">
+        <div className="module-document-list module-document-list--sequential">
           {visibleSections.map((section) => {
             const sectionSubmissionId = getSubmissionSectionId(
               storageNamespace,
@@ -1014,12 +1014,13 @@ export default function Meetings({
         <header className="module-header">
           <h1>{moduleTitle}</h1>
         </header>
-        <div className="module-document-list">
-          {extraCards.map((extraCard) => (
+        <div className="module-document-list module-document-list--sequential">
+          {extraCards.map((extraCard, index) => (
             <button
               className="module-document-card"
               key={extraCard.title}
               onClick={extraCard.onOpen}
+              style={{ "--list-item-index": index }}
               type="button"
             >
               <span aria-hidden="true" className="module-document-icon" />
@@ -1029,11 +1030,12 @@ export default function Meetings({
           {adminSubmissionsLoading ? (
             <p className="dashboard-state">Маалымат жүктөлүүдө...</p>
           ) : (
-            adminUnitNumbers.map((unitNumber) => (
+            adminUnitNumbers.map((unitNumber, index) => (
               <button
                 className="module-document-card"
                 key={unitNumber}
                 onClick={() => setSelectedAdminUnitNumber(unitNumber)}
+                style={{ "--list-item-index": extraCards.length + index }}
                 type="button"
               >
                 <MilitaryUnitIcon unitNumber={unitNumber} />
@@ -1386,7 +1388,7 @@ export default function Meetings({
       <header className="module-header">
         <h1>{moduleTitle}</h1>
       </header>
-      <div className="module-document-list">
+      <div className="module-document-list module-document-list--sequential">
         {visibleSections.map((section) => (
           <button
             className="module-document-card"

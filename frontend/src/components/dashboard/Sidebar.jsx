@@ -8,6 +8,20 @@ import {
   getThematicAccountSubmissions,
   markAllCombatTrainingPlansRead,
 } from "../../api/dashboard.js";
+import navigationSoundUrl from "../../assets/pistol-loaded-to-fire.mp3";
+
+let navigationAudio;
+
+const playNavigationSound = () => {
+  try {
+    navigationAudio ||= new Audio(navigationSoundUrl);
+    navigationAudio.currentTime = 0;
+    navigationAudio.volume = 0.65;
+    navigationAudio.play().catch(() => {});
+  } catch {
+    // Audio is optional; navigation must remain usable if the browser blocks it.
+  }
+};
 
 const BellIcon = () => (
   <svg
@@ -55,9 +69,10 @@ const adminItems = [
   { id: "library", label: "Сабактардын тематикасынын эсеби жана жүгүртмөсү" },
   { id: "combatTrainingJournal", label: "Күжүрмөн даярдоону каттоо журналы" },
   { id: "combatTrainingResults", label: "Күжүрмөн даярдоонун жыйынтыктары ( көзөмөл сабактары, көзөмөл текшерүү сабактары)" },
+  { id: "combatTrainingAnalytics", label: "Күжүрмөн даярдоонун талдоолору (1 айдын, окуу мезгилинин, окуу жылынын)" },
+  { id: "shootingStatements", label: "Ок атуунун ведомосттору" },
   { id: "meetings", label: "Жыйындар" },
   { id: "youngSoldierTrainingCourse", label: "Жаш жоокерлерди даярдоо курсу" },
-  { id: "combatTrainingAnalytics", label: "Күжүрмөн даярдоонун талдоолору (1 айдын, окуу мезгилинин, окуу жылынын)" },
   { id: "smr", label: "Күжүрмөн даярдоо боюнча усулдук колдонмолор" },
   { id: "combatTrainingPlan", label: "Күжүрмөн даярдоонун пландалган иш-чаралары" },
   { id: "combatTrainingReport", label: "Күжүрмөн даярдоонун маалыматтары" },
@@ -86,20 +101,21 @@ const fieldItems = [
   { id: "combatTrainingJournal", label: "Күжүрмөн даярдоону каттоо журналы" },
   { id: "combatTrainingResults", label: "Күжүрмөн даярдоонун жыйынтыктары ( көзөмөл сабактары, көзөмөл текшерүү сабактары)" },
   { id: "combatTrainingAnalytics", label: "Күжүрмөн даярдоонун талдоолору (1 айдын, окуу мезгилинин, окуу жылынын)" },
+  { id: "shootingStatements", label: "Ок атуунун ведомосттору" },
   { id: "smr", label: "Күжүрмөн даярдоо боюнча усулдук колдонмолор" },
   { id: "combatTrainingPlan", label: "Күжүрмөн даярдоонун пландалган иш-чаралары" },
   { id: "combatTrainingReport", label: "Күжүрмөн даярдоонун маалыматтары" },
   { id: "contactAdmin", label: "Аскер бөлүгү менен байланыш" },
   { id: "memoLetter", label: "Билдирме кат" },
+  { id: "outpostRating", label: "Рейтинг" },
 ];
 
 const regionalItems = [
-  ...fieldItems.slice(0, 3),
+  ...fieldItems.slice(0, 6),
   { id: "meetings", label: "Жыйындар" },
   { id: "youngSoldierTrainingCourse", label: "Жаш жоокерлерди даярдоо курсу" },
-  ...fieldItems.slice(3),
+  ...fieldItems.slice(6),
   { id: "regionalUsers", label: "Колдонуучулар" },
-  { id: "outpostRating", label: "Рейтинг" },
 ].map((item) => (
   item.id === "contactAdmin"
     ? { ...item, label: "Колдонуучулар менен байланыш" }
@@ -255,6 +271,7 @@ export default function Sidebar({
   }, [role]);
 
   const handleClick = (itemId) => {
+    playNavigationSound();
     if (itemId === "requests") {
       onOpenRequests?.();
       return;
@@ -290,7 +307,10 @@ export default function Sidebar({
         </div>
         <button
           className={activeItem === "profile" ? "is-active profile-open-button" : "profile-open-button"}
-          onClick={() => onNavigate("profile")}
+          onClick={() => {
+            playNavigationSound();
+            onNavigate("profile");
+          }}
           type="button"
         >
           Жеке кабинетим
@@ -302,7 +322,10 @@ export default function Sidebar({
             {section.title && (
               <button
                 className={adminOpen ? "dashboard-sidebar__group-toggle is-open" : "dashboard-sidebar__group-toggle"}
-                onClick={() => setAdminOpen((current) => !current)}
+                onClick={() => {
+                  playNavigationSound();
+                  setAdminOpen((current) => !current);
+                }}
                 type="button"
               >
                 {section.title}

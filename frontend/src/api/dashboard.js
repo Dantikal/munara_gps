@@ -312,16 +312,20 @@ export const getModuleTemplates = async (moduleKey) => {
   return data;
 };
 
-export const getRegionalUnitRatings = async () => {
-  const { data } = await api.get("/dashboard/admin/regional-unit-ratings/");
+export const getRegionalUnitRatings = async ({ period = "all", year, month } = {}) => {
+  const { data } = await api.get("/dashboard/admin/regional-unit-ratings/", {
+    params: { period, year, month },
+  });
   return {
     outposts: data.outposts || [],
     units: data.results || [],
   };
 };
 
-export const getOutpostRatings = async () => {
-  const { data } = await api.get("/dashboard/regional/outpost-ratings/");
+export const getOutpostRatings = async ({ period = "all", year, month } = {}) => {
+  const { data } = await api.get("/dashboard/regional/outpost-ratings/", {
+    params: { period, year, month },
+  });
   return data.results || [];
 };
 

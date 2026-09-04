@@ -1087,11 +1087,39 @@ class AdminDashboardView(APIView):
 
 
 class RegionalUnitRatingView(APIView):
-    permission_classes = [IsAdminRole]
+    permission_classes = [IsActiveUser]
 
     def get(self, request):
+        if request.user.role not in {User.Role.ADMIN, User.Role.REGIONAL, User.Role.OUTPOST}:
+            raise PermissionDenied("Аскер бөлүктөрүнүн рейтинги жеткиликтүү эмес.")
         now = timezone.now()
-        active_since = now - timedelta(days=30)
+        period = request.query_params.get("period", "year")
+        if period not in {"all", "month", "year"}:
+            period = "all"
+        try:
+            selected_year = int(request.query_params.get("year", now.year))
+        except (TypeError, ValueError):
+            selected_year = now.year
+        selected_year = min(max(selected_year, 2000), now.year)
+        try:
+            selected_month = int(request.query_params.get("month", now.month))
+        except (TypeError, ValueError):
+            selected_month = now.month
+        selected_month = min(max(selected_month, 1), 12)
+        period_start = now.replace(
+            year=selected_year,
+            month=1 if period == "year" else selected_month,
+            day=1,
+            hour=0,
+            minute=0,
+            second=0,
+            microsecond=0,
+        )
+        period_end = period_start.replace(year=selected_year + 1) if period == "year" else (
+            period_start.replace(year=selected_year + 1, month=1)
+            if selected_month == 12
+            else period_start.replace(month=selected_month + 1)
+        )
         deadline_days = {
             "combat-training-analysis": 28,
             "combat-training-analysis-regional": 28,
@@ -1104,11 +1132,15 @@ class RegionalUnitRatingView(APIView):
                 status=User.Status.ACTIVE,
             ).exclude(region="")
         )
-        submissions = list(
-            ThematicAccountSubmission.objects.filter(
-                sender__role__in={User.Role.REGIONAL, User.Role.OUTPOST},
-            ).select_related("sender")
+        submissions_query = ThematicAccountSubmission.objects.filter(
+            sender__role__in={User.Role.REGIONAL, User.Role.OUTPOST},
         )
+        if period != "all":
+            submissions_query = submissions_query.filter(
+                created_at__gte=period_start,
+                created_at__lt=period_end,
+            )
+        submissions = list(submissions_query.select_related("sender"))
         unit_numbers = {
             str(value or "").strip()
             for value in [
@@ -1171,7 +1203,7 @@ class RegionalUnitRatingView(APIView):
                 targets.append(outpost)
             for target in targets:
                 target["userCount"] += 1
-                if user.last_login and user.last_login >= active_since:
+                if user.last_login and (period == "all" or period_start <= user.last_login < period_end):
                     target["activeUserCount"] += 1
                 if user.last_login and (not target["lastSeen"] or user.last_login > target["lastSeen"]):
                     target["lastSeen"] = user.last_login
@@ -1231,14 +1263,36 @@ class RegionalUnitRatingView(APIView):
             entity["documentScore"] = round(total / maximum_documents * 100, 1) if maximum_documents else 0
             entity["deadlineScore"] = round(entity["onTimeDocuments"] / total * 100, 1) if total else 0
             entity["activityScore"] = round(entity["activeUserCount"] / entity["userCount"] * 100, 1) if entity["userCount"] else 0
-            entity["score"] = round(
+            entity["rawScore"] = round(
                 entity["deadlineScore"] * 0.5 + entity["documentScore"] * 0.3 + entity["activityScore"] * 0.2,
                 1,
             )
+            failed_criteria = sum(
+                score < 100
+                for score in (
+                    entity["deadlineScore"],
+                    entity["documentScore"],
+                    entity["activityScore"],
+                )
+            )
+            entity["failedCriteria"] = failed_criteria
+            entity["criteriaPenalty"] = failed_criteria * 20
+            entity["baseScore"] = round(
+                max(0, entity["rawScore"] - entity["criteriaPenalty"]),
+                1,
+            )
+            entity["score"] = entity["baseScore"]
+            entity["unitBonus"] = 0
             entity["sections"] = sorted(entity["sections"].values(), key=lambda item: (-item["count"], item["sectionId"]))
             entity["actions"] = sorted(entity["actions"], key=lambda item: item["at"], reverse=True)[:50]
             if entity["lastSeen"]:
                 entity["lastSeen"] = entity["lastSeen"].isoformat()
+
+        # The unit score already combines the unit with all outposts registered
+        # under it. Add the unit's two-percentage-point bonus afterwards.
+        for rating in ratings.values():
+            rating["unitBonus"] = 2 if rating["baseScore"] > 0 else 0
+            rating["score"] = round(min(100, rating["baseScore"] + rating["unitBonus"]), 1)
 
         ordered_ratings = sorted(ratings.values(), key=lambda item: (-item["score"], item["unitNumber"]))
         ordered_outposts = []
@@ -1251,46 +1305,98 @@ class RegionalUnitRatingView(APIView):
         ordered_outposts.sort(key=lambda item: (-item["score"], item["unitNumber"], item["outpostName"]))
         for index, outpost in enumerate(ordered_outposts, start=1):
             outpost["rank"] = index
-        return Response({"results": ordered_ratings, "outposts": ordered_outposts})
+        if request.user.role != User.Role.ADMIN:
+            for item in [*ordered_ratings, *ordered_outposts]:
+                item["actions"] = []
+        return Response({"period": period, "year": selected_year, "month": selected_month, "results": ordered_ratings, "outposts": ordered_outposts})
 
 
 class OutpostRatingView(APIView):
     permission_classes = [IsActiveUser]
 
     def get(self, request):
-        if request.user.role != User.Role.REGIONAL:
-            raise PermissionDenied("Рейтинг аскер бөлүгүнө гана жеткиликтүү.")
+        now = timezone.now()
+        period = request.query_params.get("period", "year")
+        if period not in {"all", "month", "year"}:
+            period = "all"
+        try:
+            selected_year = int(request.query_params.get("year", now.year))
+        except (TypeError, ValueError):
+            selected_year = now.year
+        selected_year = min(max(selected_year, 2000), now.year)
+        try:
+            selected_month = int(request.query_params.get("month", now.month))
+        except (TypeError, ValueError):
+            selected_month = now.month
+        selected_month = min(max(selected_month, 1), 12)
+        period_start = now.replace(
+            year=selected_year,
+            month=1 if period == "year" else selected_month,
+            day=1,
+            hour=0,
+            minute=0,
+            second=0,
+            microsecond=0,
+        )
+        period_end = period_start.replace(year=selected_year + 1) if period == "year" else (
+            period_start.replace(year=selected_year + 1, month=1)
+            if selected_month == 12
+            else period_start.replace(month=selected_month + 1)
+        )
+        if request.user.role not in {User.Role.REGIONAL, User.Role.OUTPOST}:
+            raise PermissionDenied("Заставалардын рейтинги бул аскер бөлүгүнүн колдонуучуларына гана жеткиликтүү.")
 
-        outpost_names = {
-            format_outpost_name(name)
-            for name in User.objects.filter(
+        own_unit_number = str(request.user.region or "").strip()
+        unit_numbers = (
+            set(OUTPOSTS_BY_MILITARY_UNIT)
+            if request.user.role == User.Role.OUTPOST
+            else {own_unit_number}
+        )
+        outpost_entries = {
+            (unit_number, format_outpost_name(name))
+            for unit_number in unit_numbers
+            for name in OUTPOSTS_BY_MILITARY_UNIT.get(unit_number, ())
+        }
+        registered_outposts = User.objects.filter(
                 role=User.Role.OUTPOST,
                 status=User.Status.ACTIVE,
-                region=request.user.region,
-            )
-            .exclude(outpost_name="")
-            .values_list("outpost_name", flat=True)
-        }
+            ).exclude(outpost_name="")
+        if request.user.role != User.Role.OUTPOST:
+            registered_outposts = registered_outposts.filter(region=own_unit_number)
+        outpost_entries.update(
+            (str(unit_number or "").strip(), format_outpost_name(name))
+            for unit_number, name in registered_outposts.values_list("region", "outpost_name")
+        )
         section_counts = ThematicAccountSubmission.objects.filter(
             sender__role=User.Role.OUTPOST,
-            unit_number=request.user.region,
-        ).values("outpost_name", "section_slug").annotate(count=Count("id"))
+        )
+        if request.user.role != User.Role.OUTPOST:
+            section_counts = section_counts.filter(unit_number=own_unit_number)
+        if period != "all":
+            section_counts = section_counts.filter(
+                created_at__gte=period_start,
+                created_at__lt=period_end,
+            )
+        section_counts = section_counts.values("unit_number", "outpost_name", "section_slug").annotate(count=Count("id"))
 
         ratings = {
-            name: {
+            (unit_number, name): {
+                "unitNumber": unit_number,
                 "outpostName": name,
                 "totalDocuments": 0,
                 "sections": [],
             }
-            for name in outpost_names
+            for unit_number, name in outpost_entries
         }
         for item in section_counts:
+            unit_number = str(item["unit_number"] or "").strip()
             outpost_name = format_outpost_name(item["outpost_name"])
             if not outpost_name:
                 continue
             rating = ratings.setdefault(
-                outpost_name,
+                (unit_number, outpost_name),
                 {
+                    "unitNumber": unit_number,
                     "outpostName": outpost_name,
                     "totalDocuments": 0,
                     "sections": [],
@@ -1303,12 +1409,12 @@ class OutpostRatingView(APIView):
 
         ordered_ratings = sorted(
             ratings.values(),
-            key=lambda item: (-item["totalDocuments"], item["outpostName"]),
+            key=lambda item: (-item["totalDocuments"], item["unitNumber"], item["outpostName"]),
         )
         for index, rating in enumerate(ordered_ratings, start=1):
             rating["rank"] = index
             rating["sections"].sort(key=lambda item: (-item["count"], item["sectionId"]))
-        return Response({"results": ordered_ratings})
+        return Response({"period": period, "year": selected_year, "month": selected_month, "results": ordered_ratings})
 
 
 class RegionalDashboardView(APIView):
@@ -2203,6 +2309,7 @@ class ThematicAccountSubmissionListCreateView(APIView):
             "young-soldier-observation",
             "young-soldier-analysis",
             "memo-letter",
+            "shooting-statements",
         }:
             errors["sectionId"] = "Отправляемый раздел указан неверно."
         if not request.user.region:

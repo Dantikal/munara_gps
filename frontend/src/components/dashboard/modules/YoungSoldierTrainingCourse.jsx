@@ -179,7 +179,7 @@ export default function YoungSoldierTrainingCourse({ modules, user }) {
       <header className="module-header">
         <h1>{COURSE_TITLE}</h1>
       </header>
-      <div className="module-document-list">
+      <div className="module-document-list module-document-list--sequential">
         <button
           className="module-document-card"
           onClick={() => setActiveSection("program")}

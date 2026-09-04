@@ -2,8 +2,10 @@ import React, { useEffect, useState } from "react";
 import { useDispatch, useSelector } from "react-redux";
 
 import Sidebar from "../components/dashboard/Sidebar.jsx";
+import DashboardPrintButton from "../components/dashboard/DashboardPrintButton.jsx";
 import DashboardModuleView from "../components/dashboard/modules/DashboardModuleView.jsx";
 import { fetchDashboard } from "../features/dashboard/dashboardSlice.js";
+import OutpostRatingPage from "../features/regional/OutpostRatingPage.jsx";
 
 export default function OutpostDashboard() {
   const dispatch = useDispatch();
@@ -46,14 +48,19 @@ export default function OutpostDashboard() {
       />
 
       <section className="dashboard-content">
-        <DashboardModuleView
-          activeModule={activeView}
-          dashboardData={data}
-          modules={data.modules}
-          onNavigate={setActiveView}
-          onRefresh={refreshDashboard}
-          user={user}
-        />
+        <DashboardPrintButton />
+        {activeView === "outpostRating" ? (
+          <OutpostRatingPage user={user} />
+        ) : (
+          <DashboardModuleView
+            activeModule={activeView}
+            dashboardData={data}
+            modules={data.modules}
+            onNavigate={setActiveView}
+            onRefresh={refreshDashboard}
+            user={user}
+          />
+        )}
       </section>
     </div>
   );

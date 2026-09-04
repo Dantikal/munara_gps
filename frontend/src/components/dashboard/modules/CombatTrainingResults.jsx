@@ -1042,7 +1042,9 @@ export default function CombatTrainingResults({ data, user }) {
   const [isSignatureDialogOpen, setIsSignatureDialogOpen] = useState(false);
   const [activeSignatureSlot, setActiveSignatureSlot] = useState(SIGNATURE_SLOTS[0].id);
   const [resultSubmissions, setResultSubmissions] = useState([]);
-  const [selectedResultSubmission, setSelectedResultSubmission] = useState(null);
+  const [selectedResultSubmission, setSelectedResultSubmission] = useState(
+    data?.initialResultSubmission || null
+  );
   const [selectedSubmittedSubjectId, setSelectedSubmittedSubjectId] = useState(null);
   const [isResultSendDialogOpen, setIsResultSendDialogOpen] = useState(false);
   const [resultSubmissionTitle, setResultSubmissionTitle] = useState("");
@@ -1323,6 +1325,8 @@ export default function CombatTrainingResults({ data, user }) {
   };
 
   const handleOpenResultSendDialog = () => {
+    const canDirectSend = Boolean(data?.allowResultSubmission) &&
+      ["outpost", "regional"].includes(user?.role);
     const canRegionalSend =
       user?.role === "regional" &&
       (
@@ -1330,8 +1334,8 @@ export default function CombatTrainingResults({ data, user }) {
         (selectedSectionId === "inspection" && selectedInspectionGroupId === "regional-unit")
       );
     if (
-      (user?.role !== "outpost" && !canRegionalSend) ||
-      !["observation", "inspection"].includes(selectedSectionId) ||
+      (user?.role !== "outpost" && !canRegionalSend && !canDirectSend) ||
+      (!["observation", "inspection"].includes(selectedSectionId) && !canDirectSend) ||
       !selectedPeriod
     ) {
       return;
@@ -2928,6 +2932,15 @@ export default function CombatTrainingResults({ data, user }) {
     );
   }
 
+  if (data?.directSingleSubmission && selectedResultSubmission) {
+    return (
+      <SubmittedObservationTable
+        onBack={data.onBack || (() => setSelectedResultSubmission(null))}
+        subject={selectedResultSubmission.table}
+      />
+    );
+  }
+
   if (selectedResultSubmission?.sectionId === "combat-training-results-inspection") {
     return (
       <SubmittedObservationTable
@@ -3415,6 +3428,7 @@ export default function CombatTrainingResults({ data, user }) {
               </button>
               {!data?.hideResultSubmissionActions && (
                 user?.role === "outpost" ||
+                (data?.allowResultSubmission && user?.role === "regional") ||
                 (
                   user?.role === "regional" &&
                   (
@@ -3422,7 +3436,7 @@ export default function CombatTrainingResults({ data, user }) {
                     (selectedSectionId === "inspection" && selectedInspectionGroupId === "regional-unit")
                   )
                 )
-              ) && ["observation", "inspection"].includes(selectedSectionId) && (
+              ) && (["observation", "inspection"].includes(selectedSectionId) || data?.allowResultSubmission) && (
                 <button
                   onClick={handleOpenResultSendDialog}
                   style={{...wordTableStyles.button, ...wordTableStyles.buttonSecondary}}

@@ -2,6 +2,7 @@ import React, { useEffect, useState } from "react";
 import { useDispatch, useSelector } from "react-redux";
 
 import Sidebar from "../components/dashboard/Sidebar.jsx";
+import DashboardPrintButton from "../components/dashboard/DashboardPrintButton.jsx";
 import DashboardModuleView from "../components/dashboard/modules/DashboardModuleView.jsx";
 import { fetchDashboard } from "../features/dashboard/dashboardSlice.js";
 import RegionalUsersPage from "../features/regional/RegionalUsersPage.jsx";
@@ -48,6 +49,7 @@ export default function RegionalDashboard() {
       />
 
       <section className="dashboard-content">
+        <DashboardPrintButton />
         {error && <p className="dashboard-error">{error}</p>}
         {activeView === "regionalUsers" ? (
           <RegionalUsersPage user={user} />

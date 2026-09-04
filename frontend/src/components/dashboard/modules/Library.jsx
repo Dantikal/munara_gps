@@ -1620,7 +1620,9 @@ export default function Library({ data, onBack, onRefresh, onSubmissionCreated }
   );
   const isDirectSubmissionUpdate = Boolean(data?.directSubmissionUpdate);
   const isTableEditing = (
-    isDirectSubmissionUpdate || canEditSelectedSubmission || tableStatus === "editing"
+    canEditSelectedSubmission ||
+    tableStatus === "editing" ||
+    (isDirectSubmissionUpdate && tableStatus !== "submitted")
   ) && !isViewingSubmission;
   const isSubmitDisabled =
     data?.disableSubmit ||
@@ -2681,8 +2683,9 @@ export default function Library({ data, onBack, onRefresh, onSubmissionCreated }
           submission,
           ...items.filter((item) => item.id !== submission.id),
         ]);
-        setTableStatus("editing");
-        setTableNotice("Журнал обновлён и сохранён.");
+        persistCurrentTable("submitted");
+        setTableStatus("submitted");
+        setTableNotice("Журнал жөнөтүлдү.");
         onSubmissionCreated?.(submission);
       } catch (error) {
         setTableNotice(getApiErrorMessage(error, "Журналды жаңыртуу мүмкүн болгон жок."));
@@ -2766,8 +2769,9 @@ export default function Library({ data, onBack, onRefresh, onSubmissionCreated }
         ...items.filter((item) => item.id !== submission.id),
       ]);
       if (isUpdatingDirectSubmission) {
-        setTableStatus("editing");
-        setTableNotice("Журнал обновлён и сохранён.");
+        persistCurrentTable("submitted");
+        setTableStatus("submitted");
+        setTableNotice("Журнал жөнөтүлдү.");
       } else {
         completeCurrentTableSubmission();
       }
@@ -3494,7 +3498,7 @@ export default function Library({ data, onBack, onRefresh, onSubmissionCreated }
                                   );
                                 });
                               })()}
-                              {column.canAddLines && (
+                              {column.canAddLines && isTableEditing && (
                                 <button
                                   className="training-table-line-add"
                                   disabled={!isTableEditing || (Array.isArray(row[column.key]) ? row[column.key].length : String(row[column.key] || "").split("\n").length) >= (column.maxLines || 20)}

@@ -22,51 +22,20 @@
     --primary-dark: #07140e;
     --primary-darker: #030906;
     --gold: #d8b84b;
-    animation: dashboard-background-flow 14s ease-in-out infinite alternate;
     background:
-      radial-gradient(circle at 82% 8%, rgba(0, 215, 255, 0.2), transparent 27%),
-      radial-gradient(circle at 14% 78%, rgba(22, 151, 89, 0.22), transparent 32%),
-      radial-gradient(circle at 52% 44%, rgba(34, 90, 215, 0.13), transparent 35%),
-      linear-gradient(135deg, #010508 0%, #041710 48%, #020a13 100%);
-    background-size: 115% 115%, 120% 120%, 130% 130%, 100% 100%;
+      linear-gradient(90deg, rgba(0, 8, 5, 0.72), rgba(0, 7, 5, 0.46) 55%, rgba(0, 6, 4, 0.72)),
+      url("../assets/auth-mountain-background.jpeg") center / cover fixed no-repeat,
+      #020604;
     color: var(--text);
     position: relative;
   }
 
   .app-shell:not(.auth-shell)::before {
-    animation: dashboard-grid-drift 12s linear infinite;
-    background-image:
-      linear-gradient(rgba(53, 213, 255, 0.065) 1px, transparent 1px),
-      linear-gradient(90deg, rgba(53, 213, 255, 0.065) 1px, transparent 1px),
-      radial-gradient(circle at 50% 50%, rgba(53, 213, 255, 0.22) 0 1px, transparent 1.5px);
-    background-size: 54px 54px, 54px 54px, 27px 27px;
-    content: "";
-    inset: 0;
-    mask-image: linear-gradient(to bottom, rgba(0, 0, 0, 0.7), transparent 92%);
-    opacity: 0.52;
-    pointer-events: none;
-    position: absolute;
-    z-index: 0;
+    display: none;
   }
 
   .app-shell:not(.auth-shell)::after {
-    animation: dashboard-tech-scan 9s linear infinite;
-    background: linear-gradient(
-      180deg,
-      transparent 0%,
-      rgba(54, 218, 255, 0.03) 44%,
-      rgba(54, 218, 255, 0.28) 50%,
-      rgba(54, 218, 255, 0.03) 56%,
-      transparent 100%
-    );
-    content: "";
-    height: 32vh;
-    left: 0;
-    pointer-events: none;
-    position: fixed;
-    top: -38vh;
-    width: 100%;
-    z-index: 0;
+    display: none;
   }
 
   .app-shell:not(.auth-shell) > .topbar,
@@ -229,6 +198,63 @@
   .app-shell:not(.auth-shell) .document-paper,
   .app-shell:not(.auth-shell) [class*="word-page"] {
     color: #111;
+  }
+
+  /* Text entered on white document sheets must stay black in the dark UI theme. */
+  .app-shell:not(.auth-shell) :is(
+    .module-table-view--word,
+    .table-view[style],
+    .monthly-analysis-page,
+    .memo-letter-page,
+    .registered-document-page,
+    .document-paper,
+    .document-registry__paper,
+    .methodical-document-page__content,
+    [class*="word-page"]
+  ) :is(
+    table,
+    thead,
+    tbody,
+    tr,
+    th,
+    td,
+    input,
+    textarea,
+    select,
+    option,
+    [contenteditable="true"]
+  ) {
+    color: #000 !important;
+    -webkit-text-fill-color: #000 !important;
+  }
+
+  .app-shell:not(.auth-shell) :is(
+    .module-table-view--word,
+    .table-view[style],
+    .monthly-analysis-page,
+    .memo-letter-page,
+    .registered-document-page,
+    .document-paper,
+    .document-registry__paper,
+    .methodical-document-page__content,
+    [class*="word-page"]
+  ) :is(input, textarea, select) {
+    background-color: transparent !important;
+  }
+
+  .app-shell:not(.auth-shell) :is(
+    .module-table-view--word,
+    .table-view[style],
+    .monthly-analysis-page,
+    .memo-letter-page,
+    .registered-document-page,
+    .document-paper,
+    .document-registry__paper,
+    .methodical-document-page__content,
+    [class*="word-page"]
+  ) :is(input, textarea)::placeholder {
+    color: #555 !important;
+    -webkit-text-fill-color: #555 !important;
   }
 }
 
@@ -503,12 +529,236 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .module-document-list > *,
+  .module-period-list > *,
+  .saved-table-list > *,
+  .dashboard-home__quick-grid > * {
+    animation: none !important;
+  }
+
   .dashboard-network,
   .dashboard-network .auth-network__links line,
   .app-shell:not(.auth-shell)::before,
   .app-shell:not(.auth-shell)::after,
   .app-shell:not(.auth-shell) {
     animation: none;
+  }
+}
+
+.dashboard-print-toolbar {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 10px;
+}
+
+.dashboard-print-button {
+  align-items: center;
+  display: inline-flex;
+  font-weight: 700;
+  gap: 8px;
+}
+
+.dashboard-print-button::before {
+  content: "\1F5A8";
+  font-size: 16px;
+}
+
+.module-document-card.shooting-statements-directory-card {
+  align-items: center;
+  display: flex;
+  padding-right: 58px;
+  position: relative;
+}
+
+.shooting-statements-directory-card__badge {
+  align-items: center;
+  background: #1f8a44;
+  border: 2px solid #dff3e6;
+  border-radius: 999px;
+  box-shadow: 0 2px 7px rgb(31 138 68 / 24%);
+  color: #fff;
+  display: inline-flex;
+  font-size: 13px;
+  font-weight: 700;
+  height: 30px;
+  justify-content: center;
+  line-height: 1;
+  min-width: 30px;
+  padding: 0;
+  position: absolute;
+  right: 14px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 30px;
+}
+
+@media print {
+  body.dashboard-document-print .dashboard-document-print-root,
+  body.dashboard-document-print .dashboard-document-print-root * {
+    visibility: visible !important;
+  }
+
+  body.dashboard-document-print .dashboard-document-print-root {
+    background: #fff !important;
+    color: #000 !important;
+    left: 0 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    position: absolute !important;
+    top: 0 !important;
+    width: 100% !important;
+  }
+
+  body.dashboard-document-print .dashboard-print-toolbar,
+  body.dashboard-document-print .no-print,
+  body.dashboard-document-print .module-back-button,
+  body.dashboard-document-print .module-actions,
+  body.dashboard-document-print dialog,
+  body.dashboard-document-print [role="dialog"] {
+    display: none !important;
+  }
+
+  body.dashboard-document-print .module-panel,
+  body.dashboard-document-print .document-paper,
+  body.dashboard-document-print [class*="word-page"] {
+    background: #fff !important;
+    box-shadow: none !important;
+    color: #000 !important;
+  }
+
+  body.dashboard-document-print input,
+  body.dashboard-document-print select,
+  body.dashboard-document-print textarea {
+    background: #fff !important;
+    color: #000 !important;
+  }
+
+  body.dashboard-document-print table,
+  body.dashboard-document-print tr,
+  body.dashboard-document-print img {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+}
+
+/* Lists reveal their entries one by one when a section is opened. */
+.module-document-list > *,
+.module-period-list > *,
+.saved-table-list > *,
+.dashboard-home__quick-grid > * {
+  animation: dashboard-list-item-enter 0.42s cubic-bezier(0.22, 1, 0.36, 1) both;
+  animation-delay: calc(var(--list-item-index, 0) * 55ms);
+  --list-entry-x: 34px;
+}
+
+.module-document-list > :nth-child(even),
+.module-period-list > :nth-child(even),
+.saved-table-list > :nth-child(even),
+.dashboard-home__quick-grid > :nth-child(even) {
+  --list-entry-x: -34px;
+}
+
+.module-document-list > :nth-child(1),
+.module-period-list > :nth-child(1),
+.saved-table-list > :nth-child(1),
+.dashboard-home__quick-grid > :nth-child(1) { --list-item-index: 0; }
+.module-document-list > :nth-child(2),
+.module-period-list > :nth-child(2),
+.saved-table-list > :nth-child(2),
+.dashboard-home__quick-grid > :nth-child(2) { --list-item-index: 1; }
+.module-document-list > :nth-child(3),
+.module-period-list > :nth-child(3),
+.saved-table-list > :nth-child(3),
+.dashboard-home__quick-grid > :nth-child(3) { --list-item-index: 2; }
+.module-document-list > :nth-child(4),
+.module-period-list > :nth-child(4),
+.saved-table-list > :nth-child(4),
+.dashboard-home__quick-grid > :nth-child(4) { --list-item-index: 3; }
+.module-document-list > :nth-child(5),
+.module-period-list > :nth-child(5),
+.saved-table-list > :nth-child(5),
+.dashboard-home__quick-grid > :nth-child(5) { --list-item-index: 4; }
+.module-document-list > :nth-child(6),
+.module-period-list > :nth-child(6),
+.saved-table-list > :nth-child(6),
+.dashboard-home__quick-grid > :nth-child(6) { --list-item-index: 5; }
+.module-document-list > :nth-child(7),
+.module-period-list > :nth-child(7),
+.saved-table-list > :nth-child(7),
+.dashboard-home__quick-grid > :nth-child(7) { --list-item-index: 6; }
+.module-document-list > :nth-child(8),
+.module-period-list > :nth-child(8),
+.saved-table-list > :nth-child(8),
+.dashboard-home__quick-grid > :nth-child(8) { --list-item-index: 7; }
+
+/* Meetings and the young-soldier course reveal one card only after the previous one finishes. */
+.module-document-list--sequential > * {
+  animation-delay: calc(var(--list-item-index, 0) * 750ms);
+  animation-duration: 0.68s;
+}
+
+@keyframes dashboard-list-item-enter {
+  from {
+    opacity: 0;
+    transform: translate3d(var(--list-entry-x), 14px, 0) scale(0.985);
+  }
+
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+}
+
+/* Remaining section-specific lists use the same alternating reveal. */
+:is(
+  .module-submission-list,
+  .analysis-section-list,
+  .module-grid,
+  .module-metric-grid,
+  .module-template-list,
+  .module-banner-grid,
+  .methodical-document-list,
+  .methodical-subject-list,
+  .admin-user-card-list,
+  .request-list,
+  .regional-rating__list,
+  .dashboard-home-documents__list,
+  .admin-chat__user-list
+) > * {
+  animation: dashboard-list-item-enter 0.42s cubic-bezier(0.22, 1, 0.36, 1) both;
+  animation-delay: calc(var(--list-item-index, 0) * 55ms);
+  --list-entry-x: 34px;
+}
+
+:is(
+  .module-submission-list,
+  .analysis-section-list,
+  .module-grid,
+  .module-metric-grid,
+  .module-template-list,
+  .module-banner-grid,
+  .methodical-document-list,
+  .methodical-subject-list,
+  .admin-user-card-list,
+  .request-list,
+  .regional-rating__list,
+  .dashboard-home-documents__list,
+  .admin-chat__user-list
+) > :nth-child(even) {
+  --list-entry-x: -34px;
+}
+
+:is(.module-submission-list, .analysis-section-list, .module-grid, .module-metric-grid, .module-template-list, .module-banner-grid, .methodical-document-list, .methodical-subject-list, .admin-user-card-list, .request-list, .regional-rating__list, .dashboard-home-documents__list, .admin-chat__user-list) > :nth-child(2) { --list-item-index: 1; }
+:is(.module-submission-list, .analysis-section-list, .module-grid, .module-metric-grid, .module-template-list, .module-banner-grid, .methodical-document-list, .methodical-subject-list, .admin-user-card-list, .request-list, .regional-rating__list, .dashboard-home-documents__list, .admin-chat__user-list) > :nth-child(3) { --list-item-index: 2; }
+:is(.module-submission-list, .analysis-section-list, .module-grid, .module-metric-grid, .module-template-list, .module-banner-grid, .methodical-document-list, .methodical-subject-list, .admin-user-card-list, .request-list, .regional-rating__list, .dashboard-home-documents__list, .admin-chat__user-list) > :nth-child(4) { --list-item-index: 3; }
+:is(.module-submission-list, .analysis-section-list, .module-grid, .module-metric-grid, .module-template-list, .module-banner-grid, .methodical-document-list, .methodical-subject-list, .admin-user-card-list, .request-list, .regional-rating__list, .dashboard-home-documents__list, .admin-chat__user-list) > :nth-child(5) { --list-item-index: 4; }
+:is(.module-submission-list, .analysis-section-list, .module-grid, .module-metric-grid, .module-template-list, .module-banner-grid, .methodical-document-list, .methodical-subject-list, .admin-user-card-list, .request-list, .regional-rating__list, .dashboard-home-documents__list, .admin-chat__user-list) > :nth-child(6) { --list-item-index: 5; }
+:is(.module-submission-list, .analysis-section-list, .module-grid, .module-metric-grid, .module-template-list, .module-banner-grid, .methodical-document-list, .methodical-subject-list, .admin-user-card-list, .request-list, .regional-rating__list, .dashboard-home-documents__list, .admin-chat__user-list) > :nth-child(7) { --list-item-index: 6; }
+:is(.module-submission-list, .analysis-section-list, .module-grid, .module-metric-grid, .module-template-list, .module-banner-grid, .methodical-document-list, .methodical-subject-list, .admin-user-card-list, .request-list, .regional-rating__list, .dashboard-home-documents__list, .admin-chat__user-list) > :nth-child(8) { --list-item-index: 7; }
+
+@media (prefers-reduced-motion: reduce) {
+  :is(.module-submission-list, .analysis-section-list, .module-grid, .module-metric-grid, .module-template-list, .module-banner-grid, .methodical-document-list, .methodical-subject-list, .admin-user-card-list, .request-list, .regional-rating__list, .dashboard-home-documents__list, .admin-chat__user-list) > * {
+    animation: none !important;
   }
 }
 
@@ -5028,10 +5278,11 @@ button.module-section-card:focus-visible {
 }
 
 .admin-chat {
-  display: grid;
+  display: flex;
+  flex-direction: column;
   gap: 14px;
-  grid-template-rows: auto minmax(0, 1fr);
   height: calc(100vh - 92px);
+  height: calc(100dvh - 92px);
   min-height: 0;
   overflow: hidden;
   width: 100%;
@@ -5039,6 +5290,7 @@ button.module-section-card:focus-visible {
 
 .admin-chat .module-header {
   align-items: flex-start;
+  flex: 0 0 auto;
   margin-bottom: 0;
 }
 
@@ -5079,9 +5331,13 @@ button.module-section-card:focus-visible {
 
 .admin-chat__layout {
   display: grid;
+  flex: 1 1 0;
   gap: 12px;
   grid-template-columns: minmax(220px, 280px) minmax(0, 1fr);
-  height: 100%;
+  /* This is the second row of .admin-chat's grid.  A 100% height here
+     incorrectly adds the header height once more and pushes the composer
+     outside the clipped chat container. */
+  height: auto;
   min-height: 0;
   overflow: hidden;
   width: 100%;
@@ -5111,6 +5367,8 @@ button.module-section-card:focus-visible {
   gap: 10px;
   grid-template-rows: auto auto minmax(0, 1fr);
   height: 100%;
+  min-height: 0;
+  overflow: hidden;
   padding: 12px;
 }
 
@@ -5169,9 +5427,12 @@ button.module-section-card:focus-visible {
   gap: 6px;
   align-content: start;
   grid-auto-rows: max-content;
-  max-height: none;
+  max-height: 100%;
   min-height: 0;
+  overscroll-behavior: contain;
   overflow: auto;
+  scrollbar-gutter: stable;
+  touch-action: pan-y;
 }
 
 .admin-chat__user-list button {
@@ -5248,9 +5509,9 @@ button.module-section-card:focus-visible {
 }
 
 .admin-chat__thread {
-  display: grid;
+  display: flex;
+  flex-direction: column;
   height: 100%;
-  grid-template-rows: auto minmax(0, 1fr) auto;
   min-height: 0;
   overflow: hidden;
   padding: 12px;
@@ -5260,6 +5521,7 @@ button.module-section-card:focus-visible {
   align-items: center;
   border-bottom: 1px solid var(--border);
   display: flex;
+  flex: 0 0 auto;
   justify-content: space-between;
   padding-bottom: 10px;
 }
@@ -5308,6 +5570,7 @@ button.module-section-card:focus-visible {
   background: #fff;
   border-radius: 5px;
   display: grid;
+  flex: 1 1 0;
   gap: 10px;
   align-content: start;
   max-height: none;
@@ -5513,7 +5776,9 @@ button.module-section-card:focus-visible {
   border-top: 1px solid var(--border);
   border-radius: 0 0 7px 7px;
   display: grid;
+  flex: 0 0 auto;
   gap: 10px;
+  min-height: 210px;
   padding-top: 12px;
 }
 
@@ -5732,7 +5997,10 @@ button.module-section-card:focus-visible {
 
   .admin-chat__layout {
     grid-template-columns: minmax(210px, 250px) minmax(0, 1fr);
-    height: 100%;
+    /* Keep this grid item in its remaining parent row.  At browser zoom/DPI
+       this breakpoint applies on desktop too; 100% would add the header
+       height and clip the composer below the chat. */
+    height: auto;
     min-height: 0;
   }
 
@@ -5983,6 +6251,29 @@ button.module-section-card:focus-visible {
   color: var(--muted);
   font-size: 14px;
   padding: 16px 12px 4px;
+}
+
+/* On desktop keep the message composer physically pinned to the bottom of
+   the chat.  This avoids it being pushed below the visible area by browser
+   zoom or operating-system DPI scaling. */
+@media (min-width: 761px) {
+  .admin-chat__thread {
+    padding-bottom: 234px;
+    position: relative;
+  }
+
+  .admin-chat__thread > form.admin-chat__composer {
+    bottom: 12px;
+    box-sizing: border-box;
+    left: 12px;
+    position: absolute;
+    right: 12px;
+    z-index: 2;
+  }
+
+  .admin-chat__messages {
+    padding-bottom: 234px;
+  }
 }
 
 .module-template-toolbar {
@@ -6247,6 +6538,33 @@ button.module-section-card:focus-visible {
 
 .regional-rating-controls { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 16px; }
 .regional-rating-controls button.is-active { background: var(--primary); border-color: var(--primary); color: #fff; }
+.regional-rating-period-picker { align-items: end; display: flex; flex-wrap: wrap; gap: 12px; margin: 0 0 18px; }
+.regional-rating-period-picker label { color: var(--muted); display: grid; font-size: 12px; font-weight: 700; gap: 5px; }
+.regional-rating-period-picker select { background: rgba(7, 27, 17, .82); border: 1px solid #3b654b; border-radius: 5px; color: var(--text); min-width: 150px; padding: 8px 10px; }
+.regional-rating-pie { align-items: center; background: radial-gradient(circle at 38% 30%, rgba(83, 219, 126, .13), transparent 44%), rgba(4, 20, 12, .7); border: 1px solid #31543f; display: grid; gap: 28px; grid-template-columns: minmax(220px, .8fr) minmax(260px, 1.2fr); margin-top: 16px; padding: clamp(18px, 3vw, 34px); }
+.regional-rating-pie__chart { aspect-ratio: 1; margin: auto; max-width: 330px; position: relative; width: 100%; }
+.regional-rating-pie__chart svg { animation: rating-pie-enter .65s cubic-bezier(.22, 1, .36, 1) both; height: 100%; overflow: visible; transform: rotate(-90deg); width: 100%; }
+.regional-rating-pie__track { fill: none; stroke: rgba(116, 156, 130, .2); stroke-width: 25; }
+.regional-rating-pie__slice { animation: rating-pie-slice-enter .75s cubic-bezier(.22, 1, .36, 1) var(--slice-delay) both; fill: none; stroke-linecap: butt; stroke-width: 25; transform-origin: 90px 90px; }
+.regional-rating-pie__total { align-items: center; display: flex; flex-direction: column; inset: 0; justify-content: center; pointer-events: none; position: absolute; text-align: center; }
+.regional-rating-pie__total strong { color: #f4dc77; font-size: clamp(24px, 3.2vw, 38px); }
+.regional-rating-pie__total span { color: var(--muted); font-size: 11px; max-width: 90px; }
+.regional-rating-pie__legend { display: grid; gap: 9px; }
+.regional-rating-pie__legend div { align-items: center; border-bottom: 1px solid rgba(96, 147, 112, .2); display: grid; gap: 9px; grid-template-columns: 10px minmax(0, 1fr) auto; padding: 6px 0; }
+.regional-rating-pie__legend i { border-radius: 50%; height: 10px; width: 10px; }
+.regional-rating-pie__legend span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.regional-rating-pie__legend strong { color: #f4dc77; }
+@keyframes rating-pie-enter { from { opacity: 0; transform: rotate(-150deg) scale(.72); } to { opacity: 1; transform: rotate(-90deg) scale(1); } }
+@keyframes rating-pie-slice-enter { from { opacity: 0; transform: scale(.6); } to { opacity: 1; transform: scale(1); } }
+.regional-rating-chart-page__list-title,
+.regional-rating-detail-page__subtitle { color: #f1d66c; font-size: 17px; margin: 26px 0 12px; }
+.regional-rating-detail-criteria { display: grid; gap: 10px; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); margin: 16px 0; }
+.regional-rating-detail-criteria span,
+.regional-rating-detail-page__formula span { background: rgba(25, 72, 43, .55); border: 1px solid #345e45; border-radius: 5px; display: flex; justify-content: space-between; padding: 10px; }
+.regional-rating-detail-criteria strong { color: #f4dc77; }
+.regional-rating-detail-page__formula { display: flex; flex-wrap: wrap; gap: 8px; }
+.regional-rating-detail-page__formula span { color: #b8d6c2; font-size: 12px; }
+.regional-rating-detail-page__sections { background: rgba(5, 27, 16, .5); border: 1px solid #31543f; display: grid; gap: 8px; padding: 14px; }
 .regional-rating-card--clickable { cursor: pointer; transition: border-color .25s ease, box-shadow .25s ease, transform .25s ease; }
 .regional-rating-card--clickable:hover,
 .regional-rating-card--clickable:focus-visible { border-color: var(--gold); box-shadow: 0 10px 24px rgba(0, 0, 0, .2); outline: none; transform: translateY(-3px); }
@@ -6273,6 +6591,7 @@ button.module-section-card:focus-visible {
 .regional-rating-action__type--submission { background: #dcfce7; color: #166534; }
 
 @media (max-width: 700px) {
+  .regional-rating-pie { grid-template-columns: 1fr; }
   .regional-rating-score-chart__axis { margin-left: 0; margin-right: 52px; }
   .regional-rating-score-chart__row { grid-template-columns: 1fr 52px; }
   .regional-rating-score-chart__row > strong { grid-column: 1 / -1; }
@@ -6527,6 +6846,18 @@ button.module-section-card:focus-visible {
 .regional-rating-card__score {
   min-width: 92px;
   text-align: center;
+}
+
+.regional-rating-card--current {
+  border-color: #d8b84b !important;
+  box-shadow: 0 0 0 2px rgba(216, 184, 75, 0.3), 0 8px 22px rgba(0, 0, 0, 0.22) !important;
+}
+
+.regional-rating-card__current-label {
+  color: #d8b84b;
+  display: block;
+  font-size: 12px;
+  margin-top: 5px;
 }
 
 .regional-rating-card__score strong {

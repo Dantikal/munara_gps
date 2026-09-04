@@ -16,6 +16,7 @@ import ModuleTemplates from "./ModuleTemplates.jsx";
 import Profile from "./Profile.jsx";
 import SavedTables from "./SavedTables.jsx";
 import Schedule from "./Schedule.jsx";
+import ShootingStatements from "./ShootingStatements.jsx";
 import SMR from "./SMR.jsx";
 import YoungSoldierTrainingCourse from "./YoungSoldierTrainingCourse.jsx";
 
@@ -51,6 +52,10 @@ export default function DashboardModuleView({ activeModule, dashboardData, initi
 
   if (activeModule === "combatTrainingResults") {
     return withTemplates("combatTrainingResults", <CombatTrainingResults data={modules?.combatTrainingResults} user={user} />);
+  }
+
+  if (activeModule === "shootingStatements") {
+    return <ShootingStatements user={user} />;
   }
 
   if (activeModule === "meetings") {

@@ -50,7 +50,20 @@ function AuthNetwork({ className = "auth-network" }) {
 export default function App() {
   const { user } = useSelector((state) => state.auth);
   const [page, setPage] = useState(user ? "dashboard" : "register");
+  const [introIsVisible, setIntroIsVisible] = useState(true);
+  const [introIsLeaving, setIntroIsLeaving] = useState(false);
   const dispatch = useDispatch();
+
+  useEffect(() => {
+    const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const leaveTimer = window.setTimeout(() => setIntroIsLeaving(true), reducedMotion ? 80 : 1550);
+    const closeTimer = window.setTimeout(() => setIntroIsVisible(false), reducedMotion ? 180 : 2000);
+
+    return () => {
+      window.clearTimeout(leaveTimer);
+      window.clearTimeout(closeTimer);
+    };
+  }, []);
 
   useEffect(() => {
     if (user && (page === "login" || page === "register")) {
@@ -139,13 +152,42 @@ export default function App() {
     </section>
   );
 
+  const renderIntro = () => (
+    <div
+      aria-label="Загрузка платформы"
+      aria-live="polite"
+      className={`site-intro${introIsLeaving ? " site-intro--leaving" : ""}`}
+      role="status"
+    >
+      <div aria-hidden="true" className="site-intro__grid" />
+      <div aria-hidden="true" className="site-intro__glow site-intro__glow--one" />
+      <div aria-hidden="true" className="site-intro__glow site-intro__glow--two" />
+      <div className="site-intro__content">
+        <BorderServiceLogo large />
+        <div className="site-intro__title">
+          <strong>КҮЖҮРМӨН АСКЕР</strong>
+          <span>1.0</span>
+        </div>
+        <p>Күжүрмөн даярдоо санарип платформасы</p>
+        <div className="site-intro__loader" aria-hidden="true">
+          <span />
+        </div>
+      </div>
+    </div>
+  );
+
   if (!user && (page === "register" || page === "login")) {
-    return <main className="app-shell auth-shell">{renderAuthPage()}</main>;
+    return (
+      <>
+        <main className="app-shell auth-shell">{renderAuthPage()}</main>
+        {introIsVisible && renderIntro()}
+      </>
+    );
   }
 
   return (
-    <main className="app-shell">
-      <AuthNetwork className="dashboard-network" />
+    <>
+      <main className="app-shell">
       <header className="topbar">
         <div aria-hidden="true" className="topbar-particles">
           {Array.from({ length: 64 }, (_, index) => (
@@ -191,6 +233,8 @@ export default function App() {
       {page === "register" && <RegistrationForm />}
       {page === "login" && <LoginPage onLoggedIn={() => setPage("dashboard")} />}
       {page === "dashboard" && renderDashboard()}
-    </main>
+      </main>
+      {introIsVisible && renderIntro()}
+    </>
   );
 }
