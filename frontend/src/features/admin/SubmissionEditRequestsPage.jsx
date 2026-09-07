@@ -12,6 +12,7 @@ const statusLabels = {
   pending: "Каралууда",
   approved: "Уруксат берилди",
   rejected: "Четке кагылды",
+  corrected: "Өзгөрүлдү (Изменено)",
 };
 
 export default function SubmissionEditRequestsPage({ user }) {
@@ -29,7 +30,22 @@ export default function SubmissionEditRequestsPage({ user }) {
     }
   };
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => {
+    load();
+    const intervalId = window.setInterval(load, 5000);
+    window.addEventListener("focus", load);
+    return () => {
+      window.clearInterval(intervalId);
+      window.removeEventListener("focus", load);
+    };
+  }, []);
+
+  useEffect(() => {
+    setSelectedDocument((current) => {
+      if (!current) return current;
+      return items.find((item) => item.submission.id === current.id)?.submission || current;
+    });
+  }, [items]);
 
   const decide = async (item, status) => {
     setLoadingId(item.id);

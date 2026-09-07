@@ -163,6 +163,7 @@ export default function RegionalUnitRatingPage() {
   const currentYear = new Date().getFullYear();
   const [ratingYear, setRatingYear] = useState(currentYear);
   const [ratingMonth, setRatingMonth] = useState(new Date().getMonth() + 1);
+  const [ratingHalf, setRatingHalf] = useState(new Date().getMonth() < 6 ? 1 : 2);
   const [selectedUnitNumber, setSelectedUnitNumber] = useState(null);
   const selectedUnit = data.units.find((item) => item.unitNumber === selectedUnitNumber);
   const displayedItems = useMemo(() => entityType === "units" ? data.units : data.outposts, [data, entityType]);
@@ -170,11 +171,11 @@ export default function RegionalUnitRatingPage() {
   useEffect(() => {
     let mounted = true;
     setLoading(true);
-    getRegionalUnitRatings({ period: ratingPeriod, year: ratingYear, month: ratingMonth }).then((items) => { if (mounted) setData(items); })
+    getRegionalUnitRatings({ period: ratingPeriod, year: ratingYear, month: ratingMonth, half: ratingHalf }).then((items) => { if (mounted) setData(items); })
       .catch((requestError) => { if (mounted) setError(getApiErrorMessage(requestError, "Рейтингди жүктөө мүмкүн болгон жок.")); })
       .finally(() => { if (mounted) setLoading(false); });
     return () => { mounted = false; };
-  }, [ratingMonth, ratingPeriod, ratingYear]);
+  }, [ratingHalf, ratingMonth, ratingPeriod, ratingYear]);
 
   if (periodPage && periodSelectedItem) {
     const { item, type } = periodSelectedItem;
@@ -183,7 +184,7 @@ export default function RegionalUnitRatingPage() {
       <button className="module-back-button" onClick={() => setPeriodSelectedItem(null)} type="button">Артка</button>
       <header className="module-header">
         <div>
-          <p className="eyebrow">{periodPage === "month" ? "Айлык рейтинг" : periodPage === "year" ? "Жылдык рейтинг" : "Бардык жөнөтүлгөн документтер"}</p>
+          <p className="eyebrow">{periodPage === "month" ? "Айлык рейтинг" : periodPage === "half-year" ? "Жарым жылдык рейтинг" : periodPage === "year" ? "Жылдык рейтинг" : "Бардык жөнөтүлгөн документтер"}</p>
           <h1>{title}</h1>
           {type === "outposts" ? <p>Аскер бөлүгү: {item.unitNumber}</p> : null}
         </div>
@@ -199,7 +200,7 @@ export default function RegionalUnitRatingPage() {
       <h2 className="regional-rating-detail-page__subtitle">Рейтингдин критерийлери</h2>
       <ScoreMetrics item={item} />
       <div className="regional-rating-detail-page__formula">
-        <span>Дедлайн — 50%</span><span>Документтердин көлөмү — 30%</span><span>Активдүүлүк — 20%</span><span>Ар бир аткарылбаган критерий — −20%</span>{type === "units" ? <span>Аскер бөлүгүнө — +2%</span> : null}
+        <span>Дедлайн — 50%</span><span>Документтердин көлөмү — 30%</span><span>Активдүүлүк — 20%</span><span>Ар бир аткарылбаган критерий — −10%</span>{type === "units" ? <span>Аскер бөлүгүнө — +2%</span> : null}
       </div>
       <h2 className="regional-rating-detail-page__subtitle">Документтердин бөлүмдөрү</h2>
       <div className="regional-rating-card__sections regional-rating-detail-page__sections">
@@ -214,7 +215,7 @@ export default function RegionalUnitRatingPage() {
     <header className="module-header">
       <div>
         <p className="eyebrow">Рейтингдин аналитикасы</p>
-        <h1>{periodPage === "month" ? "Айлык рейтинг" : periodPage === "year" ? "Жылдык рейтинг" : "Жалпы рейтинг"}</h1>
+        <h1>{periodPage === "month" ? "Айлык рейтинг" : periodPage === "half-year" ? "Жарым жылдык рейтинг" : periodPage === "year" ? "Жылдык рейтинг" : "Жалпы рейтинг"}</h1>
         <p>Ар бир тилке жалпы рейтингди көрсөтөт. Тизмени аскер бөлүктөрү же заставалар боюнча ачыңыз.</p>
       </div>
     </header>
@@ -225,6 +226,7 @@ export default function RegionalUnitRatingPage() {
     <div className="regional-rating-period-picker">
       {periodPage !== "all" ? <label>Жыл<select onChange={(event) => setRatingYear(Number(event.target.value))} value={ratingYear}>{Array.from({ length: 6 }, (_, index) => currentYear - index).map((year) => <option key={year} value={year}>{year}</option>)}</select></label> : null}
       {periodPage === "month" ? <label>Ай<select onChange={(event) => setRatingMonth(Number(event.target.value))} value={ratingMonth}>{MONTH_NAMES.map((month, index) => <option key={month} value={index + 1}>{month}</option>)}</select></label> : null}
+      {periodPage === "half-year" ? <label>Жарым жылдык<select onChange={(event) => setRatingHalf(Number(event.target.value))} value={ratingHalf}><option value={1}>I жарым жылдык</option><option value={2}>II жарым жылдык</option></select></label> : null}
     </div>
     {error ? <p className="dashboard-error">{error}</p> : null}
     {loading ? <p className="dashboard-state">Рейтинг жүктөлүүдө...</p> : null}
@@ -253,6 +255,7 @@ export default function RegionalUnitRatingPage() {
     <div className="regional-rating-controls">
       <button className={ratingPeriod === "all" ? "is-active" : ""} onClick={() => { setRatingPeriod("all"); setPeriodSelectedItem(null); setPeriodPage("all"); setDisplayMode("rating"); }} type="button">Бардык рейтинг</button>
       <button className={ratingPeriod === "month" ? "is-active" : ""} onClick={() => { setRatingPeriod("month"); setPeriodSelectedItem(null); setPeriodPage("month"); setDisplayMode("rating"); }} type="button">Айлык рейтинг</button>
+      <button className={ratingPeriod === "half-year" ? "is-active" : ""} onClick={() => { setRatingPeriod("half-year"); setPeriodSelectedItem(null); setPeriodPage("half-year"); setDisplayMode("rating"); }} type="button">Жарым жылдык рейтинг</button>
       <button className={ratingPeriod === "year" ? "is-active" : ""} onClick={() => { setRatingPeriod("year"); setPeriodSelectedItem(null); setPeriodPage("year"); setDisplayMode("rating"); }} type="button">Жылдык рейтинг</button>
       <button className={entityType === "units" ? "is-active" : ""} onClick={() => { setEntityType("units"); setDisplayMode("rating"); }} type="button">Аскер бөлүктөрүнүн жалпы рейтинги жана графиги</button>
       <button className={entityType === "outposts" ? "is-active" : ""} onClick={() => { setEntityType("outposts"); setDisplayMode("rating"); }} type="button">Заставалардын жалпы рейтинги жана графиги</button>

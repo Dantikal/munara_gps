@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from "react";
 
 import {
   getThematicAccountSubmissions,
+  hideThematicAccountSubmission,
   markThematicAccountSubmissionRead,
 } from "../../../api/dashboard.js";
 import { getDocumentRegistrationCode } from "../../../utils/documentRegistration.js";
@@ -69,7 +70,9 @@ export default function MemoLetter({ user }) {
       return submissions.filter((submission) => submission.senderRole === "outpost");
     }
     if (user?.role === "admin") {
-      return submissions.filter((submission) => submission.senderRole === "regional");
+      return submissions.filter((submission) =>
+        ["outpost", "regional"].includes(submission.senderRole)
+      );
     }
     return [];
   }, [submissions, user?.role]);
@@ -101,18 +104,22 @@ export default function MemoLetter({ user }) {
     setActiveDraftId(null);
   };
 
-  const handleSubmissionCreated = (submission) => {
+  const handleSubmissionCreated = (submission, sentDraftId = null) => {
     setSubmissions((items) => [
       submission,
       ...items.filter((item) => item.id !== submission.id),
     ]);
+    if (sentDraftId) {
+      saveDrafts(drafts.filter((draft) => draft.id !== sentDraftId));
+      setActiveDraftId(null);
+    }
   };
 
   const handleOpenSubmission = (submission) => {
     setActiveSubmission(submission);
     const isIncoming =
       (user?.role === "regional" && submission.senderRole === "outpost") ||
-      (user?.role === "admin" && submission.senderRole === "regional");
+      (user?.role === "admin" && ["outpost", "regional"].includes(submission.senderRole));
     if (!isIncoming || submission.isRead) return;
 
     setSubmissions((items) =>
@@ -131,6 +138,19 @@ export default function MemoLetter({ user }) {
       });
   };
 
+  const handleHideSubmission = async (submission) => {
+    if (submission.senderId !== user?.id) return;
+    if (!window.confirm("Бул документти өз тизмеңизден өчүрөсүзбү?")) return;
+
+    setError("");
+    try {
+      await hideThematicAccountSubmission(submission.id);
+      setSubmissions((items) => items.filter((item) => item.id !== submission.id));
+    } catch {
+      setError("Документти тизмеден өчүрүү мүмкүн болгон жок.");
+    }
+  };
+
   if (activeDraft) {
     return (
       <Analytics
@@ -143,7 +163,8 @@ export default function MemoLetter({ user }) {
           initialSectionId: "monthly-analysis",
           onBack: () => setActiveDraftId(null),
           onDeleteDirectDocument: handleDeleteDraft,
-          onSubmissionCreated: handleSubmissionCreated,
+          onSubmissionCreated: (submission) =>
+            handleSubmissionCreated(submission, activeDraft.id),
           registryCounterStorageKey: `munara-memo-letter-registry:${user?.id}`,
           simpleLetterEditor: true,
           storageNamespace: `memo-letter:${user?.id}:${activeDraft.id}`,
@@ -173,28 +194,45 @@ export default function MemoLetter({ user }) {
     );
   }
 
-  const renderSubmissions = (title, items, emptyText) => (
+  const renderSubmissions = (title, items, emptyText, canHide = false) => (
     <div className="module-submission-list">
       <h2>{title}</h2>
       {items.length > 0 ? (
         <div className="module-period-list">
           {items.map((submission) => (
-            <button
-              className="module-period-card module-period-card--document"
-              key={submission.id}
-              onClick={() => handleOpenSubmission(submission)}
-              type="button"
-            >
-              <span aria-hidden="true" className="module-document-icon" />
-              <span className="module-submission-card__content">
-                <strong>{submission.documentTitle}</strong>
-                <small>Каттоо № {getDocumentRegistrationCode(submission)}</small>
-                <small>
-                  {submission.senderName || submission.outpostName || submission.unitNumber}
-                  {submission.createdAt ? ` · ${formatDate(submission.createdAt)}` : ""}
-                </small>
-              </span>
-            </button>
+            <div className="memo-letter-submission-row" key={submission.id}>
+              <button
+                className="module-period-card module-period-card--document"
+                onClick={() => handleOpenSubmission(submission)}
+                type="button"
+              >
+                <span aria-hidden="true" className="module-document-icon" />
+                <span className="module-submission-card__content">
+                  <strong>{submission.documentTitle}</strong>
+                  <small>Каттоо № {getDocumentRegistrationCode(submission)}</small>
+                  <small>
+                    {submission.senderName || submission.outpostName || submission.unitNumber}
+                    {submission.createdAt ? ` · ${formatDate(submission.createdAt)}` : ""}
+                  </small>
+                  {user?.role === "admin" ? (
+                    <small>
+                      {submission.senderRole === "outpost"
+                        ? `Заставадан ${submission.unitNumber || "—"} аскер бөлүгүнө жөнөтүлгөн`
+                        : "Аскер бөлүгүнөн администраторго жөнөтүлгөн"}
+                    </small>
+                  ) : null}
+                </span>
+              </button>
+              {canHide && submission.senderId === user?.id ? (
+                <button
+                  className="memo-letter-submission-row__delete"
+                  onClick={() => handleHideSubmission(submission)}
+                  type="button"
+                >
+                  Өчүрүү
+                </button>
+              ) : null}
+            </div>
           ))}
         </div>
       ) : (
@@ -254,11 +292,24 @@ export default function MemoLetter({ user }) {
         </div>
       ) : null}
 
-      {incoming.length > 0 || user?.role !== "outpost"
+      {user?.role === "admin" ? (
+        <>
+          {renderSubmissions(
+            "Заставадан аскер бөлүгүнө жөнөтүлгөн билдирме каттар",
+            incoming.filter((submission) => submission.senderRole === "outpost"),
+            "Заставалардан аскер бөлүктөрүнө жөнөтүлгөн билдирме каттар азырынча жок."
+          )}
+          {renderSubmissions(
+            "Аскер бөлүгүнөн администраторго жөнөтүлгөн билдирме каттар",
+            incoming.filter((submission) => submission.senderRole === "regional"),
+            "Аскер бөлүктөрүнөн келген билдирме каттар азырынча жок."
+          )}
+        </>
+      ) : incoming.length > 0 || user?.role !== "outpost"
         ? renderSubmissions("Кириш", incoming, "Келген документтер азырынча жок.")
         : null}
       {user?.role !== "admin"
-        ? renderSubmissions("Чыгыш", outgoing, "Жөнөтүлгөн документтер азырынча жок.")
+        ? renderSubmissions("Чыгыш", outgoing, "Жөнөтүлгөн документтер азырынча жок.", true)
         : null}
 
       {isCreateOpen ? (

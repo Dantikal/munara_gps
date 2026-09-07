@@ -245,11 +245,12 @@ export default function Sidebar({
     const refreshMemoLetterUnreadCount = async () => {
       try {
         const submissions = await getThematicAccountSubmissions();
-        const incomingRole = role === "regional" ? "outpost" : "regional";
         const count = (Array.isArray(submissions) ? submissions : []).filter(
           (submission) =>
             submission.sectionId === "memo-letter" &&
-            submission.senderRole === incomingRole &&
+            (role === "regional"
+              ? submission.senderRole === "outpost"
+              : ["outpost", "regional"].includes(submission.senderRole)) &&
             !submission.isRead
         ).length;
         if (isMounted) setMemoLetterUnreadCount(count);

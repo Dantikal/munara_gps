@@ -15,7 +15,7 @@ SECRET_KEY = os.getenv("DJANGO_SECRET_KEY", "dev-secret-key-change-in-production
 DEBUG = os.getenv("DJANGO_DEBUG", "1") == "1"
 
 # ============================================================
-# ? ИСПРАВЛЕНО: ALLOWED_HOSTS с доменами для продакшена
+# ALLOWED_HOSTS с доменами для продакшена
 # ============================================================
 ALLOWED_HOSTS = [
     'localhost',
@@ -103,10 +103,13 @@ TIME_ZONE = "Asia/Bishkek"
 USE_I18N = True
 USE_TZ = True
 
+# ============================================================
+# СТАТИЧЕСКИЕ И МЕДИА-ФАЙЛЫ (пути вне backend)
+# ============================================================
 STATIC_URL = "/static/"
-STATIC_ROOT = BASE_DIR / "staticfiles"
+STATIC_ROOT = "/home/sysadmin/static"
 MEDIA_URL = "/media/"
-MEDIA_ROOT = BASE_DIR / "media"
+MEDIA_ROOT = "/home/sysadmin/media"
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 REST_FRAMEWORK = {
@@ -125,7 +128,7 @@ SIMPLE_JWT = {
 }
 
 # ============================================================
-# ? ИСПРАВЛЕНО: CORS и CSRF настройки для продакшена
+# CORS И CSRF НАСТРОЙКИ
 # ============================================================
 CORS_ALLOWED_ORIGINS = [
     "https://kutbilim.gps.gov.kg",

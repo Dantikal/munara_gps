@@ -1,4 +1,7 @@
+from datetime import datetime
+
 from django.urls import reverse
+from django.utils import timezone
 from rest_framework.test import APITestCase
 
 from accounts.models import (
@@ -176,6 +179,108 @@ class ThematicAccountSubmissionApiTests(APITestCase):
             [2, 1],
         )
 
+    def test_outpost_rating_contains_all_outposts_from_own_unit_only(self):
+        same_unit_outpost = User.objects.create_user(
+            username="rating-own-unit@example.com",
+            email="rating-own-unit@example.com",
+            password="test-password",
+            role=User.Role.OUTPOST,
+            status=User.Status.ACTIVE,
+            unit_type=User.UnitType.OUTPOST,
+            region="2021",
+            outpost_name="Own unit outpost",
+        )
+        foreign_outpost = User.objects.create_user(
+            username="rating-foreign-unit@example.com",
+            email="rating-foreign-unit@example.com",
+            password="test-password",
+            role=User.Role.OUTPOST,
+            status=User.Status.ACTIVE,
+            unit_type=User.UnitType.OUTPOST,
+            region="2022",
+            outpost_name="Foreign unit outpost",
+        )
+        ThematicAccountSubmission.objects.bulk_create([
+            ThematicAccountSubmission(
+                sender=same_unit_outpost,
+                unit_number="2021",
+                outpost_name=same_unit_outpost.outpost_name,
+                document_title="Own unit document",
+            ),
+            ThematicAccountSubmission(
+                sender=foreign_outpost,
+                unit_number="2022",
+                outpost_name=foreign_outpost.outpost_name,
+                document_title="Foreign unit document",
+            ),
+        ])
+        self.client.force_authenticate(self.outpost)
+
+        response = self.client.get(reverse("regional-unit-ratings"), {"period": "all"})
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            {item["unitNumber"] for item in response.data["outposts"]},
+            {"2021"},
+        )
+        outpost_names = {item["outpostName"] for item in response.data["outposts"]}
+        self.assertIn(self.outpost.outpost_name, outpost_names)
+        self.assertIn("Own unit outpost чек ара заставасы", outpost_names)
+        self.assertNotIn("Foreign unit outpost чек ара заставасы", outpost_names)
+        self.assertEqual(
+            [item["unitNumber"] for item in response.data["results"]],
+            ["2021"],
+        )
+        for item in response.data["outposts"]:
+            self.assertEqual(item["criteriaPenalty"], item["failedCriteria"] * 10)
+            self.assertEqual(
+                item["baseScore"],
+                round(max(0, item["rawScore"] - item["criteriaPenalty"]), 1),
+            )
+
+        response = self.client.get(reverse("outpost-ratings"), {"period": "all"})
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            {item["unitNumber"] for item in response.data["results"]},
+            {"2021"},
+        )
+        outpost_names = {item["outpostName"] for item in response.data["results"]}
+        self.assertIn(self.outpost.outpost_name, outpost_names)
+        self.assertIn("Own unit outpost чек ара заставасы", outpost_names)
+        self.assertNotIn("Foreign unit outpost чек ара заставасы", outpost_names)
+
+    def test_rating_adds_ten_percent_penalty_one_minute_after_deadline(self):
+        submission = ThematicAccountSubmission.objects.create(
+            sender=self.outpost,
+            unit_number="2021",
+            outpost_name=self.outpost.outpost_name,
+            document_title="Deadline verification document",
+            section_slug="thematic-account",
+        )
+        before_deadline = timezone.make_aware(datetime(2026, 8, 28, 23, 59))
+        one_minute_late = timezone.make_aware(datetime(2026, 8, 29, 0, 1))
+        self.client.force_authenticate(self.outpost)
+
+        ThematicAccountSubmission.objects.filter(pk=submission.pk).update(created_at=before_deadline)
+        response = self.client.get(reverse("regional-unit-ratings"), {"period": "all"})
+        before = next(
+            item for item in response.data["outposts"]
+            if item["outpostName"] == self.outpost.outpost_name
+        )
+
+        ThematicAccountSubmission.objects.filter(pk=submission.pk).update(created_at=one_minute_late)
+        response = self.client.get(reverse("regional-unit-ratings"), {"period": "all"})
+        after = next(
+            item for item in response.data["outposts"]
+            if item["outpostName"] == self.outpost.outpost_name
+        )
+
+        self.assertEqual(before["deadlineScore"], 100)
+        self.assertEqual(after["deadlineScore"], 0)
+        self.assertEqual(after["failedCriteria"], before["failedCriteria"] + 1)
+        self.assertEqual(after["criteriaPenalty"], before["criteriaPenalty"] + 10)
+
     def test_outpost_submission_is_visible_only_to_matching_unit(self):
         self.client.force_authenticate(self.outpost)
         response = self.client.post(
@@ -260,7 +365,24 @@ class ThematicAccountSubmissionApiTests(APITestCase):
 
         self.client.force_authenticate(admin)
         response = self.client.get(self.url)
-        self.assertEqual(response.data, [])
+        self.assertEqual(len(response.data), 1)
+        self.assertEqual(response.data[0]["senderRole"], User.Role.OUTPOST)
+        self.assertEqual(response.data[0]["table"], payload["table"])
+
+        self.client.force_authenticate(self.outpost)
+        response = self.client.post(
+            reverse(
+                "thematic-account-submission-hide",
+                kwargs={"pk": outpost_registration_number},
+            )
+        )
+        self.assertEqual(response.status_code, 204)
+        self.assertEqual(self.client.get(self.url).data, [])
+
+        self.client.force_authenticate(self.regional)
+        self.assertEqual(len(self.client.get(self.url).data), 1)
+        self.client.force_authenticate(admin)
+        self.assertEqual(len(self.client.get(self.url).data), 1)
 
         self.client.force_authenticate(self.regional)
         response = self.client.post(
@@ -278,8 +400,11 @@ class ThematicAccountSubmissionApiTests(APITestCase):
 
         self.client.force_authenticate(admin)
         response = self.client.get(self.url)
-        self.assertEqual(len(response.data), 1)
-        self.assertEqual(response.data[0]["senderRole"], User.Role.REGIONAL)
+        self.assertEqual(len(response.data), 2)
+        self.assertEqual(
+            {item["senderRole"] for item in response.data},
+            {User.Role.OUTPOST, User.Role.REGIONAL},
+        )
 
         response = self.client.get(
             self.url,
@@ -973,7 +1098,24 @@ class ThematicAccountSubmissionApiTests(APITestCase):
         self.assertEqual(response.data["documentTitle"], "Corrected document")
         self.assertEqual(response.data["table"]["rows"][0]["topic"], "Corrected value")
         self.assertFalse(response.data["canEdit"])
-        self.assertIsNone(response.data["editRequestStatus"])
+        self.assertEqual(response.data["editRequestStatus"], "corrected")
+
+        self.client.force_authenticate(admin)
+        admin_submissions = self.client.get(self.url).data
+        corrected_submission = next(
+            item for item in admin_submissions if item["id"] == submission_id
+        )
+        self.assertEqual(corrected_submission["documentTitle"], "Corrected document")
+        self.assertTrue(corrected_submission["isCorrected"])
+        edit_requests = self.client.get(reverse("submission-edit-request-list")).data
+        corrected_request = next(
+            item for item in edit_requests if item["submission"]["id"] == submission_id
+        )
+        self.assertEqual(corrected_request["status"], "corrected")
+        self.assertEqual(
+            corrected_request["submission"]["documentTitle"],
+            "Corrected document",
+        )
 
     def test_admin_can_delete_only_processed_edit_requests(self):
         self.client.force_authenticate(self.outpost)

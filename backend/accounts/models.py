@@ -296,6 +296,7 @@ class ThematicAccountSubmission(models.Model):
     section_slug = models.CharField("Раздел", max_length=80, default="thematic-account")
     period_slug = models.CharField("Период", max_length=100, blank=True)
     table_data = models.JSONField("Таблица", default=dict)
+    is_corrected = models.BooleanField("Исправлен и повторно отправлен", default=False)
     created_at = models.DateTimeField("Отправлено", auto_now_add=True)
     updated_at = models.DateTimeField("Обновлено", auto_now=True)
 
@@ -428,6 +429,7 @@ class SubmissionEditRequest(models.Model):
         PENDING = "pending", "На рассмотрении"
         APPROVED = "approved", "Разрешено"
         REJECTED = "rejected", "Отклонено"
+        CORRECTED = "corrected", "Изменено"
 
     submission = models.OneToOneField(
         ThematicAccountSubmission,

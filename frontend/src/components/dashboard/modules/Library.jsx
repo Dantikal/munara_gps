@@ -1696,20 +1696,22 @@ export default function Library({ data, onBack, onRefresh, onSubmissionCreated }
     }
 
     let isActive = true;
-    getThematicAccountSubmissions()
-      .then((items) => {
-        if (isActive) {
-          setThematicSubmissions(Array.isArray(items) ? items : []);
-        }
-      })
-      .catch(() => {
-        if (isActive) {
-          setThematicSubmissions([]);
-        }
-      });
+    const refreshSubmissions = async () => {
+      try {
+        const items = await getThematicAccountSubmissions();
+        if (isActive) setThematicSubmissions(Array.isArray(items) ? items : []);
+      } catch {
+        // Keep the last successfully loaded list and retry automatically.
+      }
+    };
+    refreshSubmissions();
+    const intervalId = window.setInterval(refreshSubmissions, 15000);
+    window.addEventListener("focus", refreshSubmissions);
 
     return () => {
       isActive = false;
+      window.clearInterval(intervalId);
+      window.removeEventListener("focus", refreshSubmissions);
     };
   }, [currentUser?.id, currentUser?.role, submissionSectionId]);
 
@@ -1735,6 +1737,14 @@ export default function Library({ data, onBack, onRefresh, onSubmissionCreated }
       window.clearInterval(intervalId);
     };
   }, [currentUser?.id, hasPendingOwnEditRequest]);
+
+  useEffect(() => {
+    if (currentUser?.role !== "admin") return;
+    setSelectedSubmission((current) => {
+      if (!current) return current;
+      return thematicSubmissions.find((item) => item.id === current.id) || current;
+    });
+  }, [currentUser?.role, thematicSubmissions]);
 
   useEffect(() => {
     setSelectedSubsectionId(null);
@@ -2612,31 +2622,9 @@ export default function Library({ data, onBack, onRefresh, onSubmissionCreated }
     const canCreateSubmission = ["outpost", "regional"].includes(currentUser?.role);
 
     if (canEditSelectedSubmission) {
-      if (!(await confirmDocumentSend())) return;
-      setIsSubmittingThematicAccount(true);
-      setTableNotice("");
-      try {
-        const updatedSubmission = await updateThematicAccountSubmission(
-          selectedSubmission.id,
-          {
-            documentTitle: editableTitle || selectedSubmission.documentTitle,
-            table: buildCurrentSubmissionTable(),
-          }
-        );
-        setThematicSubmissions((items) => items.map((item) =>
-          item.id === updatedSubmission.id ? updatedSubmission : item
-        ));
-        setSelectedSubmission(updatedSubmission);
-        setTableStatus("submitted");
-        setTableNotice("Документ өзгөртүлүп, кайра жөнөтүлдү.");
-        onSubmissionCreated?.(updatedSubmission);
-      } catch (error) {
-        setTableNotice(
-          getApiErrorMessage(error, "Документти кайра жөнөтүү мүмкүн болгон жок.")
-        );
-      } finally {
-        setIsSubmittingThematicAccount(false);
-      }
+      setSubmissionDocumentTitle(selectedSubmission.documentTitle || editableTitle || "");
+      setSubmissionError("");
+      setSubmissionDialogOpen(true);
       return;
     }
 
@@ -2711,6 +2699,38 @@ export default function Library({ data, onBack, onRefresh, onSubmissionCreated }
     const documentTitle = submissionDocumentTitle.trim();
     if (!documentTitle) {
       setSubmissionError("Иш кагаздардын аталышын жазыңыз.");
+      return;
+    }
+
+    if (canEditSelectedSubmission) {
+      if (!(await confirmDocumentSend())) return;
+      setIsSubmittingThematicAccount(true);
+      setSubmissionError("");
+      setTableNotice("");
+      try {
+        const updatedSubmission = await updateThematicAccountSubmission(
+          selectedSubmission.id,
+          {
+            documentTitle,
+            table: buildCurrentSubmissionTable(),
+          }
+        );
+        setThematicSubmissions((items) => items.map((item) =>
+          item.id === updatedSubmission.id ? updatedSubmission : item
+        ));
+        setSelectedSubmission(updatedSubmission);
+        setTableStatus("submitted");
+        setTableNotice("Документ өзгөртүлүп, кайра жөнөтүлдү.");
+        setSubmissionDialogOpen(false);
+        setSubmissionDocumentTitle("");
+        onSubmissionCreated?.(updatedSubmission);
+      } catch (error) {
+        setSubmissionError(
+          getApiErrorMessage(error, "Документти кайра жөнөтүү мүмкүн болгон жок.")
+        );
+      } finally {
+        setIsSubmittingThematicAccount(false);
+      }
       return;
     }
 
@@ -3173,6 +3193,7 @@ export default function Library({ data, onBack, onRefresh, onSubmissionCreated }
         <span aria-hidden="true" className="module-document-icon" />
         <span className="module-submission-card__content">
           <strong>{submission.documentTitle}</strong>
+          {submission.isCorrected ? <small className="submission-corrected-status">Өзгөрүлдү</small> : null}
           <small>{getSubmissionSenderLabel(submission)}</small>
         </span>
       </button>
@@ -3198,6 +3219,7 @@ export default function Library({ data, onBack, onRefresh, onSubmissionCreated }
         <span aria-hidden="true" className="module-document-icon" />
         <span className="module-submission-card__content">
           <strong>{submission.documentTitle}</strong>
+          {submission.isCorrected ? <small className="submission-corrected-status">Өзгөрүлдү</small> : null}
           <small>{getSubmissionSenderLabel(submission)}</small>
         </span>
       </button>
@@ -3968,6 +3990,7 @@ export default function Library({ data, onBack, onRefresh, onSubmissionCreated }
                         <span aria-hidden="true" className="module-document-icon" />
                         <span className="module-submission-card__content">
                           <strong>{submission.documentTitle}</strong>
+                          {submission.isCorrected ? <small className="submission-corrected-status">Өзгөрүлдү</small> : null}
                           <small>{getSubmissionSenderLabel(submission)}</small>
                           <small>Каттоо № {getDocumentRegistrationCode(submission)}</small>
                         </span>
@@ -4016,6 +4039,7 @@ export default function Library({ data, onBack, onRefresh, onSubmissionCreated }
                             <span aria-hidden="true" className="module-document-icon" />
                             <span className="module-submission-card__content">
                               <strong>{submission.documentTitle}</strong>
+                              {submission.isCorrected ? <small className="submission-corrected-status">Өзгөрүлдү</small> : null}
                               <small>Каттоо № {getDocumentRegistrationCode(submission)}</small>
                             </span>
                           </button>
@@ -4098,7 +4122,9 @@ export default function Library({ data, onBack, onRefresh, onSubmissionCreated }
             }}
           >
             <h2 id="submission-dialog-title">
-              {isDirectSubmissionUpdate && data?.requestSubmissionTitleOnUpdate
+              {canEditSelectedSubmission
+                ? "Документти оңдоп кайра жөнөтүү"
+                : isDirectSubmissionUpdate && data?.requestSubmissionTitleOnUpdate
                 ? "Журналды жаңылоо"
                 : "Таблицаны жөнөтүү"}
             </h2>
@@ -4125,7 +4151,11 @@ export default function Library({ data, onBack, onRefresh, onSubmissionCreated }
                 Жокко чыгаруу
               </button>
               <button disabled={isSubmittingThematicAccount} type="submit">
-                {isDirectSubmissionUpdate && data?.requestSubmissionTitleOnUpdate
+                {canEditSelectedSubmission
+                  ? isSubmittingThematicAccount
+                    ? "Кайра жөнөтүлүүдө..."
+                    : "Кайра жөнөтүү"
+                  : isDirectSubmissionUpdate && data?.requestSubmissionTitleOnUpdate
                   ? isSubmittingThematicAccount
                     ? "Жаңыртылууда..."
                     : "Жаңылоо"

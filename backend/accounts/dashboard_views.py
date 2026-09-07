@@ -1090,11 +1090,13 @@ class RegionalUnitRatingView(APIView):
     permission_classes = [IsActiveUser]
 
     def get(self, request):
+        is_outpost_viewer = request.user.role == User.Role.OUTPOST
+        own_unit_number = str(request.user.region or "").strip()
         if request.user.role not in {User.Role.ADMIN, User.Role.REGIONAL, User.Role.OUTPOST}:
             raise PermissionDenied("Аскер бөлүктөрүнүн рейтинги жеткиликтүү эмес.")
         now = timezone.now()
         period = request.query_params.get("period", "year")
-        if period not in {"all", "month", "year"}:
+        if period not in {"all", "month", "half-year", "year"}:
             period = "all"
         try:
             selected_year = int(request.query_params.get("year", now.year))
@@ -1106,35 +1108,49 @@ class RegionalUnitRatingView(APIView):
         except (TypeError, ValueError):
             selected_month = now.month
         selected_month = min(max(selected_month, 1), 12)
+        try:
+            selected_half = int(request.query_params.get("half", 1 if now.month <= 6 else 2))
+        except (TypeError, ValueError):
+            selected_half = 1 if now.month <= 6 else 2
+        selected_half = 1 if selected_half == 1 else 2
         period_start = now.replace(
             year=selected_year,
-            month=1 if period == "year" else selected_month,
+            month=(1 if selected_half == 1 else 7) if period == "half-year" else (1 if period == "year" else selected_month),
             day=1,
             hour=0,
             minute=0,
             second=0,
             microsecond=0,
         )
-        period_end = period_start.replace(year=selected_year + 1) if period == "year" else (
-            period_start.replace(year=selected_year + 1, month=1)
-            if selected_month == 12
-            else period_start.replace(month=selected_month + 1)
-        )
+        if period == "year" or (period == "half-year" and selected_half == 2):
+            period_end = period_start.replace(year=selected_year + 1, month=1)
+        elif period == "half-year":
+            period_end = period_start.replace(month=7)
+        elif selected_month == 12:
+            period_end = period_start.replace(year=selected_year + 1, month=1)
+        else:
+            period_end = period_start.replace(month=selected_month + 1)
         deadline_days = {
             "combat-training-analysis": 28,
             "combat-training-analysis-regional": 28,
             "combat-training-results-observation": 29,
             "combat-training-results-inspection": 29,
         }
-        users = list(
-            User.objects.filter(
+        users_query = User.objects.filter(
                 role__in={User.Role.REGIONAL, User.Role.OUTPOST},
                 status=User.Status.ACTIVE,
             ).exclude(region="")
-        )
+        if is_outpost_viewer:
+            users_query = users_query.filter(region=own_unit_number)
+        users = list(users_query)
         submissions_query = ThematicAccountSubmission.objects.filter(
             sender__role__in={User.Role.REGIONAL, User.Role.OUTPOST},
         )
+        if is_outpost_viewer:
+            submissions_query = submissions_query.filter(
+                unit_number=own_unit_number,
+                sender__status=User.Status.ACTIVE,
+            )
         if period != "all":
             submissions_query = submissions_query.filter(
                 created_at__gte=period_start,
@@ -1144,12 +1160,14 @@ class RegionalUnitRatingView(APIView):
         unit_numbers = {
             str(value or "").strip()
             for value in [
-                *ADMIN_MILITARY_UNIT_NUMBERS,
+                *(() if is_outpost_viewer else ADMIN_MILITARY_UNIT_NUMBERS),
                 *(user.region for user in users),
                 *(item.unit_number for item in submissions),
             ]
             if str(value or "").strip()
         }
+        if is_outpost_viewer and own_unit_number:
+            unit_numbers.add(own_unit_number)
 
         def empty_entity(name_key, name):
             return {
@@ -1174,8 +1192,14 @@ class RegionalUnitRatingView(APIView):
         }
         all_outposts = {}
 
-        # Include the complete platform directory, even before registration or submissions.
-        for unit_number, outpost_names in OUTPOSTS_BY_MILITARY_UNIT.items():
+        # An outpost sees every outpost belonging to its own unit, but none from
+        # other military units. Other roles keep the complete directory view.
+        directory_items = (
+            ((own_unit_number, OUTPOSTS_BY_MILITARY_UNIT.get(own_unit_number, ())),)
+            if is_outpost_viewer
+            else OUTPOSTS_BY_MILITARY_UNIT.items()
+        )
+        for unit_number, outpost_names in directory_items:
             rating = ratings.setdefault(
                 unit_number,
                 {**empty_entity("unitNumber", unit_number), "outposts": {}},
@@ -1276,7 +1300,7 @@ class RegionalUnitRatingView(APIView):
                 )
             )
             entity["failedCriteria"] = failed_criteria
-            entity["criteriaPenalty"] = failed_criteria * 20
+            entity["criteriaPenalty"] = failed_criteria * 10
             entity["baseScore"] = round(
                 max(0, entity["rawScore"] - entity["criteriaPenalty"]),
                 1,
@@ -1308,7 +1332,7 @@ class RegionalUnitRatingView(APIView):
         if request.user.role != User.Role.ADMIN:
             for item in [*ordered_ratings, *ordered_outposts]:
                 item["actions"] = []
-        return Response({"period": period, "year": selected_year, "month": selected_month, "results": ordered_ratings, "outposts": ordered_outposts})
+        return Response({"period": period, "year": selected_year, "month": selected_month, "half": selected_half, "results": ordered_ratings, "outposts": ordered_outposts})
 
 
 class OutpostRatingView(APIView):
@@ -1317,7 +1341,7 @@ class OutpostRatingView(APIView):
     def get(self, request):
         now = timezone.now()
         period = request.query_params.get("period", "year")
-        if period not in {"all", "month", "year"}:
+        if period not in {"all", "month", "half-year", "year"}:
             period = "all"
         try:
             selected_year = int(request.query_params.get("year", now.year))
@@ -1329,29 +1353,33 @@ class OutpostRatingView(APIView):
         except (TypeError, ValueError):
             selected_month = now.month
         selected_month = min(max(selected_month, 1), 12)
+        try:
+            selected_half = int(request.query_params.get("half", 1 if now.month <= 6 else 2))
+        except (TypeError, ValueError):
+            selected_half = 1 if now.month <= 6 else 2
+        selected_half = 1 if selected_half == 1 else 2
         period_start = now.replace(
             year=selected_year,
-            month=1 if period == "year" else selected_month,
+            month=(1 if selected_half == 1 else 7) if period == "half-year" else (1 if period == "year" else selected_month),
             day=1,
             hour=0,
             minute=0,
             second=0,
             microsecond=0,
         )
-        period_end = period_start.replace(year=selected_year + 1) if period == "year" else (
-            period_start.replace(year=selected_year + 1, month=1)
-            if selected_month == 12
-            else period_start.replace(month=selected_month + 1)
-        )
+        if period == "year" or (period == "half-year" and selected_half == 2):
+            period_end = period_start.replace(year=selected_year + 1, month=1)
+        elif period == "half-year":
+            period_end = period_start.replace(month=7)
+        elif selected_month == 12:
+            period_end = period_start.replace(year=selected_year + 1, month=1)
+        else:
+            period_end = period_start.replace(month=selected_month + 1)
         if request.user.role not in {User.Role.REGIONAL, User.Role.OUTPOST}:
             raise PermissionDenied("Заставалардын рейтинги бул аскер бөлүгүнүн колдонуучуларына гана жеткиликтүү.")
 
         own_unit_number = str(request.user.region or "").strip()
-        unit_numbers = (
-            set(OUTPOSTS_BY_MILITARY_UNIT)
-            if request.user.role == User.Role.OUTPOST
-            else {own_unit_number}
-        )
+        unit_numbers = {own_unit_number}
         outpost_entries = {
             (unit_number, format_outpost_name(name))
             for unit_number in unit_numbers
@@ -1361,8 +1389,7 @@ class OutpostRatingView(APIView):
                 role=User.Role.OUTPOST,
                 status=User.Status.ACTIVE,
             ).exclude(outpost_name="")
-        if request.user.role != User.Role.OUTPOST:
-            registered_outposts = registered_outposts.filter(region=own_unit_number)
+        registered_outposts = registered_outposts.filter(region=own_unit_number)
         outpost_entries.update(
             (str(unit_number or "").strip(), format_outpost_name(name))
             for unit_number, name in registered_outposts.values_list("region", "outpost_name")
@@ -1370,8 +1397,10 @@ class OutpostRatingView(APIView):
         section_counts = ThematicAccountSubmission.objects.filter(
             sender__role=User.Role.OUTPOST,
         )
-        if request.user.role != User.Role.OUTPOST:
-            section_counts = section_counts.filter(unit_number=own_unit_number)
+        section_counts = section_counts.filter(
+            unit_number=own_unit_number,
+            sender__status=User.Status.ACTIVE,
+        )
         if period != "all":
             section_counts = section_counts.filter(
                 created_at__gte=period_start,
@@ -1414,7 +1443,7 @@ class OutpostRatingView(APIView):
         for index, rating in enumerate(ordered_ratings, start=1):
             rating["rank"] = index
             rating["sections"].sort(key=lambda item: (-item["count"], item["sectionId"]))
-        return Response({"period": period, "year": selected_year, "month": selected_month, "results": ordered_ratings})
+        return Response({"period": period, "year": selected_year, "month": selected_month, "half": selected_half, "results": ordered_ratings})
 
 
 class RegionalDashboardView(APIView):
@@ -2179,6 +2208,7 @@ def thematic_submission_payload(submission, viewing_user=None):
         "table": submission.table_data,
         "createdAt": submission.created_at.isoformat(),
         "updatedAt": submission.updated_at.isoformat(),
+        "isCorrected": submission.is_corrected,
         "isRead": bool(
             viewing_user
             and any(read.user_id == viewing_user.id for read in submission.reads.all())
@@ -2257,11 +2287,9 @@ class ThematicAccountSubmissionListCreateView(APIView):
         elif request.user.role == User.Role.REGIONAL:
             submissions = submissions.filter(unit_number=request.user.region)
         elif request.user.role == User.Role.ADMIN:
-            # Заставанын билдирме каты алгач өзүнүн аскер бөлүгүнө гана түшөт.
-            submissions = submissions.exclude(
-                section_slug="memo-letter",
-                sender__role=User.Role.OUTPOST,
-            )
+            # Administrators audit the complete document flow, including memo
+            # letters sent by outposts to their regional military units.
+            pass
         elif request.user.role != User.Role.ADMIN:
             raise PermissionDenied("Нет доступа к отправленным документам.")
 
@@ -2440,9 +2468,13 @@ class ThematicAccountSubmissionDetailView(APIView):
 
             submission.document_title = document_title
             submission.table_data = table_data
-            submission.save(update_fields=("document_title", "table_data", "updated_at"))
+            submission.is_corrected = True
+            submission.save(
+                update_fields=("document_title", "table_data", "is_corrected", "updated_at")
+            )
             submission.reads.all().delete()
-            approved_edit_request.delete()
+            approved_edit_request.status = SubmissionEditRequest.Status.CORRECTED
+            approved_edit_request.save(update_fields=("status", "updated_at"))
             submission._prefetched_objects_cache.pop("reads", None)
             return Response(thematic_submission_payload(submission, request.user))
 

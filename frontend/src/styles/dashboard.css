@@ -3708,6 +3708,38 @@ button.module-section-card:focus-visible {
   padding: 11px 14px;
 }
 
+.memo-letter-submission-row {
+  align-items: stretch;
+  display: grid;
+  gap: 8px;
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
+.memo-letter-submission-row__delete {
+  background: #fff7f7;
+  border: 1px solid #e2bcbc;
+  border-radius: 3px;
+  color: #9f2929;
+  min-width: 92px;
+  padding: 0 14px;
+}
+
+.memo-letter-submission-row__delete:hover,
+.memo-letter-submission-row__delete:focus-visible {
+  background: #fce8e8;
+  border-color: #b94a4a;
+}
+
+@media (max-width: 640px) {
+  .memo-letter-submission-row {
+    grid-template-columns: 1fr;
+  }
+
+  .memo-letter-submission-row__delete {
+    min-height: 40px;
+  }
+}
+
 .module-period-card--document strong {
   font-size: 16px;
   font-weight: 500;
@@ -4005,6 +4037,44 @@ button.module-section-card:focus-visible {
 .saved-table-card span {
   color: var(--muted);
   font-size: 12px;
+}
+
+.submission-corrected-status {
+  background: #e8f5ec;
+  border: 1px solid #9ac9a6;
+  border-radius: 999px;
+  color: #226b37;
+  display: inline-flex;
+  font-size: 12px;
+  font-weight: 700;
+  justify-self: start;
+  padding: 3px 9px;
+}
+
+.saved-table-card .submission-edit-status {
+  border: 1px solid transparent;
+  font-size: 13px;
+  font-weight: 800;
+  justify-self: start;
+  line-height: 1.2;
+}
+
+.saved-table-card .submission-edit-status--pending {
+  background: #fff;
+  border-color: #cbd5e1;
+  color: #000 !important;
+}
+
+.saved-table-card .submission-edit-status--approved {
+  background: #22c55e;
+  border-color: #15803d;
+  color: #000;
+}
+
+.saved-table-card .submission-edit-status--rejected {
+  background: #ef4444;
+  border-color: #b91c1c;
+  color: #fff;
 }
 
 .saved-table-card .combat-journal-daily-status-group {
@@ -6600,8 +6670,8 @@ button.module-section-card:focus-visible {
 }
 
 .regional-rating-vertical-chart {
-  background: #fff;
-  border: 1px solid #cfd6d2;
+  background: linear-gradient(145deg, #173c29, #091a11);
+  border: 1px solid #3c6b4d;
   padding: 20px 18px 12px;
 }
 
@@ -6622,7 +6692,7 @@ button.module-section-card:focus-visible {
 }
 
 .regional-rating-vertical-chart__axis span {
-  color: #66706a;
+  color: #d6e8dc;
   font-size: 12px;
   position: absolute;
   right: 10px;
@@ -6641,7 +6711,7 @@ button.module-section-card:focus-visible {
 }
 
 .regional-rating-vertical-chart__grid span {
-  border-top: 1px solid #d6dcd8;
+  border-top: 1px solid rgba(214, 232, 220, .22);
   left: 0;
   position: absolute;
   right: 0;
@@ -6656,12 +6726,19 @@ button.module-section-card:focus-visible {
 }
 
 .regional-rating-vertical-chart__column {
+  color: #fff;
   display: grid;
   flex: 1 1 90px;
   grid-template-rows: 300px 50px;
   max-width: 110px;
   min-width: 80px;
   text-align: center;
+}
+
+.regional-rating-vertical-chart__column > strong {
+  color: #fff;
+  font-size: 12px;
+  line-height: 1.25;
 }
 
 .regional-rating-vertical-chart__bar-area {
@@ -6678,6 +6755,47 @@ button.module-section-card:focus-visible {
   min-height: 2px;
   transition: height 240ms ease;
   width: 42px;
+}
+
+.regional-rating-vertical-chart__bar {
+  position: relative;
+}
+
+.regional-rating-vertical-chart__bar > i {
+  background: #285f8c;
+  border-radius: 4px;
+  color: #fff;
+  font-size: 11px;
+  font-style: normal;
+  font-weight: 800;
+  left: 50%;
+  padding: 3px 5px;
+  position: absolute;
+  top: -25px;
+  transform: translateX(-50%);
+  white-space: nowrap;
+}
+
+.regional-rating-vertical-chart__bar--current {
+  background: linear-gradient(180deg, #f4dc77, #c79426);
+  border-color: #ffe998;
+  box-shadow: 0 0 18px rgba(231, 190, 66, .55);
+  width: 50px;
+}
+
+.regional-rating-vertical-chart__bar--current > i {
+  background: #8b6514;
+}
+
+.regional-rating-vertical-chart__column--current > strong {
+  color: #f4dc77;
+}
+
+.regional-rating-vertical-chart__column > strong small {
+  color: #f4dc77;
+  display: block;
+  font-size: 10px;
+  margin-top: 3px;
 }
 
 .regional-rating-vertical-chart--score {
@@ -6785,6 +6903,12 @@ button.module-section-card:focus-visible {
   font-weight: 500;
   line-height: 1.25;
   padding-top: 10px;
+}
+
+.regional-rating-chart-page .regional-rating-vertical-chart__column > strong,
+.regional-rating-chart-page .regional-rating-vertical-chart__column > strong small,
+.regional-rating-chart-page .regional-rating-vertical-chart__bar > i {
+  color: #fff;
 }
 
 .regional-rating-card {
