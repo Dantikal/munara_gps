@@ -1,25 +1,13 @@
 from datetime import timedelta
-from pathlib import Path
 
-from django.contrib.auth import get_user_model
 from django.core.validators import RegexValidator
 from django.utils import timezone
 from rest_framework import serializers
 from rest_framework_simplejwt.tokens import RefreshToken
 
-from .docx_preview import DocxPreviewError, extract_docx_preview
-from .models import (
-    AdminChatMessage,
-    CombatTrainingNews,
-    CombatTrainingNewsAttachment,
-    CombatTrainingJournal,
-    CombatTrainingJournalSubject,
-    MethodicalManualDocument,
-    MethodicalManualSubject,
-)
-from .outposts import OUTPOSTS_BY_MILITARY_UNIT, normalize_outpost_selection
-
-User = get_user_model()
+from accounts.models import User
+from accounts.outposts import OUTPOSTS_BY_MILITARY_UNIT, normalize_outpost_selection
+from messaging.models import AdminChatMessage
 
 
 phone_validator = RegexValidator(
@@ -201,399 +189,6 @@ class AdminUserSerializer(serializers.ModelSerializer):
 
         instance.save()
         return instance
-
-
-class MethodicalManualSubjectSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = MethodicalManualSubject
-        fields = [
-            "id",
-            "title",
-            "collection",
-            "order",
-            "is_active",
-            "created_at",
-            "updated_at",
-        ]
-        read_only_fields = ["id", "created_at", "updated_at"]
-
-    def validate_title(self, value):
-        title = value.strip()
-        if not title:
-            raise serializers.ValidationError("Укажите название предмета.")
-        return title
-
-
-class MethodicalManualDocumentSerializer(serializers.ModelSerializer):
-    originalName = serializers.CharField(source="original_name", read_only=True)
-    previewHtml = serializers.CharField(source="preview_html", read_only=True)
-    createdAt = serializers.DateTimeField(source="created_at", read_only=True)
-    fileUrl = serializers.SerializerMethodField()
-    kind = serializers.SerializerMethodField()
-
-    IMAGE_EXTENSIONS = {".bmp", ".gif", ".jpeg", ".jpg", ".png", ".webp"}
-    VIDEO_EXTENSIONS = {".avi", ".mkv", ".mov", ".mp4", ".m4v", ".webm"}
-    AUDIO_EXTENSIONS = {".aac", ".flac", ".m4a", ".mp3", ".ogg", ".wav"}
-    DOCUMENT_EXTENSIONS = {
-        ".csv", ".doc", ".docx", ".odp", ".ods", ".odt", ".ppt", ".pptx",
-        ".rtf", ".txt", ".xls", ".xlsx",
-    }
-    ARCHIVE_EXTENSIONS = {".7z", ".rar", ".zip"}
-    ALLOWED_EXTENSIONS = (
-        IMAGE_EXTENSIONS
-        | VIDEO_EXTENSIONS
-        | AUDIO_EXTENSIONS
-        | DOCUMENT_EXTENSIONS
-        | ARCHIVE_EXTENSIONS
-        | {".pdf"}
-    )
-    MAX_FILE_SIZE = 5 * 1024 * 1024 * 1024
-
-    class Meta:
-        model = MethodicalManualDocument
-        fields = [
-            "id",
-            "subject",
-            "title",
-            "file",
-            "fileUrl",
-            "originalName",
-            "previewHtml",
-            "content",
-            "kind",
-            "createdAt",
-        ]
-        read_only_fields = ["id", "subject"]
-        extra_kwargs = {
-            "file": {"write_only": True, "required": False, "allow_null": True},
-            "content": {"required": False, "allow_blank": True},
-        }
-
-    def validate_title(self, value):
-        title = value.strip()
-        if not title:
-            raise serializers.ValidationError("Укажите название документа.")
-        return title
-
-    def validate_file(self, value):
-        extension = Path(value.name).suffix.lower()
-        if extension not in self.ALLOWED_EXTENSIONS:
-            raise serializers.ValidationError(
-                "Этот формат не поддерживается. Загрузите документ, PDF, изображение, аудио, видео или архив."
-            )
-        if value.size > self.MAX_FILE_SIZE:
-            raise serializers.ValidationError("Размер файла не должен превышать 5 ГБ.")
-        value.preview_html = ""
-        if extension == ".docx":
-            try:
-                value.preview_html = extract_docx_preview(value)
-            except DocxPreviewError as error:
-                raise serializers.ValidationError(str(error)) from error
-        return value
-
-    def validate(self, attrs):
-        content = str(attrs.get("content") or "").strip()
-        uploaded_file = attrs.get("file")
-        if not content and not uploaded_file:
-            raise serializers.ValidationError(
-                "Введите текст материала или выберите файл."
-            )
-        attrs["content"] = content
-        return attrs
-
-    def get_fileUrl(self, document):
-        if not document.file:
-            return ""
-        request = self.context.get("request")
-        return request.build_absolute_uri(document.file.url) if request else document.file.url
-
-    def get_kind(self, document):
-        if not document.file:
-            return "text"
-        extension = Path(document.original_name or document.file.name).suffix.lower()
-        if extension == ".docx":
-            return "docx"
-        if extension == ".pdf":
-            return "pdf"
-        if extension in self.IMAGE_EXTENSIONS:
-            return "image"
-        if extension in self.VIDEO_EXTENSIONS:
-            return "video"
-        if extension in self.AUDIO_EXTENSIONS:
-            return "audio"
-        if extension in self.ARCHIVE_EXTENSIONS:
-            return "archive"
-        return "document"
-
-    def create(self, validated_data):
-        uploaded_file = validated_data.get("file")
-        if uploaded_file:
-            validated_data["original_name"] = uploaded_file.name
-            validated_data["preview_html"] = getattr(uploaded_file, "preview_html", "")
-        else:
-            validated_data["original_name"] = ""
-            validated_data["preview_html"] = ""
-        return super().create(validated_data)
-
-
-class CombatTrainingNewsAttachmentSerializer(serializers.ModelSerializer):
-    fileUrl = serializers.SerializerMethodField()
-    originalName = serializers.CharField(source="original_name")
-
-    class Meta:
-        model = CombatTrainingNewsAttachment
-        fields = ["id", "fileUrl", "originalName", "kind", "size"]
-
-    def get_fileUrl(self, attachment):
-        if not attachment.file:
-            return ""
-        request = self.context.get("request")
-        return request.build_absolute_uri(attachment.file.url) if request else attachment.file.url
-
-
-class CombatTrainingNewsSerializer(serializers.ModelSerializer):
-    attachments = CombatTrainingNewsAttachmentSerializer(many=True, read_only=True)
-    authorId = serializers.IntegerField(source="author_id", read_only=True)
-    authorName = serializers.SerializerMethodField()
-    createdAt = serializers.DateTimeField(source="created_at")
-    updatedAt = serializers.DateTimeField(source="updated_at")
-    likeCount = serializers.SerializerMethodField()
-    isLiked = serializers.SerializerMethodField()
-
-    class Meta:
-        model = CombatTrainingNews
-        fields = [
-            "id",
-            "title",
-            "body",
-            "attachments",
-            "authorId",
-            "authorName",
-            "createdAt",
-            "updatedAt",
-            "likeCount",
-            "isLiked",
-        ]
-
-    def get_authorName(self, news):
-        if not news.author:
-            return "Администратор"
-        if news.author.role == news.author.Role.ADMIN:
-            return "Администратор"
-        if news.author.role == news.author.Role.REGIONAL:
-            unit_number = str(news.author.region or "").strip()
-            return f"Аскер бөлүгү {unit_number}".strip()
-        return news.author.full_name or news.author.email
-
-    def get_likeCount(self, news):
-        return news.likes.count()
-
-    def get_isLiked(self, news):
-        request = self.context.get("request")
-        return bool(
-            request
-            and request.user.is_authenticated
-            and news.likes.filter(user=request.user).exists()
-        )
-
-
-class CombatTrainingJournalSerializer(serializers.ModelSerializer):
-    createdAt = serializers.DateTimeField(source="created_at", required=False)
-    unitName = serializers.CharField(source="unit_name", required=False, allow_blank=True)
-    ownerId = serializers.IntegerField(source="owner_id", read_only=True)
-
-    class Meta:
-        model = CombatTrainingJournal
-        fields = [
-            "id",
-            "ownerId",
-            "storage_id",
-            "title",
-            "year",
-            "unitName",
-            "scope",
-            "createdAt",
-            "updated_at",
-        ]
-        read_only_fields = ["id", "updated_at"]
-        extra_kwargs = {"storage_id": {"validators": []}}
-
-    def validate_title(self, value):
-        title = value.strip()
-        if not title:
-            raise serializers.ValidationError("\u0423\u043a\u0430\u0436\u0438\u0442\u0435 \u043d\u0430\u0437\u0432\u0430\u043d\u0438\u0435 \u0436\u0443\u0440\u043d\u0430\u043b\u0430.")
-        return title
-
-    def validate_storage_id(self, value):
-        storage_id = value.strip()
-        if not storage_id:
-            raise serializers.ValidationError("storage_id is required.")
-        return storage_id
-
-
-class CombatTrainingJournalSubjectSerializer(serializers.ModelSerializer):
-    unitNumber = serializers.CharField(source="unit_number")
-
-    class Meta:
-        model = CombatTrainingJournalSubject
-        fields = [
-            "id",
-            "title",
-            "unitNumber",
-            "order",
-            "is_active",
-            "created_at",
-            "updated_at",
-        ]
-        read_only_fields = ["id", "created_at", "updated_at"]
-
-    def validate_title(self, value):
-        title = value.strip()
-        if not title:
-            raise serializers.ValidationError("Укажите название предмета.")
-        return title
-
-    def validate_unitNumber(self, value):
-        unit_number = value.strip()
-        if not unit_number:
-            raise serializers.ValidationError("Укажите номер аскер бөлүгү.")
-        return unit_number
-
-
-class AdminChatMessageSerializer(serializers.ModelSerializer):
-    sender = UserPublicSerializer(read_only=True)
-    recipient = UserPublicSerializer(read_only=True)
-    senderId = serializers.IntegerField(write_only=True, required=False)
-    recipientId = serializers.IntegerField(write_only=True, required=False)
-    attachment = serializers.FileField(required=False, allow_null=True)
-    createdAt = serializers.DateTimeField(source="created_at", read_only=True)
-    isRead = serializers.BooleanField(source="is_read", read_only=True)
-    isDeletedForEveryone = serializers.BooleanField(
-        source="deleted_for_everyone", read_only=True
-    )
-    isBroadcast = serializers.BooleanField(source="is_broadcast", read_only=True)
-    broadcastId = serializers.UUIDField(source="broadcast_id", read_only=True)
-
-    class Meta:
-        model = AdminChatMessage
-        fields = [
-            "id",
-            "sender",
-            "recipient",
-            "senderId",
-            "recipientId",
-            "body",
-            "attachment",
-            "attachment_kind",
-            "attachment_name",
-            "createdAt",
-            "isRead",
-            "isDeletedForEveryone",
-            "isBroadcast",
-            "broadcastId",
-        ]
-        read_only_fields = [
-            "id",
-            "sender",
-            "recipient",
-            "attachment_kind",
-            "attachment_name",
-            "isRead",
-            "isDeletedForEveryone",
-            "isBroadcast",
-            "broadcastId",
-        ]
-
-    def to_representation(self, instance):
-        data = super().to_representation(instance)
-        if instance.deleted_for_everyone:
-            data["body"] = ""
-            data["attachment"] = None
-            data["attachment_kind"] = ""
-            data["attachment_name"] = ""
-        return data
-
-    def validate(self, attrs):
-        request_user = self.context["request"].user
-        body = (attrs.get("body") or "").strip()
-        attachment = attrs.get("attachment")
-        if not body and not attachment:
-            raise serializers.ValidationError({"body": "Введите текст или добавьте вложение."})
-
-        recipient_id = attrs.get("recipientId")
-        if request_user.role in {User.Role.ADMIN, User.Role.REGIONAL} and not recipient_id:
-            raise serializers.ValidationError({"recipientId": "Укажите получателя."})
-        if recipient_id:
-            recipient = User.objects.filter(pk=recipient_id, status=User.Status.ACTIVE).first()
-            if not recipient:
-                raise serializers.ValidationError({"recipientId": "Пользователь не найден."})
-            if recipient.pk == request_user.pk:
-                raise serializers.ValidationError({"recipientId": "Нельзя отправить сообщение самому себе."})
-
-            is_allowed = False
-            if request_user.role == User.Role.ADMIN:
-                is_allowed = recipient.role in {User.Role.REGIONAL, User.Role.OUTPOST}
-            elif request_user.role == User.Role.OUTPOST:
-                is_matching_regional = (
-                    recipient.role == User.Role.REGIONAL
-                    and recipient.region == request_user.region
-                )
-                admin_started_chat = (
-                    recipient.role == User.Role.ADMIN
-                    and AdminChatMessage.objects.filter(
-                        sender=recipient,
-                        recipient=request_user,
-                        is_broadcast=False,
-                    ).exists()
-                )
-                is_allowed = is_matching_regional or admin_started_chat
-            elif request_user.role == User.Role.REGIONAL:
-                is_allowed = recipient.role == User.Role.ADMIN or (
-                    recipient.role == User.Role.OUTPOST
-                    and recipient.region == request_user.region
-                )
-            if not is_allowed:
-                raise serializers.ValidationError({"recipientId": "Бул алуучуга билдирүү жөнөтүүгө болбойт."})
-
-        attrs["body"] = body
-        return attrs
-
-    def create(self, validated_data):
-        request = self.context["request"]
-        sender = request.user
-        recipient_id = validated_data.pop("recipientId", None)
-        validated_data.pop("senderId", None)
-        attachment = validated_data.get("attachment")
-
-        if recipient_id:
-            recipient = User.objects.filter(pk=recipient_id).first()
-        else:
-            recipient = User.objects.filter(role=User.Role.ADMIN).order_by("id").first()
-        if not recipient:
-            raise serializers.ValidationError({"recipientId": "Администратор не найден."})
-
-        if attachment and not validated_data.get("attachment_name"):
-            validated_data["attachment_name"] = attachment.name
-        if attachment and not validated_data.get("attachment_kind"):
-            name = attachment.name.lower()
-            content_type = getattr(attachment, "content_type", "") or ""
-            if content_type.startswith("image/") or name.endswith((".png", ".jpg", ".jpeg", ".gif", ".webp")):
-                validated_data["attachment_kind"] = AdminChatMessage.AttachmentKind.IMAGE
-            elif content_type.startswith("audio/") or name.endswith((".mp3", ".wav", ".ogg", ".m4a", ".aac", ".flac")):
-                validated_data["attachment_kind"] = AdminChatMessage.AttachmentKind.AUDIO
-            elif content_type.startswith("video/") or name.endswith((".mp4", ".mov", ".avi", ".mkv", ".webm")):
-                validated_data["attachment_kind"] = AdminChatMessage.AttachmentKind.VIDEO
-            else:
-                validated_data["attachment_kind"] = AdminChatMessage.AttachmentKind.FILE
-
-        return AdminChatMessage.objects.create(sender=sender, recipient=recipient, **validated_data)
-
-
-class AdminChatUserSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = User
-        fields = ["id", "full_name", "email", "role", "avatar", "photo_face"]
-        read_only_fields = fields
 
 
 class ProfileUpdateSerializer(serializers.ModelSerializer):
@@ -899,3 +494,27 @@ class ModerationSerializer(serializers.Serializer):
             "status": "rejected",
             "user": UserPublicSerializer(user, context=self.context).data,
         }
+
+
+# Resolve former imports lazily to avoid circular dependencies between apps.
+_LEGACY_IMPORTS = {
+    "CombatTrainingJournalSerializer": "journals.serializers",
+    "CombatTrainingJournalSubjectSerializer": "journals.serializers",
+    "AdminChatMessageSerializer": "messaging.serializers",
+    "AdminChatUserSerializer": "messaging.serializers",
+    "MethodicalManualDocumentSerializer": "methodical.serializers",
+    "MethodicalManualSubjectSerializer": "methodical.serializers",
+    "CombatTrainingNewsAttachmentSerializer": "news.serializers",
+    "CombatTrainingNewsSerializer": "news.serializers",
+}
+
+
+def __getattr__(name):
+    module = _LEGACY_IMPORTS.get(name)
+    if module is None:
+        raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+    from importlib import import_module
+
+    value = getattr(import_module(module), name)
+    globals()[name] = value
+    return value

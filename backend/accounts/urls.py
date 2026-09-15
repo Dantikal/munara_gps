@@ -1,16 +1,10 @@
-from django.urls import path
+from django.urls import include, path
 from rest_framework_simplejwt.views import TokenRefreshView
 
-from .views import (
-    AdminUserDetailView,
+from accounts.views import (
     AdminQuickUserCreateView,
+    AdminUserDetailView,
     AdminUsersView,
-    AdminChatMessageView,
-    AdminChatMessageDeleteView,
-    AdminChatConversationDeleteView,
-    AdminChatOutpostBroadcastView,
-    ChatPartnerListView,
-    ChatUnreadCountView,
     LoginView,
     MeView,
     ModerateRequestView,
@@ -32,18 +26,8 @@ urlpatterns = [
     path("admin/requests/", PendingRequestsView.as_view(), name="pending-requests"),
     path("admin/requests/<int:pk>/", UserRequestDetailView.as_view(), name="request-detail"),
     path("admin/requests/<int:pk>/moderate/", ModerateRequestView.as_view(), name="moderate-request"),
-    path("chat/messages/", AdminChatMessageView.as_view(), name="admin-chat-messages"),
-    path("chat/partners/", ChatPartnerListView.as_view(), name="chat-partners"),
-    path("chat/unread-count/", ChatUnreadCountView.as_view(), name="chat-unread-count"),
-    path("chat/messages/<int:pk>/", AdminChatMessageDeleteView.as_view(), name="admin-chat-message-delete"),
-    path(
-        "chat/conversations/<int:partner_pk>/",
-        AdminChatConversationDeleteView.as_view(),
-        name="admin-chat-conversation-delete",
-    ),
-    path(
-        "chat/broadcast/outposts/",
-        AdminChatOutpostBroadcastView.as_view(),
-        name="admin-chat-outpost-broadcast",
-    ),
 ]
+
+# Chat retains its existing /api/auth/chat/... addresses.
+
+urlpatterns += [path("", include("messaging.urls"))]

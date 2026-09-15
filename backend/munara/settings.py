@@ -36,7 +36,16 @@ INSTALLED_APPS = [
     "corsheaders",
     "rest_framework",
     "rest_framework_simplejwt",
-    "accounts",
+    "accounts.apps.AccountsConfig",
+    "training.apps.TrainingConfig",
+    "journals.apps.JournalsConfig",
+    "submissions.apps.SubmissionsConfig",
+    "methodical.apps.MethodicalConfig",
+    "news.apps.NewsConfig",
+    "plans.apps.PlansConfig",
+    "content.apps.ContentConfig",
+    "messaging.apps.MessagingConfig",
+    "dashboard.apps.DashboardConfig",
 ]
 
 MIDDLEWARE = [

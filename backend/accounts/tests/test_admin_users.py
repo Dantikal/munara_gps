@@ -9,7 +9,9 @@ from django.urls import reverse
 from django.utils import timezone
 from rest_framework.test import APITestCase
 
-from accounts.models import SubmissionEditRequest, ThematicAccountSubmission, User
+from submissions.models import SubmissionEditRequest
+from submissions.models import ThematicAccountSubmission
+from accounts.models import User
 
 
 PNG_BYTES = base64.b64decode(
