@@ -306,6 +306,7 @@ class AdminUsersApiTests(APITestCase):
 
     def test_registration_accepts_named_subunits(self):
         for unit_type, unit_name in (
+            (User.UnitType.CHECKPOINT, "Ак-Жол КӨП"),
             (User.UnitType.DETACHMENT, "Баткен отряды"),
             (User.UnitType.GROUP, "Ыкчам топ"),
             (User.UnitType.COMPANY, "Биринчи рота"),
@@ -336,6 +337,26 @@ class AdminUsersApiTests(APITestCase):
                 self.assertEqual(response.data["user"]["region"], "2032")
                 self.assertEqual(response.data["user"]["outpost_name"], unit_name)
                 self.assertEqual(response.data["user"]["role"], User.Role.OUTPOST)
+
+    def test_checkpoint_registration_requires_name(self):
+        response = self.client.post(
+            reverse("register"),
+            {
+                "email": "checkpoint-without-name@example.com",
+                "password": "test-password",
+                "full_name": "КӨП колдонуучусу",
+                "military_rank": "капитан",
+                "position": "башчы",
+                "unit_type": User.UnitType.CHECKPOINT,
+                "phone": "+996123456789",
+                "region": "2032",
+                "photo_face": SimpleUploadedFile("face.png", PNG_BYTES, content_type="image/png"),
+            },
+            format="multipart",
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("outpost_name", response.data)
 
     def test_registration_accepts_institution_with_only_military_unit_number(self):
         response = self.client.post(

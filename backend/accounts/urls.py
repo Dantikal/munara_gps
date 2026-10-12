@@ -10,11 +10,16 @@ from accounts.views import (
     ModerateRequestView,
     PendingRequestsView,
     RegisterView,
+    TrainingCenterListView,
     ScopedUsersView,
     UserRequestDetailView,
 )
 
+from accounts.platform_team import PlatformTeamView
+
 urlpatterns = [
+    path("platform-team/", PlatformTeamView.as_view(), name="platform-team"),
+    path("training-centers/", TrainingCenterListView.as_view(), name="training-centers"),
     path("register/", RegisterView.as_view(), name="register"),
     path("login/", LoginView.as_view(), name="login"),
     path("refresh/", TokenRefreshView.as_view(), name="token-refresh"),

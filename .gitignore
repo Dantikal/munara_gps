@@ -43,3 +43,15 @@ yarn-error.log*
 Thumbs.db
 .idea/
 .vscode/
+
+# Renamed frontend: dependencies and generated files
+frontend1/node_modules/
+frontend1/dist/
+frontend1/.vite/
+frontend1/.env
+frontend1/.env.local
+frontend1/.env.*.local
+
+# Local database backups and recovery data
+/munara_db_backup.sql
+/recovery/

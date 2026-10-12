@@ -76,13 +76,17 @@ class ChatPartnerListView(generics.ListAPIView):
     def get_queryset(self):
         user = self.request.user
         users = User.objects.filter(status=User.Status.ACTIVE).exclude(pk=user.pk)
+        if user.unit_type == User.UnitType.TRAINING_CENTER_HEAD:
+            return users.filter(training_center=user, unit_type=User.UnitType.TRAINING_PLATOON_COMMANDER).order_by("platoon_number", "id")
+        if user.unit_type == User.UnitType.TRAINING_PLATOON_COMMANDER:
+            return users.filter(pk=user.training_center_id, unit_type=User.UnitType.TRAINING_CENTER_HEAD)
         if user.role == User.Role.ADMIN:
             return users.filter(
                 role__in={User.Role.REGIONAL, User.Role.OUTPOST}
             ).order_by("role", "region", "outpost_name", "full_name")
         if user.role == User.Role.REGIONAL:
             return users.filter(
-                Q(role=User.Role.OUTPOST, region=user.region) | Q(role=User.Role.ADMIN)
+                (Q(role=User.Role.OUTPOST, region=user.region) & ~Q(unit_type=User.UnitType.TRAINING_PLATOON_COMMANDER)) | Q(role=User.Role.ADMIN)
             ).order_by("role", "outpost_name", "full_name")
         if user.role == User.Role.OUTPOST:
             initiating_admin_ids = AdminChatMessage.objects.filter(

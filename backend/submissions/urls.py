@@ -5,6 +5,7 @@ from submissions.views import (
     SubmissionEditRequestCreateView,
     SubmissionEditRequestDecisionView,
     SubmissionEditRequestListView,
+    SubmissionArchiveListView,
     ThematicAccountSubmissionDetailView,
     ThematicAccountSubmissionForwardView,
     ThematicAccountSubmissionHideView,
@@ -12,6 +13,7 @@ from submissions.views import (
 )
 
 urlpatterns = [
+    path("submission-archive/", SubmissionArchiveListView.as_view(), name="submission-archive-list"),
     path(
         "thematic-account-submissions/",
         ThematicAccountSubmissionListCreateView.as_view(),

@@ -1,6 +1,22 @@
 from rest_framework import serializers
 
-from news.models import CombatTrainingNews, CombatTrainingNewsAttachment
+from news.models import CombatTrainingNews, CombatTrainingNewsAttachment, CombatTrainingNewsLike
+
+
+def get_news_reaction_state(news, user):
+    reactions = list(news.likes.all())
+    counts = {reaction.value: 0 for reaction in CombatTrainingNewsLike.Reaction}
+    selected = []
+    for reaction in reactions:
+        counts[reaction.reaction_type] += 1
+        if user and user.is_authenticated and reaction.user_id == user.id:
+            selected.append(reaction.reaction_type)
+    return {
+        "reactionCounts": counts,
+        "userReactions": selected,
+        "likeCount": counts[CombatTrainingNewsLike.Reaction.LIKE],
+        "isLiked": CombatTrainingNewsLike.Reaction.LIKE in selected,
+    }
 
 
 class CombatTrainingNewsAttachmentSerializer(serializers.ModelSerializer):
@@ -26,6 +42,8 @@ class CombatTrainingNewsSerializer(serializers.ModelSerializer):
     updatedAt = serializers.DateTimeField(source="updated_at")
     likeCount = serializers.SerializerMethodField()
     isLiked = serializers.SerializerMethodField()
+    reactionCounts = serializers.SerializerMethodField()
+    userReactions = serializers.SerializerMethodField()
 
     class Meta:
         model = CombatTrainingNews
@@ -40,6 +58,8 @@ class CombatTrainingNewsSerializer(serializers.ModelSerializer):
             "updatedAt",
             "likeCount",
             "isLiked",
+            "reactionCounts",
+            "userReactions",
         ]
 
     def get_authorName(self, news):
@@ -53,12 +73,23 @@ class CombatTrainingNewsSerializer(serializers.ModelSerializer):
         return news.author.full_name or news.author.email
 
     def get_likeCount(self, news):
-        return news.likes.count()
+        return self._reaction_state(news)["likeCount"]
 
     def get_isLiked(self, news):
-        request = self.context.get("request")
-        return bool(
-            request
-            and request.user.is_authenticated
-            and news.likes.filter(user=request.user).exists()
-        )
+        return self._reaction_state(news)["isLiked"]
+
+    def get_reactionCounts(self, news):
+        return self._reaction_state(news)["reactionCounts"]
+
+    def get_userReactions(self, news):
+        return self._reaction_state(news)["userReactions"]
+
+    def _reaction_state(self, news):
+        if not hasattr(self, "_reaction_states"):
+            self._reaction_states = {}
+        if news.pk not in self._reaction_states:
+            request = self.context.get("request")
+            self._reaction_states[news.pk] = get_news_reaction_state(
+                news, request.user if request else None
+            )
+        return self._reaction_states[news.pk]

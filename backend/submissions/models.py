@@ -1,4 +1,5 @@
 from django.db import models
+from django.utils import timezone
 
 from accounts.models import User
 
@@ -27,6 +28,29 @@ class ThematicAccountSubmission(models.Model):
 
     def __str__(self):
         return self.document_title
+
+
+class SubmissionArchiveCopy(models.Model):
+    """Read-only snapshot of a document at the moment it was sent."""
+
+    source_submission_id = models.PositiveBigIntegerField()
+    sender_id_snapshot = models.PositiveBigIntegerField(db_index=True)
+    sender_name = models.CharField(max_length=255, blank=True)
+    unit_number = models.CharField(max_length=120, blank=True)
+    outpost_name = models.CharField(max_length=160, blank=True)
+    document_title = models.CharField(max_length=255)
+    section_slug = models.CharField(max_length=80)
+    period_slug = models.CharField(max_length=100, blank=True)
+    table_data = models.JSONField(default=dict)
+    year = models.PositiveSmallIntegerField(db_index=True)
+    archived_at = models.DateTimeField(default=timezone.now)
+
+    class Meta:
+        app_label = "accounts"
+        ordering = ("-archived_at", "-id")
+
+    def __str__(self):
+        return f"{self.year}: {self.document_title}"
 
 
 class ThematicAccountSubmissionRead(models.Model):

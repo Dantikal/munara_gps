@@ -1,4 +1,6 @@
 from unittest.mock import patch
+from datetime import datetime
+from zoneinfo import ZoneInfo
 
 from django.db import connection
 from django.test.utils import CaptureQueriesContext
@@ -6,7 +8,7 @@ from django.urls import reverse
 from rest_framework.test import APIClient, APITestCase
 
 from accounts.models import User
-from submissions.models import CombatTrainingJournalRevision, ThematicAccountSubmission
+from submissions.models import CombatTrainingJournalRevision, SubmissionArchiveCopy, ThematicAccountSubmission
 
 
 class DocumentWorkflowTests(APITestCase):
@@ -40,6 +42,29 @@ class DocumentWorkflowTests(APITestCase):
         self.assertEqual(response.status_code, 200, response.data)
         client.credentials(HTTP_AUTHORIZATION=f"Bearer {response.data['access']}")
         return client
+
+    def test_admin_archive_includes_all_users_and_preserves_personal_scope(self):
+        for sender in (self.outpost, self.regional, self.other_regional):
+            SubmissionArchiveCopy.objects.create(
+                source_submission_id=123, sender_id_snapshot=sender.id,
+                sender_name=sender.full_name, unit_number=sender.region,
+                outpost_name=sender.outpost_name, document_title="Архив",
+                section_slug="lesson-schedule", table_data={"rows": []}, year=2026,
+            )
+        url = reverse("submission-archive-list")
+        admin = self.login(self.admin)
+        response = admin.get(url, {"scope": "admin"})
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(len(response.data), 3)
+        self.assertEqual({item["unitNumber"] for item in response.data}, {"2021", "2022"})
+        self.assertEqual({item["senderRole"] for item in response.data}, {"outpost", "regional"})
+        self.assertEqual(admin.get(url).data, [])
+        self.assertEqual(admin.get(url, {"scope": "admin", "sectionId": "memo-letter"}).data, [])
+        for sender in (self.outpost, self.regional):
+            client = self.login(sender)
+            self.assertEqual(client.get(url, {"scope": "admin"}).status_code, 403)
+            self.assertEqual(len(client.get(url).data), 1)
+        self.assertEqual(APIClient().get(url, {"scope": "admin"}).status_code, 401)
 
     def test_jwt_login_send_receive_forward_approve_and_correct(self):
         outpost = self.login(self.outpost)
@@ -108,6 +133,46 @@ class DocumentWorkflowTests(APITestCase):
                 }, format="json")
         self.assertFalse(ThematicAccountSubmission.objects.exists())
         self.assertFalse(CombatTrainingJournalRevision.objects.exists())
+        self.assertFalse(SubmissionArchiveCopy.objects.exists())
+
+    def test_archive_keeps_read_only_copies_after_correction_and_deletion(self):
+        outpost = self.login(self.outpost)
+        admin = self.login(self.admin)
+        archive_url = reverse("submission-archive-list")
+        table = {"columns": [{"key": "topic", "label": "Тема"}], "rows": [{"topic": "Биринчи"}]}
+        sent = outpost.post(reverse("thematic-account-submission-list"), {
+            "documentTitle": "Документ", "sectionId": "lesson-schedule",
+            "periodId": "test-week", "table": table,
+        }, format="json")
+        self.assertEqual(sent.status_code, 201)
+        self.assertEqual(outpost.get(archive_url).data[0]["table"], table)
+        self.assertEqual(self.login(self.regional).get(archive_url).data, [])
+
+        edit = outpost.post(reverse("submission-edit-request-create", kwargs={"pk": sent.data["id"]}), {}, format="json")
+        admin.patch(reverse("submission-edit-request-decision", kwargs={"pk": edit.data["id"]}), {"status": "approved"}, format="json")
+        corrected = {**table, "rows": [{"topic": "Экинчи"}]}
+        outpost.patch(reverse("thematic-account-submission-detail", kwargs={"pk": sent.data["id"]}), {
+            "documentTitle": "Оңдолгон документ", "table": corrected,
+        }, format="json")
+        copies = outpost.get(archive_url, {"sectionId": "lesson-schedule"}).data
+        self.assertEqual(len(copies), 2)
+        self.assertEqual(copies[0]["table"], corrected)
+        self.assertEqual(copies[1]["table"], table)
+        self.assertEqual(copies[0]["year"], copies[1]["year"])
+        self.assertEqual(outpost.post(archive_url, {}).status_code, 405)
+
+        outpost.delete(reverse("thematic-account-submission-detail", kwargs={"pk": sent.data["id"]}))
+        self.assertEqual(len(outpost.get(archive_url).data), 2)
+
+    def test_new_year_submission_is_placed_in_new_year_archive(self):
+        client = self.login(self.outpost)
+        with patch("submissions.archive.timezone.now", return_value=datetime(2027, 1, 1, 0, 1, tzinfo=ZoneInfo("Asia/Bishkek"))):
+            response = client.post(reverse("thematic-account-submission-list"), {
+                "documentTitle": "Жаңы жыл", "sectionId": "lesson-schedule",
+                "table": {"rows": []},
+            }, format="json")
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(client.get(reverse("submission-archive-list")).data[0]["year"], 2027)
 
     def test_failed_journal_forward_keeps_source_without_partial_copy(self):
         source = ThematicAccountSubmission.objects.create(

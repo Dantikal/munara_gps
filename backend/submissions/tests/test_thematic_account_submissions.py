@@ -119,6 +119,32 @@ class ThematicAccountSubmissionApiTests(APITestCase):
         self.assertEqual(response.data["results"][1]["totalDocuments"], 1)
         self.assertEqual(response.data["results"][0]["rank"], 1)
 
+    def test_regional_user_can_compare_all_military_units_without_action_history(self):
+        ThematicAccountSubmission.objects.bulk_create([
+            ThematicAccountSubmission(
+                sender=self.regional,
+                unit_number="2021",
+                document_title="Own unit document",
+            ),
+            ThematicAccountSubmission(
+                sender=self.other_regional,
+                unit_number="2022",
+                document_title="Other unit document",
+            ),
+        ])
+        self.client.force_authenticate(self.regional)
+
+        response = self.client.get(reverse("regional-unit-ratings"), {"period": "all"})
+
+        self.assertEqual(response.status_code, 200)
+        results_by_unit = {
+            item["unitNumber"]: item for item in response.data["results"]
+        }
+        self.assertIn("2021", results_by_unit)
+        self.assertIn("2022", results_by_unit)
+        self.assertEqual(results_by_unit["2021"]["actions"], [])
+        self.assertEqual(results_by_unit["2022"]["actions"], [])
+
     def test_regional_rating_contains_only_own_outposts_ordered_by_documents(self):
         second_outpost = User.objects.create_user(
             username="rating-outpost-2@example.com",

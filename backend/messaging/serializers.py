@@ -1,6 +1,7 @@
 from rest_framework import serializers
 
 from accounts.models import User
+from accounts.training_units import TRAINING_UNIT_TYPES, training_chat_allowed
 from accounts.serializers import UserPublicSerializer
 from messaging.models import AdminChatMessage
 
@@ -66,7 +67,7 @@ class AdminChatMessageSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError({"body": "Введите текст или добавьте вложение."})
 
         recipient_id = attrs.get("recipientId")
-        if request_user.role in {User.Role.ADMIN, User.Role.REGIONAL} and not recipient_id:
+        if (request_user.role in {User.Role.ADMIN, User.Role.REGIONAL} or request_user.unit_type in TRAINING_UNIT_TYPES) and not recipient_id:
             raise serializers.ValidationError({"recipientId": "Укажите получателя."})
         if recipient_id:
             recipient = User.objects.filter(pk=recipient_id, status=User.Status.ACTIVE).first()
@@ -97,6 +98,10 @@ class AdminChatMessageSerializer(serializers.ModelSerializer):
                     recipient.role == User.Role.OUTPOST
                     and recipient.region == request_user.region
                 )
+            if request_user.unit_type in TRAINING_UNIT_TYPES:
+                is_allowed = training_chat_allowed(request_user, recipient)
+            elif recipient.unit_type == User.UnitType.TRAINING_PLATOON_COMMANDER and request_user.role != User.Role.ADMIN:
+                is_allowed = False
             if not is_allowed:
                 raise serializers.ValidationError({"recipientId": "Бул алуучуга билдирүү жөнөтүүгө болбойт."})
 

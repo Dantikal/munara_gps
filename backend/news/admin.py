@@ -41,8 +41,8 @@ class CombatTrainingNewsAttachmentAdmin(admin.ModelAdmin):
 
 @admin.register(CombatTrainingNewsLike)
 class CombatTrainingNewsLikeAdmin(admin.ModelAdmin):
-    list_display = ("news", "user", "created_at")
-    list_filter = ("created_at",)
+    list_display = ("news", "user", "reaction_type", "created_at")
+    list_filter = ("reaction_type", "created_at")
     search_fields = ("news__title", "user__email", "user__full_name")
     autocomplete_fields = ("news", "user")
     readonly_fields = ("created_at",)

@@ -7,6 +7,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from accounts.models import User
+from accounts.unit_routing import regional_user_filter
 from accounts.permissions import IsActiveUser, IsAdminRole, IsPrimaryAdmin
 from accounts.serializers import (
     ActiveTokenObtainSerializer,
@@ -31,7 +32,7 @@ class RegisterView(generics.CreateAPIView):
         user = serializer.save()
         return Response(
             {
-                "message": "Заявка отправлена администратору на рассмотрение.",
+                "message": "Өтүнмө администратордун кароосуна жөнөтүлдү.",
                 "user": UserPublicSerializer(user, context=self.get_serializer_context()).data,
             },
             status=status.HTTP_201_CREATED,
@@ -194,7 +195,7 @@ class ScopedUsersView(generics.ListAPIView):
         if user.role == User.Role.ADMIN:
             return qs.order_by("region", "outpost_name", "full_name")
         if user.role == User.Role.REGIONAL:
-            return qs.filter(region=user.region).order_by("outpost_name", "full_name")
+            return qs.filter(regional_user_filter(user)).order_by("outpost_name", "full_name")
         return qs.filter(
             Q(id=user.id) | Q(region=user.region, outpost_name=user.outpost_name)
         ).order_by("full_name")
@@ -220,3 +221,18 @@ def __getattr__(name):
     value = getattr(import_module(module), name)
     globals()[name] = value
     return value
+
+
+class TrainingCenterListView(APIView):
+    permission_classes = [AllowAny]
+    authentication_classes = []
+
+    def get(self, request):
+        centers = User.objects.filter(
+            unit_type=User.UnitType.TRAINING_CENTER_HEAD,
+            status__in=[User.Status.PENDING, User.Status.ACTIVE],
+        ).exclude(outpost_name="").order_by("region", "outpost_name", "id")
+        return Response([
+            {"id": center.id, "name": center.outpost_name, "region": center.region}
+            for center in centers
+        ])

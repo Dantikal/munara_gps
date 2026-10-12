@@ -5,7 +5,9 @@ from django.utils import timezone
 from rest_framework import serializers
 from rest_framework_simplejwt.tokens import RefreshToken
 
+from accounts.training_units import normalize_training_unit
 from accounts.models import User
+from accounts.unit_routing import normalize_institution_subunit
 from accounts.outposts import OUTPOSTS_BY_MILITARY_UNIT, normalize_outpost_selection
 from messaging.models import AdminChatMessage
 
@@ -17,6 +19,7 @@ phone_validator = RegexValidator(
 
 
 class UserPublicSerializer(serializers.ModelSerializer):
+    training_center_name = serializers.CharField(source="training_center.outpost_name", read_only=True, default="")
     avatar = serializers.ImageField(read_only=True)
     photo_face = serializers.ImageField(read_only=True)
     unreadChatCount = serializers.SerializerMethodField()
@@ -45,6 +48,9 @@ class UserPublicSerializer(serializers.ModelSerializer):
             "phone",
             "region",
             "outpost_name",
+            "training_center",
+            "training_center_name",
+            "platoon_number",
             "role",
             "status",
             "is_superuser",
@@ -60,6 +66,7 @@ class UserPublicSerializer(serializers.ModelSerializer):
 
 
 class AdminUserSerializer(serializers.ModelSerializer):
+    training_center_name = serializers.CharField(source="training_center.outpost_name", read_only=True, default="")
     avatar = serializers.ImageField(read_only=True)
     photo_face = serializers.ImageField(required=False)
     lastSeen = serializers.DateTimeField(source="last_login", read_only=True)
@@ -86,6 +93,9 @@ class AdminUserSerializer(serializers.ModelSerializer):
             "phone",
             "region",
             "outpost_name",
+            "training_center",
+            "training_center_name",
+            "platoon_number",
             "role",
             "status",
             "is_superuser",
@@ -156,6 +166,8 @@ class AdminUserSerializer(serializers.ModelSerializer):
                     {"outpost_name": "Тандалган застава бул аскер бөлүгүнө кирбейт."}
                 )
         named_subunit_labels = {
+            User.UnitType.SUBDIVISION: "Бөлүмчөнүн аталышын",
+            User.UnitType.CHECKPOINT: "Көзөмөл өткөрмө пунктунун аталышын",
             User.UnitType.DETACHMENT: "Отрядтын аталышын",
             User.UnitType.GROUP: "Топтун аталышын",
             User.UnitType.COMPANY: "Ротанын аталышын",
@@ -167,6 +179,8 @@ class AdminUserSerializer(serializers.ModelSerializer):
             )
         if unit_type == User.UnitType.INSTITUTION:
             attrs["outpost_name"] = ""
+        normalize_training_unit(attrs, unit_type, self.instance)
+        normalize_institution_subunit(attrs, unit_type, outpost_name)
         return attrs
 
     def create(self, validated_data):
@@ -210,6 +224,8 @@ class ProfileUpdateSerializer(serializers.ModelSerializer):
             "phone",
             "region",
             "outpost_name",
+            "training_center",
+            "platoon_number",
             "photo_face",
             "complete_profile",
         ]
@@ -237,6 +253,15 @@ class ProfileUpdateSerializer(serializers.ModelSerializer):
                 else User.Role.OUTPOST
             )
 
+        if unit_type == User.UnitType.SUBDIVISION:
+            errors = {}
+            if not region:
+                errors["region"] = "Аскер бөлүгүнүн номерин тандаңыз."
+            if not outpost_name:
+                errors["outpost_name"] = "Бөлүмчөнүн аталышын жазыңыз."
+            if errors:
+                raise serializers.ValidationError(errors)
+
         # Only validate outpost selection if user is changing outpost-related fields
         if unit_type == User.UnitType.OUTPOST and ("outpost_name" in attrs or "region" in attrs):
             if region and outpost_name:
@@ -248,6 +273,10 @@ class ProfileUpdateSerializer(serializers.ModelSerializer):
                 attrs["outpost_name"] = normalized
         elif unit_type == User.UnitType.INSTITUTION and "outpost_name" in attrs:
             attrs["outpost_name"] = ""
+
+        normalize_training_unit(attrs, unit_type, self.instance)
+        normalize_institution_subunit(attrs, unit_type, outpost_name)
+        region = attrs.get("region", region)
 
         if complete_profile:
             values = {
@@ -347,6 +376,8 @@ class RegistrationSerializer(serializers.ModelSerializer):
             "phone",
             "region",
             "outpost_name",
+            "training_center",
+            "platoon_number",
             "photo_face",
         ]
         read_only_fields = ["id"]
@@ -365,6 +396,8 @@ class RegistrationSerializer(serializers.ModelSerializer):
         if unit_type in (
             User.UnitType.REGIONAL,
             User.UnitType.OUTPOST,
+            User.UnitType.SUBDIVISION,
+            User.UnitType.CHECKPOINT,
             User.UnitType.DETACHMENT,
             User.UnitType.GROUP,
             User.UnitType.COMPANY,
@@ -393,6 +426,8 @@ class RegistrationSerializer(serializers.ModelSerializer):
                 )
             attrs["outpost_name"] = normalized_outpost_name
         named_subunit_labels = {
+            User.UnitType.SUBDIVISION: "Бөлүмчөнүн аталышын",
+            User.UnitType.CHECKPOINT: "Көзөмөл өткөрмө пунктунун аталышын",
             User.UnitType.DETACHMENT: "Отрядтын аталышын",
             User.UnitType.GROUP: "Топтун аталышын",
             User.UnitType.COMPANY: "Ротанын аталышын",
@@ -404,6 +439,8 @@ class RegistrationSerializer(serializers.ModelSerializer):
             )
         if unit_type == User.UnitType.INSTITUTION:
             attrs["outpost_name"] = ""
+        normalize_training_unit(attrs, unit_type)
+        normalize_institution_subunit(attrs, unit_type, attrs["outpost_name"])
         return attrs
 
     def create(self, validated_data):

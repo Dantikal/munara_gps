@@ -90,6 +90,50 @@ class CombatTrainingNewsApiTests(APITestCase):
         unread_response = self.client.get(reverse("combat-training-news-unread-count"))
         self.assertEqual(unread_response.data["unreadCount"], 0)
 
+    def test_user_can_choose_each_reaction_once_without_affecting_other_reactions(self):
+        news = self.create_news()
+        url = reverse("combat-training-news-reaction", kwargs={"pk": news["id"]})
+        self.client.force_authenticate(self.user)
+
+        liked = self.client.post(url, {"reaction": "like"}, format="json")
+        self.assertEqual(liked.status_code, 200)
+        self.assertEqual(liked.data["reactionCounts"]["like"], 1)
+
+        loved = self.client.post(url, {"reaction": "love"}, format="json")
+        self.assertEqual(loved.data["reactionCounts"]["love"], 1)
+        self.assertCountEqual(loved.data["userReactions"], ["like", "love"])
+
+        self.client.force_authenticate(self.regional)
+        another_love = self.client.post(url, {"reaction": "love"}, format="json")
+        self.assertEqual(another_love.data["reactionCounts"]["love"], 2)
+        self.assertEqual(another_love.data["userReactions"], ["love"])
+
+        self.client.force_authenticate(self.user)
+        removed_love = self.client.post(url, {"reaction": "love"}, format="json")
+        self.assertEqual(removed_love.data["reactionCounts"]["love"], 1)
+        self.assertEqual(removed_love.data["reactionCounts"]["like"], 1)
+        self.assertEqual(removed_love.data["userReactions"], ["like"])
+
+        listed = self.client.get(self.list_url).data["results"][0]
+        self.assertEqual(listed["reactionCounts"]["love"], 1)
+        self.assertEqual(listed["userReactions"], ["like"])
+        self.assertEqual(self.client.post(url, {"reaction": "invalid"}, format="json").status_code, 400)
+
+    def test_admin_can_upload_video_attachment(self):
+        self.client.force_authenticate(self.admin)
+        response = self.client.post(
+            self.list_url,
+            {
+                "title": "Видео маалымат",
+                "body": "",
+                "files": SimpleUploadedFile("training.mp4", b"test-video", content_type="video/mp4"),
+            },
+            format="multipart",
+        )
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.data["attachments"][0]["kind"], "video")
+        self.assertTrue(response.data["attachments"][0]["fileUrl"].endswith("training.mp4"))
+
     def test_outpost_cannot_create_edit_or_delete_news(self):
         self.client.force_authenticate(self.user)
         forbidden_response = self.client.post(

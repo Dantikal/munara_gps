@@ -46,6 +46,13 @@ class CombatTrainingNewsAttachment(models.Model):
 
 
 class CombatTrainingNewsLike(models.Model):
+    class Reaction(models.TextChoices):
+        LIKE = "like", "Нравится"
+        LOVE = "love", "Люблю"
+        LAUGH = "laugh", "Смешно"
+        WOW = "wow", "Удивительно"
+        CLAP = "clap", "Аплодисменты"
+
     news = models.ForeignKey(
         CombatTrainingNews,
         on_delete=models.CASCADE,
@@ -56,14 +63,15 @@ class CombatTrainingNewsLike(models.Model):
         on_delete=models.CASCADE,
         related_name="combat_training_news_likes",
     )
+    reaction_type = models.CharField(max_length=10, choices=Reaction.choices, default=Reaction.LIKE)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
         app_label = "accounts"  # Preserve deployed tables, permissions and migration history.
         constraints = [
             models.UniqueConstraint(
-                fields=("news", "user"),
-                name="unique_combat_training_news_like",
+                fields=("news", "user", "reaction_type"),
+                name="unique_combat_news_reaction",
             )
         ]
 

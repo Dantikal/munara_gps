@@ -19,6 +19,8 @@ def thematic_submission_payload(submission, viewing_user=None):
         "registrationCode": registration_code,
         "senderId": submission.sender_id,
         "senderRole": submission.sender.role,
+        "senderUnitType": submission.sender.unit_type,
+        "trainingCenterId": submission.sender.training_center_id,
         "documentTitle": submission.document_title,
         "unitNumber": submission.unit_number,
         "outpostName": submission.outpost_name,

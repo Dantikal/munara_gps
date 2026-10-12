@@ -2,6 +2,7 @@ import copy
 import re
 
 from django.db import transaction
+from django.db.models import Q
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from rest_framework import status
@@ -10,12 +11,15 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from accounts.models import User
+from accounts.unit_routing import regional_submission_filter, is_submission_recipient
 from accounts.permissions import IsActiveUser, IsAdminRole
+from submissions.archive import archive_submission
 from submissions.models import (
     CombatTrainingJournalRevision,
     CombatTrainingJournalRevisionHidden,
     CombatTrainingJournalRevisionRead,
     SubmissionEditRequest,
+    SubmissionArchiveCopy,
     ThematicAccountSubmission,
     ThematicAccountSubmissionHidden,
     ThematicAccountSubmissionRead,
@@ -23,6 +27,41 @@ from submissions.models import (
 from submissions.serializers import submission_edit_request_payload, thematic_submission_payload
 from training.constants import THEMATIC_ACCOUNT_SECTION_SLUGS
 from training.models import TrainingPeriod
+
+
+class SubmissionArchiveListView(APIView):
+    permission_classes = [IsActiveUser]
+
+    def get(self, request):
+        section_ids = request.query_params.getlist("sectionId")
+        copies = SubmissionArchiveCopy.objects.filter(sender_id_snapshot=request.user.id)
+        admin_archive = request.query_params.get("scope") == "admin"
+        if admin_archive:
+            if request.user.role != User.Role.ADMIN:
+                raise PermissionDenied("Архивди көрүүгө укук жок.")
+            copies = SubmissionArchiveCopy.objects.all()
+        if section_ids:
+            copies = copies.filter(section_slug__in=section_ids)
+        sender_roles = dict(User.objects.filter(
+            id__in=copies.values_list("sender_id_snapshot", flat=True)
+        ).values_list("id", "role")) if admin_archive else {}
+        return Response([
+            {
+                "id": copy.id,
+                "sourceSubmissionId": copy.source_submission_id,
+                "documentTitle": copy.document_title,
+                "sectionId": copy.section_slug,
+                "periodId": copy.period_slug,
+                "table": copy.table_data,
+                "senderName": copy.sender_name,
+                "senderRole": sender_roles.get(copy.sender_id_snapshot, ""),
+                "unitNumber": copy.unit_number,
+                "outpostName": copy.outpost_name,
+                "year": copy.year,
+                "archivedAt": copy.archived_at.isoformat(),
+            }
+            for copy in copies
+        ])
 
 
 class ThematicAccountSubmissionListCreateView(APIView):
@@ -50,9 +89,13 @@ class ThematicAccountSubmissionListCreateView(APIView):
             ])
 
         if request.user.role == User.Role.OUTPOST:
-            submissions = submissions.filter(sender=request.user)
+            submissions = submissions.filter(
+                Q(sender=request.user) | (Q(sender__training_center=request.user,
+                    sender__unit_type=User.UnitType.TRAINING_PLATOON_COMMANDER)
+                    if request.user.unit_type == User.UnitType.TRAINING_CENTER_HEAD else Q(pk__in=[]))
+            )
         elif request.user.role == User.Role.REGIONAL:
-            submissions = submissions.filter(unit_number=request.user.region)
+            submissions = submissions.filter(regional_submission_filter(request.user))
         elif request.user.role == User.Role.ADMIN:
             # Administrators audit the complete document flow, including memo
             # letters sent by outposts to their regional military units.
@@ -190,6 +233,7 @@ class ThematicAccountSubmissionListCreateView(APIView):
                 document_title=document_title,
                 table_data=copy.deepcopy(table_data),
             )
+        archive_submission(submission)
         if section_slug in THEMATIC_ACCOUNT_SECTION_SLUGS and period_slug:
             TrainingPeriod.objects.filter(
                 section__slug=section_slug,
@@ -239,6 +283,7 @@ class ThematicAccountSubmissionDetailView(APIView):
             submission.save(
                 update_fields=("document_title", "table_data", "is_corrected", "updated_at")
             )
+            archive_submission(submission)
             submission.reads.all().delete()
             approved_edit_request.status = SubmissionEditRequest.Status.CORRECTED
             approved_edit_request.save(update_fields=("status", "updated_at"))
@@ -246,9 +291,7 @@ class ThematicAccountSubmissionDetailView(APIView):
             return Response(thematic_submission_payload(submission, request.user))
 
         is_matching_regional_unit = (
-            request.user.role == User.Role.REGIONAL
-            and submission.sender.role == User.Role.OUTPOST
-            and submission.unit_number == request.user.region
+            is_submission_recipient(request.user, submission)
         )
         is_admin_recipient = (
             request.user.role == User.Role.ADMIN
@@ -274,9 +317,7 @@ class ThematicAccountSubmissionDetailView(APIView):
             and submission.sender_id == request.user.id
         )
         is_matching_regional_unit = (
-            request.user.role == User.Role.REGIONAL
-            and submission.sender.role == User.Role.OUTPOST
-            and submission.unit_number == request.user.region
+            is_submission_recipient(request.user, submission)
         )
         is_admin = request.user.role == User.Role.ADMIN
         if not (is_sender or is_matching_regional_unit or is_admin):
@@ -325,9 +366,7 @@ class CombatTrainingJournalRevisionDetailView(APIView):
         )
         submission = revision.submission
         is_matching_regional_unit = (
-            request.user.role == User.Role.REGIONAL
-            and submission.sender.role == User.Role.OUTPOST
-            and submission.unit_number == request.user.region
+            is_submission_recipient(request.user, submission)
         )
         if not is_matching_regional_unit:
             raise PermissionDenied("Нет права отмечать это обновление прочитанным.")
@@ -346,9 +385,7 @@ class CombatTrainingJournalRevisionDetailView(APIView):
         submission = revision.submission
         is_sender = submission.sender_id == request.user.id
         is_matching_regional_unit = (
-            request.user.role == User.Role.REGIONAL
-            and submission.sender.role == User.Role.OUTPOST
-            and submission.unit_number == request.user.region
+            is_submission_recipient(request.user, submission)
         )
         is_admin = request.user.role == User.Role.ADMIN
         if not (is_sender or is_matching_regional_unit or is_admin):
@@ -366,14 +403,14 @@ class ThematicAccountSubmissionForwardView(APIView):
 
     @transaction.atomic
     def post(self, request, pk):
-        if request.user.role != User.Role.REGIONAL:
-            raise PermissionDenied("Документти аскер бөлүгү гана жөнөтө алат.")
+        if request.user.role != User.Role.REGIONAL and request.user.unit_type != User.UnitType.TRAINING_CENTER_HEAD:
+            raise PermissionDenied("Бул документти жөнөтүүгө укук жок.")
 
         source = get_object_or_404(
             ThematicAccountSubmission.objects.select_related("sender"),
             pk=pk,
         )
-        if source.sender.role != User.Role.OUTPOST or source.unit_number != request.user.region:
+        if not is_submission_recipient(request.user, source):
             raise PermissionDenied("Бул кириш документти жөнөтүүгө укук жок.")
 
         document_title = str(request.data.get("documentTitle") or "").strip()
@@ -383,7 +420,7 @@ class ThematicAccountSubmissionForwardView(APIView):
         forwarded = ThematicAccountSubmission.objects.create(
             sender=request.user,
             unit_number=request.user.region,
-            outpost_name="",
+            outpost_name=request.user.outpost_name if request.user.unit_type == User.UnitType.TRAINING_CENTER_HEAD else "",
             document_title=document_title,
             section_slug=source.section_slug,
             period_slug=source.period_slug,
@@ -392,6 +429,7 @@ class ThematicAccountSubmissionForwardView(APIView):
         if source.section_slug in {
             "combat-training-personnel-journal",
             "combat-training-command-journal",
+            "young-soldier-combat-training-journal",
         }:
             CombatTrainingJournalRevision.objects.bulk_create([
                 CombatTrainingJournalRevision(
@@ -401,6 +439,8 @@ class ThematicAccountSubmissionForwardView(APIView):
                 )
                 for revision in source.revisions.all()
             ])
+
+        archive_submission(forwarded)
 
         return Response(
             thematic_submission_payload(forwarded, request.user),

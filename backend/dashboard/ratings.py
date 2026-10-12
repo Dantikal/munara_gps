@@ -5,6 +5,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from accounts.models import User
+from accounts.training_units import TRAINING_UNIT_TYPES
 from accounts.outposts import OUTPOSTS_BY_MILITARY_UNIT, format_outpost_name
 from accounts.permissions import IsActiveUser
 from dashboard.constants import ADMIN_MILITARY_UNIT_NUMBERS
@@ -15,7 +16,9 @@ class RegionalUnitRatingView(APIView):
     permission_classes = [IsActiveUser]
 
     def get(self, request):
-        is_outpost_viewer = request.user.role == User.Role.OUTPOST
+        training_type = request.user.unit_type if request.user.unit_type in TRAINING_UNIT_TYPES else None
+        own_outposts = request.user.role == User.Role.REGIONAL and request.query_params.get("scope") == "own-outposts"
+        is_outpost_viewer = request.user.role == User.Role.OUTPOST or own_outposts
         own_unit_number = str(request.user.region or "").strip()
         if request.user.role not in {User.Role.ADMIN, User.Role.REGIONAL, User.Role.OUTPOST}:
             raise PermissionDenied("Аскер бөлүктөрүнүн рейтинги жеткиликтүү эмес.")
@@ -65,17 +68,25 @@ class RegionalUnitRatingView(APIView):
                 role__in={User.Role.REGIONAL, User.Role.OUTPOST},
                 status=User.Status.ACTIVE,
             ).exclude(region="")
-        if is_outpost_viewer:
+        if training_type:
+            users_query = users_query.filter(unit_type=training_type)
+        elif is_outpost_viewer:
             users_query = users_query.filter(region=own_unit_number)
-        users = list(users_query)
+            if own_outposts:
+                users_query = users_query.exclude(unit_type__in=TRAINING_UNIT_TYPES)
+        users = list(users_query.select_related("training_center"))
         submissions_query = ThematicAccountSubmission.objects.filter(
             sender__role__in={User.Role.REGIONAL, User.Role.OUTPOST},
         )
-        if is_outpost_viewer:
+        if training_type:
+            submissions_query = submissions_query.filter(sender__unit_type=training_type, sender__status=User.Status.ACTIVE)
+        elif is_outpost_viewer:
             submissions_query = submissions_query.filter(
                 unit_number=own_unit_number,
                 sender__status=User.Status.ACTIVE,
             )
+            if own_outposts:
+                submissions_query = submissions_query.filter(sender__region=own_unit_number).exclude(sender__unit_type__in=TRAINING_UNIT_TYPES)
         if period != "all":
             submissions_query = submissions_query.filter(
                 created_at__gte=period_start,
@@ -124,6 +135,8 @@ class RegionalUnitRatingView(APIView):
             if is_outpost_viewer
             else OUTPOSTS_BY_MILITARY_UNIT.items()
         )
+        if training_type:
+            directory_items = ()
         for unit_number, outpost_names in directory_items:
             rating = ratings.setdefault(
                 unit_number,
@@ -144,11 +157,14 @@ class RegionalUnitRatingView(APIView):
             )
             targets = [rating]
             if user.role == User.Role.OUTPOST:
-                outpost_name = format_outpost_name(user.outpost_name) or user.full_name
-                outpost = rating["outposts"].setdefault(
-                    outpost_name, empty_entity("outpostName", outpost_name)
-                )
-                all_outposts[(unit_number, outpost_name)] = outpost
+                outpost_name = (user.outpost_name if training_type else format_outpost_name(user.outpost_name)) or user.full_name
+                entity_key = user.pk if training_type else outpost_name
+                outpost = rating["outposts"].setdefault(entity_key, empty_entity("outpostName", outpost_name))
+                if training_type:
+                    outpost["userId"] = user.pk
+                    outpost["unitType"] = user.unit_type
+                    outpost["trainingCenterName"] = user.training_center.outpost_name if user.training_center_id else ""
+                all_outposts[(unit_number, entity_key)] = outpost
                 targets.append(outpost)
             for target in targets:
                 target["userCount"] += 1
@@ -164,7 +180,7 @@ class RegionalUnitRatingView(APIView):
                     })
 
         for submission in submissions:
-            unit_number = str(submission.unit_number or "").strip()
+            unit_number = str((submission.sender.region if training_type else submission.unit_number) or "").strip()
             if not unit_number:
                 continue
             rating = ratings.setdefault(
@@ -173,11 +189,13 @@ class RegionalUnitRatingView(APIView):
             )
             targets = [rating]
             if submission.sender.role == User.Role.OUTPOST:
-                outpost_name = format_outpost_name(submission.outpost_name) or submission.sender.full_name
-                outpost = rating["outposts"].setdefault(
-                    outpost_name, empty_entity("outpostName", outpost_name)
-                )
-                all_outposts[(unit_number, outpost_name)] = outpost
+                outpost_name = (submission.sender.outpost_name if training_type else format_outpost_name(submission.outpost_name)) or submission.sender.full_name
+                entity_key = submission.sender_id if training_type else outpost_name
+                outpost = rating["outposts"].setdefault(entity_key, empty_entity("outpostName", outpost_name))
+                if training_type:
+                    outpost["userId"] = submission.sender_id
+                    outpost["unitType"] = training_type
+                all_outposts[(unit_number, entity_key)] = outpost
                 targets.append(outpost)
 
             deadline_day = deadline_days.get(submission.section_slug, 28)
@@ -206,7 +224,7 @@ class RegionalUnitRatingView(APIView):
                 rating["outpostDocuments"] += 1
 
         entities = [*ratings.values(), *all_outposts.values()]
-        maximum_documents = max([entity["totalDocuments"] for entity in entities] or [0])
+        maximum_documents = max([entity["totalDocuments"] for entity in (all_outposts.values() if training_type else entities)] or [0])
         for entity in entities:
             total = entity["totalDocuments"]
             entity["documentScore"] = round(total / maximum_documents * 100, 1) if maximum_documents else 0
@@ -257,7 +275,7 @@ class RegionalUnitRatingView(APIView):
         if request.user.role != User.Role.ADMIN:
             for item in [*ordered_ratings, *ordered_outposts]:
                 item["actions"] = []
-        return Response({"period": period, "year": selected_year, "month": selected_month, "half": selected_half, "results": ordered_ratings, "outposts": ordered_outposts})
+        return Response({"period": period, "year": selected_year, "month": selected_month, "half": selected_half, "results": [] if training_type else ordered_ratings, "outposts": ordered_outposts})
 
 
 class OutpostRatingView(APIView):
@@ -314,7 +332,7 @@ class OutpostRatingView(APIView):
                 role=User.Role.OUTPOST,
                 status=User.Status.ACTIVE,
             ).exclude(outpost_name="")
-        registered_outposts = registered_outposts.filter(region=own_unit_number)
+        registered_outposts = registered_outposts.filter(region=own_unit_number).exclude(unit_type__in=TRAINING_UNIT_TYPES)
         outpost_entries.update(
             (str(unit_number or "").strip(), format_outpost_name(name))
             for unit_number, name in registered_outposts.values_list("region", "outpost_name")
@@ -322,7 +340,7 @@ class OutpostRatingView(APIView):
         section_counts = ThematicAccountSubmission.objects.filter(
             sender__role=User.Role.OUTPOST,
         )
-        section_counts = section_counts.filter(
+        section_counts = section_counts.exclude(sender__unit_type__in=TRAINING_UNIT_TYPES).filter(
             unit_number=own_unit_number,
             sender__status=User.Status.ACTIVE,
         )

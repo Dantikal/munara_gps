@@ -15,7 +15,7 @@ SECRET_KEY = os.getenv("DJANGO_SECRET_KEY", "dev-secret-key-change-in-production
 DEBUG = os.getenv("DJANGO_DEBUG", "1") == "1"
 
 # ============================================================
-# ALLOWED_HOSTS с доменами для продакшена
+# ALLOWED_HOSTS
 # ============================================================
 ALLOWED_HOSTS = [
     'localhost',
@@ -113,12 +113,15 @@ USE_I18N = True
 USE_TZ = True
 
 # ============================================================
-# СТАТИЧЕСКИЕ И МЕДИА-ФАЙЛЫ (пути вне backend)
+# СТАТИЧЕСКИЕ И МЕДИА-ФАЙЛЫ (жёстко прописаны пути вне backend)
 # ============================================================
 STATIC_URL = "/static/"
 STATIC_ROOT = "/home/sysadmin/static"
 MEDIA_URL = "/media/"
-MEDIA_ROOT = "/home/sysadmin/media"
+MEDIA_ROOT = os.getenv(
+    "DJANGO_MEDIA_ROOT", str(BASE_DIR / "media") if DEBUG else "/home/sysadmin/media"
+)
+
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 REST_FRAMEWORK = {

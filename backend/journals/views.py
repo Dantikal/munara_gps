@@ -6,6 +6,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from accounts.models import User
+from accounts.unit_routing import regional_user_filter
 from accounts.outposts import format_outpost_name
 from accounts.permissions import IsActiveUser, IsPrimaryAdmin
 from journals.models import CombatTrainingJournal, CombatTrainingJournalSubject
@@ -115,26 +116,27 @@ class CombatTrainingJournalOutpostListView(APIView):
     permission_classes = [IsActiveUser]
 
     def get(self, request):
-        if request.user.role not in {User.Role.REGIONAL, User.Role.ADMIN}:
+        if request.user.role not in {User.Role.REGIONAL, User.Role.ADMIN} and request.user.unit_type != User.UnitType.TRAINING_CENTER_HEAD:
             raise PermissionDenied("Нет доступа к списку застав.")
 
         outposts = User.objects.filter(
             role=User.Role.OUTPOST,
             status=User.Status.ACTIVE,
         ).exclude(outpost_name="")
-        if request.user.role == User.Role.REGIONAL:
-            outposts = outposts.filter(region=request.user.region)
+        if request.user.role == User.Role.REGIONAL or request.user.unit_type == User.UnitType.TRAINING_CENTER_HEAD:
+            outposts = outposts.filter(regional_user_filter(request.user))
 
         result = []
         seen = set()
         for outpost in outposts.order_by("region", "outpost_name", "id"):
-            key = (outpost.region, format_outpost_name(outpost.outpost_name))
+            key = (outpost.region, outpost.outpost_name if outpost.unit_type in {User.UnitType.TRAINING_CENTER_HEAD, User.UnitType.TRAINING_PLATOON_COMMANDER} else format_outpost_name(outpost.outpost_name))
             if key in seen:
                 continue
             seen.add(key)
             result.append({
                 "id": outpost.id,
                 "name": key[1],
+                "unitType": outpost.unit_type,
                 "unitNumber": outpost.region,
             })
         return Response(result)

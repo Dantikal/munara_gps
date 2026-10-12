@@ -9,7 +9,7 @@ from rest_framework.views import APIView
 from accounts.models import User
 from accounts.permissions import IsActiveUser, IsAdminOrRegionalRole
 from news.models import CombatTrainingNews, CombatTrainingNewsLike, CombatTrainingNewsRead
-from news.serializers import CombatTrainingNewsSerializer
+from news.serializers import CombatTrainingNewsSerializer, get_news_reaction_state
 from news.services import create_news_attachments, validate_news_files, visible_combat_training_news
 
 
@@ -117,13 +117,33 @@ class CombatTrainingNewsLikeView(APIView):
         like, created = CombatTrainingNewsLike.objects.get_or_create(
             news=news,
             user=request.user,
+            reaction_type=CombatTrainingNewsLike.Reaction.LIKE,
         )
         if not created:
             like.delete()
         return Response({
             "isLiked": created,
-            "likeCount": news.likes.count(),
+            "likeCount": news.likes.filter(reaction_type=CombatTrainingNewsLike.Reaction.LIKE).count(),
         })
+
+
+class CombatTrainingNewsReactionView(APIView):
+    permission_classes = [IsActiveUser]
+
+    def post(self, request, pk):
+        reaction_type = request.data.get("reaction")
+        if reaction_type not in CombatTrainingNewsLike.Reaction.values:
+            raise ValidationError({"reaction": "Неизвестный тип реакции."})
+
+        news = get_object_or_404(visible_combat_training_news(request.user), pk=pk)
+        reaction, created = CombatTrainingNewsLike.objects.get_or_create(
+            news=news,
+            user=request.user,
+            reaction_type=reaction_type,
+        )
+        if not created:
+            reaction.delete()
+        return Response(get_news_reaction_state(news, request.user))
 
 
 class CombatTrainingNewsUnreadCountView(APIView):

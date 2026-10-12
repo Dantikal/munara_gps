@@ -4,6 +4,7 @@ from news.views import (
     CombatTrainingNewsDetailView,
     CombatTrainingNewsLikeView,
     CombatTrainingNewsListCreateView,
+    CombatTrainingNewsReactionView,
     CombatTrainingNewsReadAllView,
     CombatTrainingNewsUnreadCountView,
 )
@@ -33,5 +34,10 @@ urlpatterns = [
         "combat-training-news/<int:pk>/like/",
         CombatTrainingNewsLikeView.as_view(),
         name="combat-training-news-like",
+    ),
+    path(
+        "combat-training-news/<int:pk>/reaction/",
+        CombatTrainingNewsReactionView.as_view(),
+        name="combat-training-news-reaction",
     ),
 ]

@@ -17,11 +17,17 @@ class User(AbstractUser):
     class UnitType(models.TextChoices):
         REGIONAL = "regional_department", "Войсковая часть №"
         OUTPOST = "outpost", "Застава"
+        SUBDIVISION = "subdivision", "Бөлүмчө"
+        CHECKPOINT = "checkpoint", "КӨП"
         DETACHMENT = "detachment", "Отряд"
         GROUP = "group", "Топ"
         COMPANY = "company", "Рота"
         PLATOON = "platoon", "Взвод"
-        INSTITUTION = "institution", "Мекеме"
+        INSTITUTION = "institution", "КЖжАККДБ"
+        CYNOLOGY = "cynology", "Кинология кызматы"
+        COURSE_HEAD = "course_head", "Курстун бачысы"
+        TRAINING_CENTER_HEAD = "training_center_head", "Окуу борбордун башчысы"
+        TRAINING_PLATOON_COMMANDER = "training_platoon_commander", "Окуу взводдун командири"
 
     email = models.EmailField("Email", unique=True)
     full_name = models.CharField("ФИО", max_length=255, blank=True)
@@ -35,6 +41,11 @@ class User(AbstractUser):
     phone = models.CharField("Телефон", max_length=20, blank=True)
     region = models.CharField("Область", max_length=120, blank=True)
     outpost_name = models.CharField("Название заставы", max_length=160, blank=True)
+    training_center = models.ForeignKey(
+        "self", on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="training_platoons", verbose_name="Окуу борбору",
+    )
+    platoon_number = models.CharField("Окуу взводунун номери", max_length=12, blank=True)
     role = models.CharField("Роль", max_length=20, choices=Role.choices)
     status = models.CharField(
         "Статус", max_length=20, choices=Status.choices, default=Status.PENDING
@@ -122,3 +133,12 @@ from training.models import LessonSchedulePeriod
 from training.models import TrainingPeriod
 from training.models import TrainingSection
 from training.models import TrainingTable
+
+
+class PlatformTeamPhoto(models.Model):
+    member = models.CharField(max_length=20, primary_key=True, choices=[
+        ("shakenov", "Шакенов М.С."),
+        ("akmatov", "Акматов Б.А."),
+        ("saifudinov", "Сайфудинов Д.А."),
+    ])
+    photo = models.ImageField(upload_to="platform/team/")
