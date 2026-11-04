@@ -83,9 +83,13 @@ export const deleteLibraryPeriod = async (sectionId, periodId) => {
   await api.delete(`/dashboard/library-periods/${sectionId}/${periodId}/`);
 };
 
-export const getThematicAccountSubmissions = async (registrationNumber) => {
+export const getThematicAccountSubmissions = async (registrationNumber, sectionIds = [], senderId) => {
+  const params = new URLSearchParams();
+  if (registrationNumber) params.set("registrationNumber", registrationNumber);
+  if (senderId !== undefined && senderId !== null) params.set("senderId", String(senderId));
+  sectionIds.filter(Boolean).forEach((sectionId) => params.append("sectionId", sectionId));
   const { data } = await api.get("/dashboard/thematic-account-submissions/", {
-    params: registrationNumber ? { registrationNumber } : undefined,
+    params: params.toString() ? params : undefined,
   });
   return data;
 };

@@ -247,7 +247,7 @@ export default function Sidebar({
     let isMounted = true;
     const refreshMemoLetterUnreadCount = async () => {
       try {
-        const submissions = await getThematicAccountSubmissions();
+        const submissions = await getThematicAccountSubmissions(undefined, ["memo-letter"]);
         const count = (Array.isArray(submissions) ? submissions : []).filter(
           (submission) =>
             submission.sectionId === "memo-letter" &&

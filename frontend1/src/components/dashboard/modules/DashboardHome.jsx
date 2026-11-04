@@ -137,7 +137,7 @@ export default function DashboardHome({ data, modules, onNavigate, user }) {
     setIsDocumentsLoading(true);
     setDocumentsError("");
     try {
-      const items = await getThematicAccountSubmissions();
+      const items = await getThematicAccountSubmissions(undefined, [], user?.id);
       setSentDocuments(
         (Array.isArray(items) ? items : [])
           .filter((item) => String(item.senderId) === String(user?.id))

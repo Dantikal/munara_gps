@@ -17,7 +17,16 @@ export default function TrainingDocumentInbox({ children, user, moduleId }) {
   const isCenter = user?.unit_type === "training_center_head";
   useEffect(() => {
     let mounted = true;
-    const refresh = () => Promise.all([getThematicAccountSubmissions(), getCombatTrainingJournalOutposts()]).then(([data, users]) => {
+    const inboxSectionIds = moduleId === "youngSoldierTrainingCourse"
+      ? [
+          "young-soldier-thematic-account",
+          "young-soldier-lesson-schedule",
+          "young-soldier-combat-training-journal",
+          "young-soldier-observation",
+          "young-soldier-analysis",
+        ]
+      : [moduleId === "shootingStatements" ? "shooting-statements" : "memo-letter"];
+    const refresh = () => Promise.all([getThematicAccountSubmissions(undefined, inboxSectionIds), getCombatTrainingJournalOutposts()]).then(([data, users]) => {
       if (!mounted) return;
       setError("");
       setDirectory(users.filter((item) => item.unitType === (isCenter ? "training_platoon_commander" : "training_center_head")));

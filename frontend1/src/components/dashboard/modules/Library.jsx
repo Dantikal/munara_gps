@@ -1716,7 +1716,7 @@ export default function Library({ data, onBack, onRefresh, onSubmissionCreated }
     let isActive = true;
     const refreshSubmissions = async () => {
       try {
-        const items = await getThematicAccountSubmissions();
+        const items = await getThematicAccountSubmissions(undefined, [submissionSectionId]);
         if (isActive) setThematicSubmissions(Array.isArray(items) ? items : []);
       } catch {
         // Keep the last successfully loaded list and retry automatically.
@@ -1741,7 +1741,7 @@ export default function Library({ data, onBack, onRefresh, onSubmissionCreated }
     let isActive = true;
     const refreshEditRequestStatus = async () => {
       try {
-        const items = await getThematicAccountSubmissions();
+        const items = await getThematicAccountSubmissions(undefined, [submissionSectionId]);
         if (isActive) {
           setThematicSubmissions(Array.isArray(items) ? items : []);
         }

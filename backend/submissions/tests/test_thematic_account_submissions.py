@@ -43,6 +43,66 @@ class ThematicAccountSubmissionApiTests(APITestCase):
         )
         self.url = reverse("thematic-account-submission-list")
 
+    def test_admin_can_filter_submission_list_by_multiple_sections(self):
+        admin = User.objects.create_user(
+            username="admin-filter@example.com",
+            email="admin-filter@example.com",
+            password="test-password",
+            role=User.Role.ADMIN,
+            status=User.Status.ACTIVE,
+        )
+        ThematicAccountSubmission.objects.create(
+            sender=self.regional,
+            unit_number="2021",
+            document_title="Thematic document",
+            section_slug="thematic-account",
+        )
+        ThematicAccountSubmission.objects.create(
+            sender=self.regional,
+            unit_number="2021",
+            document_title="Memo letter",
+            section_slug="memo-letter",
+        )
+        ThematicAccountSubmission.objects.create(
+            sender=self.regional,
+            unit_number="2021",
+            document_title="Other section",
+            section_slug="combat-training-analysis",
+        )
+        self.client.force_authenticate(admin)
+
+        response = self.client.get(
+            self.url,
+            {"sectionId": ["thematic-account", "memo-letter"]},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            {item["sectionId"] for item in response.data},
+            {"thematic-account", "memo-letter"},
+        )
+
+    def test_submission_list_sender_filter_is_limited_to_current_user(self):
+        self.client.force_authenticate(self.regional)
+
+        response = self.client.get(self.url, {"senderId": self.other_regional.id})
+
+        self.assertEqual(response.status_code, 403)
+
+    def test_regional_user_always_sees_own_submission_for_status(self):
+        submission = ThematicAccountSubmission.objects.create(
+            sender=self.regional,
+            unit_number="legacy-unit-number",
+            document_title="My submitted document",
+            section_slug="thematic-account",
+        )
+        self.client.force_authenticate(self.regional)
+
+        response = self.client.get(self.url, {"sectionId": "thematic-account"})
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(submission.id, {item["id"] for item in response.data})
+
     def test_regional_user_sees_registered_outposts_from_own_unit(self):
         User.objects.create_user(
             username="outpost-2022@example.com",

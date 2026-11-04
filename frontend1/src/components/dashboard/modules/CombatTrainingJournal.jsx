@@ -369,7 +369,7 @@ const JournalDailyStatus = ({ updatedAt, now }) => {
           isUpdated ? "updated" : "missing"
         }`}
       >
-        {isUpdated ? "Жаңыланды" : "Жаңыланган жок"}
+        {isUpdated ? "Аткарылды" : "Аткарылган эмес"}
       </span>
       <span className="combat-journal-daily-countdown">
         {isUpdated && countdown
@@ -451,7 +451,7 @@ export default function CombatTrainingJournal({ data, methodicalSubjects = [], u
 
   const loadJournalSubmissions = async () => {
     try {
-      const items = await getThematicAccountSubmissions();
+      const items = await getThematicAccountSubmissions(undefined, [journalSubmissionSectionId]);
       setJournalSubmissions(
         (Array.isArray(items) ? items : []).filter(
           (item) => item.sectionId === journalSubmissionSectionId
@@ -479,7 +479,10 @@ export default function CombatTrainingJournal({ data, methodicalSubjects = [], u
     }
 
     let isActive = true;
-    getThematicAccountSubmissions()
+    getThematicAccountSubmissions(undefined, [
+      "combat-training-personnel-journal",
+      "combat-training-command-journal",
+    ])
       .then((items) => {
         if (isActive) {
           setJournalNotificationSubmissions(Array.isArray(items) ? items : []);

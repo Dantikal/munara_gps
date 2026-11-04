@@ -284,7 +284,9 @@ export default function Meetings({
 
     let isCurrent = true;
     setAdminSubmissionsLoading(true);
-    getThematicAccountSubmissions()
+    getThematicAccountSubmissions(undefined, visibleSections.map((section) =>
+      getSubmissionSectionId(storageNamespace, section.id)
+    ))
       .then((items) => {
         if (!isCurrent) return;
         const allowedSectionIds = new Set(

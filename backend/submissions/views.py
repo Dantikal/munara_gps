@@ -76,6 +76,12 @@ class ThematicAccountSubmissionListCreateView(APIView):
         registration_number = str(
             request.query_params.get("registrationNumber") or ""
         ).strip()
+        section_ids = [
+            section_id.strip()
+            for section_id in request.query_params.getlist("sectionId")
+            if section_id.strip()
+        ]
+        sender_id = str(request.query_params.get("senderId") or "").strip()
         if registration_number:
             if request.user.role != User.Role.ADMIN:
                 raise PermissionDenied("Каттоо номери боюнча издөөгө укук жок.")
@@ -88,6 +94,15 @@ class ThematicAccountSubmissionListCreateView(APIView):
                 for item in submissions
             ])
 
+        if section_ids:
+            submissions = submissions.filter(section_slug__in=section_ids)
+        if sender_id:
+            if not sender_id.isdigit():
+                raise ValidationError({"senderId": "Идентификатор отправителя указан неверно."})
+            if request.user.role != User.Role.ADMIN and int(sender_id) != request.user.id:
+                raise PermissionDenied("Нет права просматривать документы другого отправителя.")
+            submissions = submissions.filter(sender_id=int(sender_id))
+
         if request.user.role == User.Role.OUTPOST:
             submissions = submissions.filter(
                 Q(sender=request.user) | (Q(sender__training_center=request.user,
@@ -95,7 +110,9 @@ class ThematicAccountSubmissionListCreateView(APIView):
                     if request.user.unit_type == User.UnitType.TRAINING_CENTER_HEAD else Q(pk__in=[]))
             )
         elif request.user.role == User.Role.REGIONAL:
-            submissions = submissions.filter(regional_submission_filter(request.user))
+            submissions = submissions.filter(
+                regional_submission_filter(request.user) | Q(sender=request.user)
+            )
         elif request.user.role == User.Role.ADMIN:
             # Administrators audit the complete document flow, including memo
             # letters sent by outposts to their regional military units.

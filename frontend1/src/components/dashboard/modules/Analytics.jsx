@@ -190,7 +190,7 @@ const PeriodAnalysisSubmissionStatus = ({ submission, now }) => {
           isSubmitted ? "sent" : "missing"
         }`}
       >
-        {isSubmitted ? "Аткарылды" : "Толтурулган эмес"}
+        {isSubmitted ? "Аткарылды" : "Аткарылган эмес"}
       </span>
       <span className="analysis-period-countdown">
         До 1 {cycle.nextMonthLabel}: {formatPeriodAnalysisCountdown(now)}
@@ -607,7 +607,12 @@ export default function Analytics({ data, user }) {
     }
 
     let isActive = true;
-    getThematicAccountSubmissions()
+    getThematicAccountSubmissions(undefined, [
+      "combat-training-analysis",
+      "combat-training-analysis-regional",
+      data?.submissionSectionId,
+      data?.submissionSourceSectionId,
+    ])
       .then((items) => {
         if (isActive) {
           setAnalysisSubmissions(

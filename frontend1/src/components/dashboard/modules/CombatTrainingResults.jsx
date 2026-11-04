@@ -184,7 +184,7 @@ const InspectionReportingStatus = ({ submission, now }) => {
           isSubmitted ? "sent" : "missing"
         }`}
       >
-        {isSubmitted ? "Аткарылды" : "Толтурулган эмес"}
+        {isSubmitted ? "Аткарылды" : "Аткарылган эмес"}
       </span>
       <span className="results-cycle-countdown">
         До 1 {cycle.nextMonthLabel}: {formatInspectionCycleCountdown(now)}
@@ -1088,7 +1088,11 @@ export default function CombatTrainingResults({ data, user }) {
     }
 
     let isActive = true;
-    getThematicAccountSubmissions()
+    getThematicAccountSubmissions(undefined, [
+      "combat-training-results-observation",
+      "combat-training-results-inspection",
+      data?.submissionSectionId,
+    ])
       .then((items) => {
         if (isActive) {
           setResultSubmissions(

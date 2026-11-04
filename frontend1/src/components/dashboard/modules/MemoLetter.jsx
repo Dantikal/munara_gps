@@ -39,7 +39,7 @@ export default function MemoLetter({ user }) {
   useEffect(() => {
     let isCurrent = true;
     setIsLoading(true);
-    getThematicAccountSubmissions()
+    getThematicAccountSubmissions(undefined, [SECTION_ID])
       .then((items) => {
         if (!isCurrent) return;
         setSubmissions(

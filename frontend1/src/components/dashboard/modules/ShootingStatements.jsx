@@ -56,7 +56,7 @@ export default function ShootingStatements({ user }) {
       : user?.role === "regional"
         ? getOutpostRatings()
         : Promise.resolve([]);
-    Promise.all([getThematicAccountSubmissions(), directoryRequest])
+    Promise.all([getThematicAccountSubmissions(undefined, ["shooting-statements"]), directoryRequest])
       .then(([items, directoryItems]) => {
         if (isCurrent) {
           setSubmissions((Array.isArray(items) ? items : []).filter(
